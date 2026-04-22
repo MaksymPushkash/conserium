@@ -1,0 +1,69 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments and local Python config
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Test and type-checker caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Logs and runtime files
+*.log
+*.pid
+*.out
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Desktop.ini
+
+# Database and local app state
+*.sqlite3
+*.sqlite3-journal
+
+# Docker overrides and local compose files
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Misc
+.notes.txt
