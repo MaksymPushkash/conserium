@@ -8,9 +8,9 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    SECRET_KEY: str
+    JWT_SECRET: str
     DEBUG: bool = False
-
+    
     DATABASE_URL: str
 
     REDIS_URL: str
