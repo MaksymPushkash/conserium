@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     DATABASE_URL: str
+    DATABASE_POOL_SIZE: int = 20
+    DATABASE_MAX_OVERFLOW: int = 10
 
     REDIS_URL: str
     REDIS_EMBEDDING_CACHE_TTL: int = 3600

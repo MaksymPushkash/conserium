@@ -1,8 +1,21 @@
+from contextlib import asynccontextmanager
+
+from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
+
+from src.core.container import container
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await container.close()
+
 
 
 def create_app() -> FastAPI:
-    app = FastAPI()
+    app = FastAPI(lifespan=lifespan)
+    setup_dishka(container, app)
 
     @app.get("/", tags=["health"])
     async def health_check() -> dict[str, str]:
