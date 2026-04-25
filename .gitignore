@@ -63,8 +63,8 @@ Desktop.ini
 *.sqlite3-journal
 
 # Docker overrides and local compose files
-docker-compose.override.yml
-docker-compose.local.yml
+docker-compose.override.yaml
+docker-compose.local.yaml
 
 # Misc
 .notes.txt
