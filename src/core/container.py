@@ -1,11 +1,21 @@
 from collections.abc import AsyncIterator
 
 from dishka import Provider, Scope, make_async_container, provide
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from src.application.interfaces.user_repository import IUserRepository
+from src.application.interfaces.cache import ICache
+from src.application.interfaces.jwt_service import IJWTService
+from src.application.interfaces.password_hasher import IPasswordHasher
+from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.use_cases.auth.login_use_case import LoginUserUseCase
+from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
+from src.application.use_cases.auth.register_use_case import RegisterUserUseCase
 from src.core.config import settings
-from src.infrastructure.database.repositories.user_repository import SQLAlchemyUserRepository
+from src.infrastructure.auth.jwt_service import JWTService
+from src.infrastructure.auth.password_hasher import BcryptPasswordHasher
+from src.infrastructure.cache.redis_cache import RedisCache
+from src.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 
 
 class AppProvider(Provider):
@@ -37,10 +47,57 @@ class AppProvider(Provider):
     ) -> AsyncIterator[AsyncSession]:
         async with factory() as session:
             yield session
-
+    
+    
     @provide(scope=Scope.REQUEST)
-    def get_user_repository(self, session: AsyncSession) -> IUserRepository:
-        return SQLAlchemyUserRepository(session)
+    def get_unit_of_work(self, session: AsyncSession) -> IUnitOfWork:
+        return SQLAlchemyUnitOfWork(session)
+    
+    @provide(scope=Scope.APP)
+    async def get_redis(self) -> AsyncIterator[Redis]:
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=False)
+        yield redis
+        await redis.aclose()
+    
+    @provide(scope=Scope.APP)
+    def get_jwt_service(self) -> IJWTService:
+        return JWTService()
+    
+    @provide(scope=Scope.APP)
+    def get_password_hasher(self) -> IPasswordHasher:
+        return BcryptPasswordHasher()
+    
+    @provide(scope=Scope.REQUEST)
+    def get_cache(self, redis: Redis) -> ICache:
+        return RedisCache(redis)
+    
+    @provide(scope=Scope.REQUEST)
+    def get_register_use_case(
+        self,
+        uow: IUnitOfWork,
+        password_hasher: IPasswordHasher,
+        jwt_service: IJWTService,
+        cache: ICache,
+    ) -> RegisterUserUseCase:
+        return RegisterUserUseCase(uow, password_hasher, jwt_service, cache)
+    
+    @provide(scope=Scope.REQUEST)
+    def get_login_use_case(
+        self,
+        uow: IUnitOfWork,
+        password_hasher: IPasswordHasher,
+        jwt_service: IJWTService,
+        cache: ICache,
+    ) -> LoginUserUseCase:
+        return LoginUserUseCase(uow, password_hasher, jwt_service, cache)
+    
+    @provide(scope=Scope.REQUEST)
+    def get_refresh_use_case(
+        self,
+        jwt_service: IJWTService,
+        cache: ICache,
+    ) -> RefreshTokenUseCase:
+        return RefreshTokenUseCase(jwt_service, cache)
 
 
 container = make_async_container(AppProvider())

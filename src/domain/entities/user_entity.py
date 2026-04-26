@@ -119,8 +119,6 @@ class UserEntity:
             return None
         if updated_at.tzinfo is None:
             raise InvalidUpdatedAtException("datetime must be timezone-aware")
-        if updated_at < created_at:
-            raise InvalidUpdatedAtException("updated_at can't be before created_at")
         if updated_at > datetime.now(UTC):
             raise InvalidUpdatedAtException("updated_at can't be in the future")
         return updated_at

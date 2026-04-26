@@ -58,5 +58,5 @@ class DocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     collection: Mapped["CollectionModel | None"] = relationship(back_populates="documents")
     chunks: Mapped[list["ChunkModel"]] = relationship(back_populates="document", cascade="all, delete-orphan", passive_deletes=True)
     tags: Mapped[list["TagModel"]] = relationship(secondary=document_tags, back_populates="documents")
-    duplicate_of: Mapped["DocumentModel | None"] = relationship("DocumentModel", remote_side="DocumentModel.id", foreign_keys="[DocumentModel.duplicate_of_id]", back_populates="duplicates")
+    duplicate_of: Mapped["DocumentModel | None"] = relationship("DocumentModel", remote_side="DocumentModel.id", foreign_keys="[DocumentModel.duplicate_of_id]")
  

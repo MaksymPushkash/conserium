@@ -15,3 +15,6 @@ class Email:
     def __post_init__(self) -> None:
         if not _EMAIL_REGEX.match(self.value):
             raise InvalidEmailException("Invalid email")
+    
+    def __str__(self) -> str:
+        return self.value

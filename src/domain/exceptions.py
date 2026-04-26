@@ -18,3 +18,13 @@ class InvalidEmailException(Exception):
 
 class InvalidPasswordException(Exception):
     ...
+
+class InvalidTokenException(Exception):
+    ...
+
+class EmailAlreadyExistsException(Exception):
+    ...
+
+class InvalidCredentialsException(Exception):
+    ...
+
