@@ -21,6 +21,7 @@ dependencies = [
     "python-jose>=3.5.0",
     "redis>=7.4.0",
     "sqlalchemy>=2.0.49",
+    "structlog>=25.5.0",
     "uvicorn>=0.46.0",
     "uvloop>=0.22.1",
 ]
@@ -72,3 +73,4 @@ disallow_untyped_defs = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]

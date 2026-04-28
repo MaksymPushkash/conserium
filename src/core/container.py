@@ -67,7 +67,7 @@ class AppProvider(Provider):
     def get_password_hasher(self) -> IPasswordHasher:
         return BcryptPasswordHasher()
     
-    @provide(scope=Scope.REQUEST)
+    @provide(scope=Scope.APP)
     def get_cache(self, redis: Redis) -> ICache:
         return RedisCache(redis)
     
@@ -79,7 +79,10 @@ class AppProvider(Provider):
         jwt_service: IJWTService,
         cache: ICache,
     ) -> RegisterUserUseCase:
-        return RegisterUserUseCase(uow, password_hasher, jwt_service, cache)
+        return RegisterUserUseCase(
+            uow, password_hasher, jwt_service, cache,
+            refresh_token_ttl_seconds=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+        )
     
     @provide(scope=Scope.REQUEST)
     def get_login_use_case(
@@ -89,7 +92,10 @@ class AppProvider(Provider):
         jwt_service: IJWTService,
         cache: ICache,
     ) -> LoginUserUseCase:
-        return LoginUserUseCase(uow, password_hasher, jwt_service, cache)
+        return LoginUserUseCase(
+            uow, password_hasher, jwt_service, cache,
+            refresh_token_ttl_seconds=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+        )
     
     @provide(scope=Scope.REQUEST)
     def get_refresh_use_case(
@@ -97,7 +103,10 @@ class AppProvider(Provider):
         jwt_service: IJWTService,
         cache: ICache,
     ) -> RefreshTokenUseCase:
-        return RefreshTokenUseCase(jwt_service, cache)
+        return RefreshTokenUseCase(
+            jwt_service, cache,
+            refresh_token_ttl_seconds=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+        )
 
 
 container = make_async_container(AppProvider())

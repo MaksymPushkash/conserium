@@ -2,10 +2,10 @@ import enum
 
 
 class DocumentType(enum.StrEnum):
-    PDF = "pdf"
-    URL = "url"
-    YOUTUBE = "youtube"
-    AUDIO = "audio"
-    IMAGE = "image"
-    TEXT = "text"
-    MARKDOWN = "markdown"
+    PDF = "PDF"
+    URL = "URL"
+    YOUTUBE = "YOUTUBE"
+    AUDIO = "AUDIO"
+    IMAGE = "IMAGE"
+    TEXT = "TEXT"
+    MARKDOWN = "MARKDOWN"

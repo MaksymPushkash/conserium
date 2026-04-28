@@ -12,9 +12,9 @@ class RefreshTokenUseCase(BaseAuthUseCase):
         self,
         jwt_service: IJWTService,
         cache: ICache,
+        refresh_token_ttl_seconds: int,
     ) -> None:
-        self._jwt_service = jwt_service
-        self._cache = cache
+        super().__init__(jwt_service, cache, refresh_token_ttl_seconds)
  
     async def __call__(self, dto: RefreshDTO) -> TokenResponseDTO:
         key = f"refresh:{dto.refresh_token}"

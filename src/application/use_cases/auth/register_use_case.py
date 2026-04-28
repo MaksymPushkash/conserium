@@ -18,11 +18,11 @@ class RegisterUserUseCase(BaseAuthUseCase):
         password_hasher: IPasswordHasher,
         jwt_service: IJWTService,
         cache: ICache,
+        refresh_token_ttl_seconds: int,
     ) -> None:
+        super().__init__(jwt_service, cache, refresh_token_ttl_seconds)
         self._uow = uow
         self._password_hasher = password_hasher
-        self._jwt_service = jwt_service
-        self._cache = cache
  
     async def __call__(self, dto: RegisterDTO) -> TokenResponseDTO:
         async with self._uow:

@@ -3,7 +3,7 @@ from typing import final
 
 
 @final
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RegisterDTO:
     email: str
     password: str
@@ -11,20 +11,20 @@ class RegisterDTO:
  
  
 @final
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class LoginDTO:
     email: str
     password: str
  
  
 @final
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RefreshDTO:
     refresh_token: str
  
  
 @final
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class TokenResponseDTO:
     access_token: str
     refresh_token: str

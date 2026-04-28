@@ -4,7 +4,6 @@ from src.application.interfaces.cache import ICache
 
 
 class RedisCache(ICache):
-
     def __init__(self, redis: Redis) -> None:
         self._redis = redis
 

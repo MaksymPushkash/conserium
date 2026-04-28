@@ -1,6 +1,3 @@
-class InvalidBioException(Exception):
-    ...
-    
 class InvalidUpdatedAtException(Exception):
     ...
 

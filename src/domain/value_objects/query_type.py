@@ -2,6 +2,6 @@ import enum
 
 
 class QueryType(enum.StrEnum):
-    SEARCH = "search"
-    SUMMARY = "summary"
-    DUPLICATE_CHECK = "duplicate_check"
+    SEARCH = "SEARCH"
+    SUMMARY = "SUMMARY"
+    DUPLICATE_CHECK = "DUPLICATE_CHECK"
