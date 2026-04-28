@@ -14,9 +14,9 @@ security = HTTPBearer()
 
 @inject
 async def get_current_user(
+    jwt_service: FromDishka[IJWTService],
+    uow: FromDishka[IUnitOfWork],
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    jwt_service: FromDishka[IJWTService] = None, # type: ignore[assignment]
-    uow: FromDishka[IUnitOfWork] = None, # type: ignore[assignment]
 ) -> UserEntity:
     try:
         user_id = jwt_service.verify_access_token(credentials.credentials)

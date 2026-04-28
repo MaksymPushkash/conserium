@@ -18,4 +18,5 @@ class RedisCache(ICache):
         await self._redis.delete(key)
 
     async def exists(self, key: str) -> bool:
-        return await self._redis.exists(key) > 0
+        count = await self._redis.exists(key)
+        return int(count) > 0

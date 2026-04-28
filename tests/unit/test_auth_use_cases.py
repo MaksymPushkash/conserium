@@ -42,6 +42,7 @@ def mock_jwt_service():
     service.generate_access_token.return_value = "access-token-123"
     service.generate_refresh_token.return_value = "refresh-token-456"
     service.verify_access_token.return_value = uuid.uuid4()
+    service.verify_refresh_token.return_value = uuid.uuid4()
     return service
 
 
@@ -56,6 +57,7 @@ def mock_cache():
 
 def _make_user_entity(*, is_active: bool = True) -> UserEntity:
     from datetime import UTC, datetime
+
     return UserEntity(
         id=uuid.uuid4(),
         email=Email(value="user@example.com"),
@@ -68,12 +70,14 @@ def _make_user_entity(*, is_active: bool = True) -> UserEntity:
 
 
 class TestRegisterUserUseCase:
-
     async def test_successful_registration(self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache):
         mock_uow.user_repo.exists_by_email.return_value = False
 
         use_case = RegisterUserUseCase(
-            mock_uow, mock_password_hasher, mock_jwt_service, mock_cache,
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         result = await use_case(RegisterDTO(email="new@example.com", password="securepass123"))
@@ -85,11 +89,16 @@ class TestRegisterUserUseCase:
         mock_password_hasher.hash.assert_called_once_with("securepass123")
         mock_cache.set.assert_awaited_once()
 
-    async def test_registration_duplicate_email_raises(self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache):
+    async def test_registration_duplicate_email_raises(
+        self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache
+    ):
         mock_uow.user_repo.exists_by_email.return_value = True
 
         use_case = RegisterUserUseCase(
-            mock_uow, mock_password_hasher, mock_jwt_service, mock_cache,
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(EmailAlreadyExistsException):
@@ -102,14 +111,19 @@ class TestRegisterUserUseCase:
         mock_uow.user_repo.exists_by_email.return_value = False
 
         use_case = RegisterUserUseCase(
-            mock_uow, mock_password_hasher, mock_jwt_service, mock_cache,
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
-        result = await use_case(RegisterDTO(
-            email="new@example.com",
-            password="securepass123",
-            display_name="John Doe",
-        ))
+        result = await use_case(
+            RegisterDTO(
+                email="new@example.com",
+                password="securepass123",
+                display_name="John Doe",
+            )
+        )
 
         assert result.access_token == "access-token-123"
         mock_uow.user_repo.create.assert_awaited_once()
@@ -118,7 +132,10 @@ class TestRegisterUserUseCase:
         mock_uow.user_repo.exists_by_email.return_value = False
 
         use_case = RegisterUserUseCase(
-            mock_uow, mock_password_hasher, mock_jwt_service, mock_cache,
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         await use_case(RegisterDTO(email="new@example.com", password="securepass123"))
@@ -129,15 +146,16 @@ class TestRegisterUserUseCase:
         assert call_kwargs.kwargs["ttl"] == REFRESH_TTL
 
 
-
 class TestLoginUserUseCase:
-
     async def test_successful_login(self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache):
         user = _make_user_entity()
         mock_uow.user_repo.get_by_email.return_value = user
 
         use_case = LoginUserUseCase(
-            mock_uow, mock_password_hasher, mock_jwt_service, mock_cache,
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         result = await use_case(LoginDTO(email="user@example.com", password="password"))
@@ -150,7 +168,10 @@ class TestLoginUserUseCase:
         mock_uow.user_repo.get_by_email.return_value = None
 
         use_case = LoginUserUseCase(
-            mock_uow, mock_password_hasher, mock_jwt_service, mock_cache,
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(InvalidCredentialsException):
@@ -162,7 +183,10 @@ class TestLoginUserUseCase:
         mock_password_hasher.verify.return_value = False
 
         use_case = LoginUserUseCase(
-            mock_uow, mock_password_hasher, mock_jwt_service, mock_cache,
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(InvalidCredentialsException):
@@ -173,7 +197,10 @@ class TestLoginUserUseCase:
         mock_uow.user_repo.get_by_email.return_value = user
 
         use_case = LoginUserUseCase(
-            mock_uow, mock_password_hasher, mock_jwt_service, mock_cache,
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(UserInactiveException):
@@ -181,47 +208,104 @@ class TestLoginUserUseCase:
 
 
 class TestRefreshTokenUseCase:
-
     async def test_successful_refresh(self, mock_jwt_service, mock_cache):
         user_id = uuid.uuid4()
+        mock_jwt_service.verify_refresh_token.return_value = user_id
         mock_cache.get.return_value = str(user_id)
 
         use_case = RefreshTokenUseCase(
-            mock_jwt_service, mock_cache,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         result = await use_case(RefreshDTO(refresh_token="old-refresh-token"))
 
         assert result.access_token == "access-token-123"
         assert result.refresh_token == "refresh-token-456"
-    
+        mock_jwt_service.verify_refresh_token.assert_called_once_with("old-refresh-token")
+        mock_jwt_service.generate_access_token.assert_called_once_with(user_id)
+        mock_jwt_service.generate_refresh_token.assert_called_once_with(user_id)
+        mock_cache.get.assert_awaited_once_with("refresh:old-refresh-token")
         mock_cache.delete.assert_awaited_once_with("refresh:old-refresh-token")
-    
         mock_cache.set.assert_awaited_once()
 
-    async def test_refresh_expired_token_raises(self, mock_jwt_service, mock_cache):
+    async def test_refresh_missing_cache_entry_raises(self, mock_jwt_service, mock_cache):
+        user_id = uuid.uuid4()
+        mock_jwt_service.verify_refresh_token.return_value = user_id
         mock_cache.get.return_value = None
 
         use_case = RefreshTokenUseCase(
-            mock_jwt_service, mock_cache,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(InvalidTokenException):
-            await use_case(RefreshDTO(refresh_token="expired-token"))
+            await use_case(RefreshDTO(refresh_token="expired-cache-token"))
+
+        mock_jwt_service.verify_refresh_token.assert_called_once_with("expired-cache-token")
+        mock_cache.get.assert_awaited_once_with("refresh:expired-cache-token")
+        mock_cache.delete.assert_not_awaited()
 
     async def test_refresh_rotates_token(self, mock_jwt_service, mock_cache):
         """Ensure refresh token rotation: old deleted, new stored."""
         user_id = uuid.uuid4()
+        mock_jwt_service.verify_refresh_token.return_value = user_id
         mock_cache.get.return_value = str(user_id)
 
         use_case = RefreshTokenUseCase(
-            mock_jwt_service, mock_cache,
+            mock_jwt_service,
+            mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         await use_case(RefreshDTO(refresh_token="old-token"))
 
-        
         mock_cache.delete.assert_awaited_once_with("refresh:old-token")
-        
+
         set_call = mock_cache.set.call_args
         assert set_call.kwargs["key"] == "refresh:refresh-token-456"
+
+    async def test_refresh_access_token_rejected(self, mock_jwt_service, mock_cache):
+        mock_jwt_service.verify_refresh_token.side_effect = InvalidTokenException("not a refresh token")
+
+        use_case = RefreshTokenUseCase(
+            mock_jwt_service,
+            mock_cache,
+            refresh_token_ttl_seconds=REFRESH_TTL,
+        )
+
+        with pytest.raises(InvalidTokenException):
+            await use_case(RefreshDTO(refresh_token="access-token"))
+
+        mock_jwt_service.verify_refresh_token.assert_called_once_with("access-token")
+        mock_cache.get.assert_not_awaited()
+        mock_cache.delete.assert_not_awaited()
+
+    async def test_refresh_corrupted_cache_user_id_raises(self, mock_jwt_service, mock_cache):
+        mock_jwt_service.verify_refresh_token.return_value = uuid.uuid4()
+        mock_cache.get.return_value = "not-a-uuid"
+
+        use_case = RefreshTokenUseCase(
+            mock_jwt_service,
+            mock_cache,
+            refresh_token_ttl_seconds=REFRESH_TTL,
+        )
+
+        with pytest.raises(InvalidTokenException):
+            await use_case(RefreshDTO(refresh_token="refresh-token"))
+
+        mock_cache.delete.assert_awaited_once_with("refresh:refresh-token")
+
+    async def test_refresh_cache_subject_mismatch_raises(self, mock_jwt_service, mock_cache):
+        mock_jwt_service.verify_refresh_token.return_value = uuid.uuid4()
+        mock_cache.get.return_value = str(uuid.uuid4())
+
+        use_case = RefreshTokenUseCase(
+            mock_jwt_service,
+            mock_cache,
+            refresh_token_ttl_seconds=REFRESH_TTL,
+        )
+
+        with pytest.raises(InvalidTokenException):
+            await use_case(RefreshDTO(refresh_token="refresh-token"))
+
+        mock_cache.delete.assert_awaited_once_with("refresh:refresh-token")

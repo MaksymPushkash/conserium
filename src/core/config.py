@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     JWT_ALGORITHM: str = "HS256"
     DEBUG: bool = False
-    
+
     DATABASE_URL: str
     DATABASE_POOL_SIZE: int = 20
     DATABASE_MAX_OVERFLOW: int = 10
@@ -22,20 +22,20 @@ class Settings(BaseSettings):
     REDIS_URL: str
     REDIS_EMBEDDING_CACHE_TTL: int = 3600
     REDIS_DOC_STATUS_TTL: int = 3600
-    
-    CELERY_BROKER_URL: str
-    CELERY_RESULT_BACKEND: str
 
-    RABBITMQ_URL: str
+    CELERY_BROKER_URL: str = ""
+    CELERY_RESULT_BACKEND: str = ""
 
-    OPENAI_API_KEY: str
+    RABBITMQ_URL: str = ""
+
+    OPENAI_API_KEY: str = ""
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     OPENAI_EMBEDDING_DIMENSIONS: int = 1536
     OPENAI_LLM_MODEL: str = "gpt-4o-mini"
-    
+
     FILE_STORAGE_TYPE: str = "local"
     LOCAL_STORAGE_PATH: str = "./storage"
-    
+
     LANGFUSE_SECRET_KEY: str = ""
     LANGFUSE_PUBLIC_KEY: str = ""
     LANGFUSE_HOST: str = "https://cloud.langfuse.com"
@@ -47,4 +47,5 @@ class Settings(BaseSettings):
 
     FRONTEND_URL: str
 
-settings = Settings()
+
+settings = Settings()  # pyright: ignore[reportCallIssue]
