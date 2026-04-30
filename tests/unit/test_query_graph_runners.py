@@ -1,0 +1,126 @@
+import uuid
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, cast
+
+from src.application.agents.query.graph_runner import QueryGraphRunner
+from src.application.agents.query.state import CortexQueryState, QueryType
+from src.application.agents.query.streaming_graph_runner import StreamingQueryGraphRunner
+
+if TYPE_CHECKING:
+    from src.application.agents.query.conversation_context_agent import ConversationContextAgent
+    from src.application.agents.query.refrag_context_agent import RefragContextAgent
+    from src.application.agents.query.retrieval_agent import RetrievalAgent
+    from src.application.agents.query.router_agent import RouterAgent
+    from src.application.agents.query.streaming_synthesis_agent import StreamingSynthesisAgent
+    from src.application.agents.query.synthesis_agent import SynthesisAgent
+
+
+class _Router:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    def route(self, state: CortexQueryState) -> CortexQueryState:
+        self._calls.append("router")
+        state.query_type = QueryType.SUMMARY
+        return state
+
+
+class _ConversationContext:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    def apply(self, state: CortexQueryState) -> CortexQueryState:
+        self._calls.append("conversation_context")
+        state.retrieval_query = f"contextual: {state.query}"
+        return state
+
+
+class _Retrieval:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    async def retrieve(self, state: CortexQueryState) -> CortexQueryState:
+        self._calls.append("retrieval")
+        return state
+
+
+class _RefragContext:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    def build_context(self, state: CortexQueryState) -> CortexQueryState:
+        self._calls.append("refrag_context")
+        return state
+
+
+class _Synthesis:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    async def synthesize(self, state: CortexQueryState) -> CortexQueryState:
+        self._calls.append("synthesis")
+        state.answer = "final answer"
+        return state
+
+
+class _StreamingSynthesis:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    async def _tokens(self) -> AsyncIterator[str]:
+        yield "final"
+
+    def stream(self, state: CortexQueryState) -> AsyncIterator[str]:
+        self._calls.append("streaming_synthesis")
+        return self._tokens()
+
+
+async def test_query_graph_runner_preserves_node_order_and_final_state() -> None:
+    calls: list[str] = []
+    runner = QueryGraphRunner(
+        cast("ConversationContextAgent", _ConversationContext(calls)),
+        cast("RouterAgent", _Router(calls)),
+        cast("RetrievalAgent", _Retrieval(calls)),
+        cast("RefragContextAgent", _RefragContext(calls)),
+        cast("SynthesisAgent", _Synthesis(calls)),
+    )
+
+    result = await runner.run(
+        CortexQueryState(
+            query="Summarize my notes",
+            user_id=uuid.uuid4(),
+            conversation_id=uuid.uuid4(),
+            limit=5,
+        )
+    )
+
+    assert calls == ["conversation_context", "router", "retrieval", "refrag_context", "synthesis"]
+    assert result.retrieval_query == "contextual: Summarize my notes"
+    assert result.query_type == QueryType.SUMMARY
+    assert result.answer == "final answer"
+
+
+async def test_streaming_query_graph_runner_prepare_preserves_node_order_and_streaming_state() -> None:
+    calls: list[str] = []
+    runner = StreamingQueryGraphRunner(
+        cast("ConversationContextAgent", _ConversationContext(calls)),
+        cast("RouterAgent", _Router(calls)),
+        cast("RetrievalAgent", _Retrieval(calls)),
+        cast("RefragContextAgent", _RefragContext(calls)),
+        cast("StreamingSynthesisAgent", _StreamingSynthesis(calls)),
+    )
+
+    prepared_state = await runner.prepare(
+        CortexQueryState(
+            query="Summarize my notes",
+            user_id=uuid.uuid4(),
+            conversation_id=uuid.uuid4(),
+            limit=5,
+        )
+    )
+    tokens = [token async for token in runner.stream_answer(prepared_state)]
+
+    assert calls == ["conversation_context", "router", "retrieval", "refrag_context", "streaming_synthesis"]
+    assert prepared_state.retrieval_query == "contextual: Summarize my notes"
+    assert prepared_state.query_type == QueryType.SUMMARY
+    assert tokens == ["final"]

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.application.interfaces.content_extractor import ExtractedContent
+from src.application.ports.ingestion.content_extractor import ExtractedContent
 
 # ---------------------------------------------------------------------------
 # ExtractedContent dataclass validation
@@ -117,9 +117,8 @@ class TestPdfExtractor:
         extractor = PdfExtractor()
         fake_pdf = self._mock_pdf(["   ", "  \n"])  # all blank
 
-        with patch("pdfplumber.open", return_value=fake_pdf):
-            with pytest.raises(ValueError, match="no extractable text"):
-                await extractor.extract_from_bytes(b"fake", filename="scanned.pdf")
+        with patch("pdfplumber.open", return_value=fake_pdf), pytest.raises(ValueError, match="no extractable text"):
+            await extractor.extract_from_bytes(b"fake", filename="scanned.pdf")
 
     @pytest.mark.asyncio
     async def test_title_falls_back_to_filename(self) -> None:
@@ -185,9 +184,8 @@ class TestUrlExtractor:
         from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
         extractor = UrlExtractor()
 
-        with patch("trafilatura.extract", return_value=None):
-            with pytest.raises(ValueError, match="could not extract"):
-                await extractor.extract_from_bytes(self._SAMPLE_HTML)
+        with patch("trafilatura.extract", return_value=None), pytest.raises(ValueError, match="could not extract"):
+            await extractor.extract_from_bytes(self._SAMPLE_HTML)
 
     @pytest.mark.asyncio
     async def test_extract_from_url_success(self) -> None:
@@ -195,7 +193,7 @@ class TestUrlExtractor:
         extractor = UrlExtractor()
 
         with (
-            patch("trafilatura.fetch_url", return_value=b"<html><body>Real content here for testing purposes.</body></html>"),
+            patch("src.infrastructure.ai.extractors.url_extractor._fetch_url_safely", return_value=b"<html><body>Real content here for testing purposes.</body></html>"),
             patch("trafilatura.extract", return_value="Real content here for testing purposes."),
             patch("trafilatura.extract_metadata") as mock_meta,
         ):
@@ -210,9 +208,25 @@ class TestUrlExtractor:
         from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
         extractor = UrlExtractor()
 
-        with patch("trafilatura.fetch_url", return_value=None):
-            with pytest.raises(ValueError, match="Failed to download"):
-                await extractor.extract_from_url("https://example.com/missing")
+        with patch("src.infrastructure.ai.extractors.url_extractor._fetch_url_safely", side_effect=ValueError("Failed to download")), pytest.raises(ValueError, match="Failed to download"):
+            await extractor.extract_from_url("https://example.com/missing")
+
+    @pytest.mark.asyncio
+    async def test_extract_from_url_blocks_non_http_scheme(self) -> None:
+        from src.infrastructure.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
+        extractor = UrlExtractor()
+
+        with pytest.raises(UnsafeUrlError, match="scheme"):
+            await extractor.extract_from_url("file:///etc/passwd")
+
+    @pytest.mark.asyncio
+    async def test_extract_from_url_blocks_private_hosts(self) -> None:
+        from src.infrastructure.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
+        extractor = UrlExtractor()
+
+        with patch("socket.getaddrinfo", return_value=[(0, 0, 0, "", ("127.0.0.1", 0))]):
+            with pytest.raises(UnsafeUrlError, match="non-public"):
+                await extractor.extract_from_url("https://example.com/private")
 
     @pytest.mark.asyncio
     async def test_language_truncated_to_10_chars(self) -> None:

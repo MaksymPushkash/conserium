@@ -4,7 +4,7 @@ from uuid import UUID
 
 from jose import JWTError, jwt
 
-from src.application.interfaces.jwt_service import IJWTService
+from src.application.ports.auth.jwt_service import IJWTService
 from src.core.config import settings
 from src.domain.exceptions import InvalidTokenException
 

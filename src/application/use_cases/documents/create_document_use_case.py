@@ -1,7 +1,7 @@
 import uuid
 
 from src.application.dtos.document_dtos import CreateDocumentDTO, DocumentDTO
-from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.base import document_to_dto
 from src.domain.entities.document_entity import DocumentEntity
 

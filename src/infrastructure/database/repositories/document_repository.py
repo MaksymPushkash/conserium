@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import delete, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.application.interfaces.document_repository import IDocumentRepository
+from src.application.ports.persistence.document_repository import IDocumentRepository
 from src.domain.entities.document_entity import DocumentEntity
 from src.infrastructure.database.models.document import DocumentModel
 

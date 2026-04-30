@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     REDIS_URL: str
     REDIS_EMBEDDING_CACHE_TTL: int = 3600
     REDIS_DOC_STATUS_TTL: int = 3600
+    REDIS_CONVERSATION_TTL: int = 604800
 
     CELERY_BROKER_URL: str = ""
     CELERY_RESULT_BACKEND: str = ""

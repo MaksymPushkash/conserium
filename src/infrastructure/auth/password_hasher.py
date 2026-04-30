@@ -2,7 +2,7 @@ import hashlib
 
 import bcrypt
 
-from src.application.interfaces.password_hasher import IPasswordHasher
+from src.application.ports.auth.password_hasher import IPasswordHasher
 
 
 class BcryptPasswordHasher(IPasswordHasher):

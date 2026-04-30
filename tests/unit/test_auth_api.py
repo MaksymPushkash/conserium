@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 
 from src.application.dtos.auth_dtos import TokenResponseDTO
-from src.application.interfaces.jwt_service import IJWTService
-from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.ports.auth.jwt_service import IJWTService
+from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.auth.login_use_case import LoginUserUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.use_cases.auth.register_use_case import RegisterUserUseCase

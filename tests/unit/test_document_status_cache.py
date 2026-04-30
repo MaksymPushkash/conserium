@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.interfaces.document_status_cache import DocumentStatusDTO
+from src.application.ports.cache.document_status_cache import DocumentStatusDTO
 from src.infrastructure.cache.document_status_cache import RedisDocumentStatusCache
 
 

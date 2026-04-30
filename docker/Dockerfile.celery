@@ -1,0 +1,16 @@
+FROM python:3.12.10-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+COPY src ./src
+
+CMD ["uv", "run", "celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=document_processing,notifications,cleanup", "--concurrency=4"]

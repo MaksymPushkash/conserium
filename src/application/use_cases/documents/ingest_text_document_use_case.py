@@ -2,8 +2,8 @@ import uuid
 
 from src.application.dtos.document_dtos import DocumentDTO
 from src.application.dtos.ingestion_dtos import IngestTextDocumentDTO
-from src.application.interfaces.text_chunker import ITextChunker
-from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.ports.ingestion.text_chunker import ITextChunker
+from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.base import document_to_dto
 from src.domain.entities.chunk_entity import ChunkEntity
 from src.domain.entities.document_entity import DocumentEntity

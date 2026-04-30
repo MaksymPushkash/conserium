@@ -12,7 +12,7 @@ from src.domain.value_objects.document_type import DocumentType
 from src.infrastructure.text_processing.simple_text_chunker import SimpleTextChunker
 
 if TYPE_CHECKING:
-    from src.application.interfaces.unit_of_work import IUnitOfWork
+    from src.application.ports.persistence.unit_of_work import IUnitOfWork
     from src.domain.entities.chunk_entity import ChunkEntity
     from src.domain.entities.document_entity import DocumentEntity
 

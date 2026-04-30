@@ -15,14 +15,18 @@ layer decoupled from infrastructure.
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
-from src.application.dtos.document_dtos import DocumentDTO
-from src.application.dtos.ingestion_dtos import IngestDocumentDTO
-from src.application.interfaces.document_status_cache import IDocumentStatusCache
-from src.application.interfaces.task_dispatcher import ITaskDispatcher
-from src.application.interfaces.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.base import document_to_dto
 from src.domain.entities.document_entity import DocumentEntity
+from src.domain.value_objects.document_type import DocumentType
+
+if TYPE_CHECKING:
+    from src.application.dtos.document_dtos import DocumentDTO
+    from src.application.dtos.ingestion_dtos import IngestDocumentDTO
+    from src.application.ports.cache.document_status_cache import IDocumentStatusCache
+    from src.application.ports.ingestion.task_dispatcher import ITaskDispatcher
+    from src.application.ports.persistence.unit_of_work import IUnitOfWork
 
 
 class IngestDocumentUseCase:
@@ -37,6 +41,13 @@ class IngestDocumentUseCase:
         self._task_dispatcher = task_dispatcher
 
     async def __call__(self, dto: IngestDocumentDTO) -> DocumentDTO:
+        if dto.type in (DocumentType.TEXT, DocumentType.MARKDOWN) and not (dto.raw_content and dto.raw_content.strip()):
+            raise ValueError("raw_content is required for text ingestion")
+        if dto.type == DocumentType.URL and not dto.source_url:
+            raise ValueError("source_url is required for URL ingestion")
+        if dto.type == DocumentType.PDF and not dto.file_path:
+            raise ValueError("file_path is required for PDF ingestion")
+
         document = DocumentEntity.create(
             id=uuid.uuid4(),
             user_id=dto.user_id,
@@ -46,6 +57,9 @@ class IngestDocumentUseCase:
             source_url=dto.source_url,
             file_path=dto.file_path,
             file_size_bytes=dto.file_size_bytes,
+            raw_content=dto.raw_content,
+            word_count=len(dto.raw_content.split()) if dto.raw_content else None,
+            language=dto.language,
         )
         # PENDING → QUEUED before persisting so the DB row is never left in PENDING
         document.mark_queued()

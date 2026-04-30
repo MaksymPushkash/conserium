@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.infrastructure.database.repositories.chunk_repository import SQLAlchemyChunkRepository
 from src.infrastructure.database.repositories.document_repository import SQLAlchemyDocumentRepository
 from src.infrastructure.database.repositories.user_repository import SQLAlchemyUserRepository
@@ -12,9 +12,9 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from src.application.interfaces.chunk_repository import IChunkRepository
-    from src.application.interfaces.document_repository import IDocumentRepository
-    from src.application.interfaces.user_repository import IUserRepository
+    from src.application.ports.persistence.chunk_repository import IChunkRepository
+    from src.application.ports.persistence.document_repository import IDocumentRepository
+    from src.application.ports.persistence.user_repository import IUserRepository
 
 
 class SQLAlchemyUnitOfWork(IUnitOfWork):

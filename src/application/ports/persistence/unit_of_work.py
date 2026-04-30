@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from types import TracebackType
 
-from src.application.interfaces.chunk_repository import IChunkRepository
-from src.application.interfaces.document_repository import IDocumentRepository
-from src.application.interfaces.user_repository import IUserRepository
+from src.application.ports.persistence.chunk_repository import IChunkRepository
+from src.application.ports.persistence.document_repository import IDocumentRepository
+from src.application.ports.persistence.user_repository import IUserRepository
 
 
 class IUnitOfWork(ABC):

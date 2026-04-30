@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.application.dtos.ingestion_dtos import TextChunkDTO
-from src.application.interfaces.text_chunker import ITextChunker
+from src.application.ports.ingestion.text_chunker import ITextChunker
 
 
 @dataclass(frozen=True, slots=True)

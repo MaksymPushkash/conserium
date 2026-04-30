@@ -1,0 +1,37 @@
+from dataclasses import dataclass
+from typing import final
+from uuid import UUID
+
+from src.application.dtos.refrag_dtos import RefragContextPackage
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class QueryDTO:
+    user_id: UUID
+    query: str
+    conversation_id: UUID | None = None
+    collection_id: UUID | None = None
+    limit: int = 5
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class QuerySourceDTO:
+    chunk_id: UUID
+    document_id: UUID
+    document_title: str | None
+    content: str
+    page_number: int | None
+    chunk_index: int
+    score: float | None = None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class QueryResultDTO:
+    conversation_id: UUID
+    query: str
+    answer: str
+    sources: list[QuerySourceDTO]
+    refrag_context: RefragContextPackage

@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from src.application.dtos.document_dtos import DocumentDTO, DocumentListDTO
+from src.application.ports.cache.document_status_cache import DocumentStatusDTO
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 
@@ -34,6 +35,37 @@ class IngestTextDocumentRequest(BaseModel):
     type: DocumentType = DocumentType.TEXT
     source_url: str | None = None
     language: str | None = Field(default=None, max_length=10)
+
+    @model_validator(mode="after")
+    def require_text_document_type(self) -> "IngestTextDocumentRequest":
+        if self.type not in (DocumentType.TEXT, DocumentType.MARKDOWN):
+            raise ValueError("ingest-text only supports TEXT or MARKDOWN documents")
+        if not self.raw_text.strip():
+            raise ValueError("raw_text cannot be empty")
+        return self
+
+
+class IngestDocumentRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    type: DocumentType
+    collection_id: UUID | None = None
+    source_url: str | None = None
+    file_path: str | None = None
+    file_size_bytes: int | None = Field(default=None, ge=0)
+    raw_content: str | None = None
+    language: str | None = Field(default=None, max_length=10)
+
+    @model_validator(mode="after")
+    def require_supported_source(self) -> "IngestDocumentRequest":
+        if self.type in (DocumentType.TEXT, DocumentType.MARKDOWN) and not (
+            self.raw_content and self.raw_content.strip()
+        ):
+            raise ValueError("raw_content is required for text ingestion")
+        if self.type == DocumentType.URL and self.source_url is None:
+            raise ValueError("source_url is required for URL ingestion")
+        if self.type == DocumentType.PDF and self.file_path is None:
+            raise ValueError("file_path is required for PDF ingestion")
+        return self
 
 
 class DocumentResponse(BaseModel):
@@ -78,8 +110,48 @@ class DocumentResponse(BaseModel):
         )
 
 
+class DocumentListItemResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    collection_id: UUID | None
+    title: str
+    type: DocumentType
+    status: DocumentStatus
+    source_url: str | None
+    file_path: str | None
+    file_size_bytes: int | None
+    summary: str | None
+    word_count: int | None
+    language: str | None
+    is_duplicate: bool
+    duplicate_of_id: UUID | None
+    created_at: datetime
+    updated_at: datetime | None
+
+    @classmethod
+    def from_dto(cls, dto: DocumentDTO) -> "DocumentListItemResponse":
+        return cls(
+            id=dto.id,
+            user_id=dto.user_id,
+            collection_id=dto.collection_id,
+            title=dto.title,
+            type=dto.type,
+            status=dto.status,
+            source_url=dto.source_url,
+            file_path=dto.file_path,
+            file_size_bytes=dto.file_size_bytes,
+            summary=dto.summary,
+            word_count=dto.word_count,
+            language=dto.language,
+            is_duplicate=dto.is_duplicate,
+            duplicate_of_id=dto.duplicate_of_id,
+            created_at=dto.created_at,
+            updated_at=dto.updated_at,
+        )
+
+
 class DocumentListResponse(BaseModel):
-    items: list[DocumentResponse]
+    items: list[DocumentListItemResponse]
     total: int
     limit: int
     offset: int
@@ -87,8 +159,24 @@ class DocumentListResponse(BaseModel):
     @classmethod
     def from_dto(cls, dto: DocumentListDTO) -> "DocumentListResponse":
         return cls(
-            items=[DocumentResponse.from_dto(item) for item in dto.items],
+            items=[DocumentListItemResponse.from_dto(item) for item in dto.items],
             total=dto.total,
             limit=dto.limit,
             offset=dto.offset,
+        )
+
+
+class DocumentStatusResponse(BaseModel):
+    document_id: UUID
+    status: str
+    progress: int
+    message: str
+
+    @classmethod
+    def from_dto(cls, dto: DocumentStatusDTO) -> "DocumentStatusResponse":
+        return cls(
+            document_id=dto.document_id,
+            status=dto.status,
+            progress=dto.progress,
+            message=dto.message,
         )

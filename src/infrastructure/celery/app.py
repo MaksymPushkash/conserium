@@ -26,11 +26,14 @@ _cortex_exchange = Exchange("cortex", type="direct", durable=True)
 #                           Concurrency: 4
 # 4. cleanup              — soft-delete sweeps, orphan file removal
 #                           Concurrency: 2
+# 5. hf_processing        — CPU-heavy HuggingFace models
+#                           Concurrency: 2, separate image
 _QUEUES = (
     Queue("document_processing", _cortex_exchange, routing_key="document_processing", durable=True),
     Queue("embeddings", _cortex_exchange, routing_key="embeddings", durable=True),
     Queue("notifications", _cortex_exchange, routing_key="notifications", durable=True),
     Queue("cleanup", _cortex_exchange, routing_key="cleanup", durable=True),
+    Queue("hf_processing", _cortex_exchange, routing_key="hf_processing", durable=True),
 )
 
 
@@ -40,6 +43,7 @@ celery_app = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "src.infrastructure.celery.tasks.document_processing",
+        "src.infrastructure.celery.tasks.embeddings",
     ],
 )
 
@@ -54,6 +58,9 @@ celery_app.conf.update(
         },
         "src.infrastructure.celery.tasks.embeddings.*": {
             "queue": "embeddings",
+        },
+        "src.infrastructure.celery.tasks.hf_processing.*": {
+            "queue": "hf_processing",
         },
     },
 

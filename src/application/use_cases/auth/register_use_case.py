@@ -1,10 +1,10 @@
 import uuid
 
 from src.application.dtos.auth_dtos import RegisterDTO, TokenResponseDTO
-from src.application.interfaces.cache import ICache
-from src.application.interfaces.jwt_service import IJWTService
-from src.application.interfaces.password_hasher import IPasswordHasher
-from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.ports.auth.jwt_service import IJWTService
+from src.application.ports.auth.password_hasher import IPasswordHasher
+from src.application.ports.cache.cache import ICache
+from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.auth.base import BaseAuthUseCase
 from src.domain.entities.user_entity import UserEntity
 from src.domain.exceptions import EmailAlreadyExistsException

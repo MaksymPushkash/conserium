@@ -1,5 +1,5 @@
 from src.application.dtos.document_dtos import DocumentDTO, GetDocumentDTO
-from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.base import document_to_dto, ensure_document_owner
 from src.domain.exceptions import DocumentNotFoundException
 

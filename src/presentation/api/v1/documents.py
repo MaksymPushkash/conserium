@@ -4,19 +4,12 @@ from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Query, Response, status
 
 from src.application.dtos.document_dtos import CreateDocumentDTO, DeleteDocumentDTO, GetDocumentDTO, ListDocumentsDTO
-from src.application.dtos.ingestion_dtos import IngestTextDocumentDTO
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
-from src.application.use_cases.documents.ingest_text_document_use_case import IngestTextDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
 from src.presentation.dependencies.auth import CurrentUser
-from src.presentation.schemas.document import (
-    CreateDocumentRequest,
-    DocumentListResponse,
-    DocumentResponse,
-    IngestTextDocumentRequest,
-)
+from src.presentation.schemas.document import CreateDocumentRequest, DocumentListResponse, DocumentResponse
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -62,27 +55,6 @@ async def list_documents(
         )
     )
     return DocumentListResponse.from_dto(result)
-
-
-@router.post("/ingest-text", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-@inject
-async def ingest_text_document(
-    body: IngestTextDocumentRequest,
-    current_user: CurrentUser,
-    use_case: FromDishka[IngestTextDocumentUseCase],
-) -> DocumentResponse:
-    result = await use_case(
-        IngestTextDocumentDTO(
-            user_id=current_user.id,
-            title=body.title,
-            raw_text=body.raw_text,
-            collection_id=body.collection_id,
-            type=body.type,
-            source_url=body.source_url,
-            language=body.language,
-        )
-    )
-    return DocumentResponse.from_dto(result)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)

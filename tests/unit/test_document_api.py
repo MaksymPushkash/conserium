@@ -1,18 +1,27 @@
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
 from src.application.dtos.document_dtos import DocumentDTO, DocumentListDTO
-from src.application.interfaces.jwt_service import IJWTService
-from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.dtos.query_dtos import QueryDTO, QueryResultDTO, QuerySourceDTO
+from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStreamEventType
+from src.application.ports.auth.jwt_service import IJWTService
+from src.application.ports.cache.document_status_cache import DocumentStatusDTO
+from src.application.ports.ingestion.file_storage import IFileStorage, StoredFile
+from src.application.ports.persistence.unit_of_work import IUnitOfWork
+from src.application.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
+from src.application.use_cases.documents.get_document_status_use_case import GetDocumentStatusUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
-from src.application.use_cases.documents.ingest_text_document_use_case import IngestTextDocumentUseCase
+from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
+from src.application.use_cases.query.query_use_case import QueryUseCase
+from src.application.use_cases.query.stream_query_use_case import StreamQueryUseCase
 from src.domain.entities.user_entity import UserEntity
 from src.domain.exceptions import DocumentNotFoundException
 from src.domain.value_objects.document_status import DocumentStatus
@@ -72,8 +81,8 @@ class _ReturningUseCase:
         self._result = result
         self.received_dto: object | None = None
 
-    async def __call__(self, dto: object) -> object:
-        self.received_dto = dto
+    async def __call__(self, *args: object) -> object:
+        self.received_dto = args[0] if len(args) == 1 else args
         return self._result
 
 
@@ -91,6 +100,34 @@ class _RaisingUseCase:
 
     async def __call__(self, dto: object) -> object:
         raise self._exc
+
+
+class _StreamingUseCase:
+    def __init__(self, events: list[QueryStreamEventDTO]) -> None:
+        self._events = events
+        self.received_dto: object | None = None
+
+    async def __call__(self, dto: object) -> object:
+        self.received_dto = dto
+        for event in self._events:
+            yield event
+
+
+class _FakeFileStorage:
+    def __init__(self) -> None:
+        self.saved_filename: str | None = None
+        self.saved_content: bytes | None = None
+
+    async def save_document_file(
+        self,
+        *,
+        user_id: uuid.UUID,
+        filename: str,
+        content: bytes,
+    ) -> StoredFile:
+        self.saved_filename = filename
+        self.saved_content = content
+        return StoredFile(path=f"/tmp/{user_id}/{filename}", size_bytes=len(content))
 
 
 def _make_user() -> UserEntity:
@@ -179,9 +216,10 @@ def test_list_documents_route_returns_document_list() -> None:
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["id"] == str(document.id)
+    assert "raw_content" not in response.json()["items"][0]
 
 
-def test_ingest_text_document_route_returns_ready_document() -> None:
+def test_ingest_document_route_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
     document = DocumentDTO(
@@ -190,7 +228,7 @@ def test_ingest_text_document_route_returns_ready_document() -> None:
         collection_id=document.collection_id,
         title=document.title,
         type=document.type,
-        status=DocumentStatus.READY,
+        status=DocumentStatus.QUEUED,
         source_url=document.source_url,
         file_path=document.file_path,
         file_size_bytes=document.file_size_bytes,
@@ -204,7 +242,47 @@ def test_ingest_text_document_route_returns_ready_document() -> None:
         updated_at=document.updated_at,
     )
     use_case = _ReturningUseCase(document)
-    client = _make_client(user, {IngestTextDocumentUseCase: use_case})
+    client = _make_client(user, {IngestDocumentUseCase: use_case})
+
+    try:
+        response = client.post(
+            "/api/v1/ingest",
+            headers={"Authorization": "Bearer access-token"},
+            json={"title": "Saved note", "raw_content": "Hello\n\nWorld", "type": "TEXT"},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 202
+    assert response.json()["id"] == str(document.id)
+    assert response.json()["status"] == "QUEUED"
+    assert use_case.received_dto is not None
+
+
+def test_ingest_text_document_route_queues_document() -> None:
+    user = _make_user()
+    document = _make_document_dto(user_id=user.id)
+    document = DocumentDTO(
+        id=document.id,
+        user_id=document.user_id,
+        collection_id=document.collection_id,
+        title=document.title,
+        type=document.type,
+        status=DocumentStatus.QUEUED,
+        source_url=document.source_url,
+        file_path=document.file_path,
+        file_size_bytes=document.file_size_bytes,
+        raw_content=document.raw_content,
+        summary=document.summary,
+        word_count=document.word_count,
+        language=document.language,
+        is_duplicate=document.is_duplicate,
+        duplicate_of_id=document.duplicate_of_id,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
+    )
+    use_case = _ReturningUseCase(document)
+    client = _make_client(user, {IngestDocumentUseCase: use_case})
 
     try:
         response = client.post(
@@ -215,9 +293,52 @@ def test_ingest_text_document_route_returns_ready_document() -> None:
     finally:
         client.close()
 
-    assert response.status_code == 201
+    assert response.status_code == 202
     assert response.json()["id"] == str(document.id)
-    assert response.json()["status"] == "READY"
+    assert response.json()["status"] == "QUEUED"
+    assert use_case.received_dto is not None
+
+
+def test_ingest_pdf_document_route_stores_upload_and_queues_document() -> None:
+    user = _make_user()
+    document = _make_document_dto(user_id=user.id)
+    document = DocumentDTO(
+        id=document.id,
+        user_id=document.user_id,
+        collection_id=document.collection_id,
+        title="Uploaded report",
+        type=DocumentType.PDF,
+        status=DocumentStatus.QUEUED,
+        source_url=None,
+        file_path=f"/tmp/{user.id}/report.pdf",
+        file_size_bytes=13,
+        raw_content=None,
+        summary=None,
+        word_count=None,
+        language="en",
+        is_duplicate=False,
+        duplicate_of_id=None,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
+    )
+    use_case = _ReturningUseCase(document)
+    storage = _FakeFileStorage()
+    client = _make_client(user, {IngestDocumentUseCase: use_case, IFileStorage: storage})
+
+    try:
+        response = client.post(
+            "/api/v1/documents/ingest/pdf",
+            headers={"Authorization": "Bearer access-token"},
+            data={"title": "Uploaded report", "language": "en"},
+            files={"file": ("report.pdf", b"%PDF-1.4 fake", "application/pdf")},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "QUEUED"
+    assert storage.saved_filename == "report.pdf"
+    assert storage.saved_content == b"%PDF-1.4 fake"
     assert use_case.received_dto is not None
 
 
@@ -233,6 +354,34 @@ def test_get_document_route_returns_document() -> None:
 
     assert response.status_code == 200
     assert response.json()["id"] == str(document.id)
+
+
+def test_get_document_status_route_returns_cached_status() -> None:
+    user = _make_user()
+    document = _make_document_dto(user_id=user.id)
+    status_dto = DocumentStatusDTO(
+        document_id=document.id,
+        status="PROCESSING",
+        progress=40,
+        message="Splitting into chunks.",
+    )
+    client = _make_client(user, {GetDocumentStatusUseCase: _ReturningUseCase(status_dto)})
+
+    try:
+        response = client.get(
+            f"/api/v1/documents/{document.id}/status",
+            headers={"Authorization": "Bearer access-token"},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "document_id": str(document.id),
+        "status": "PROCESSING",
+        "progress": 40,
+        "message": "Splitting into chunks.",
+    }
 
 
 def test_get_document_route_maps_not_found() -> None:
@@ -261,3 +410,82 @@ def test_delete_document_route_returns_no_content() -> None:
     assert response.status_code == 204
     assert response.content == b""
     assert use_case.received_dto is not None
+
+
+def test_query_route_returns_sources() -> None:
+    user = _make_user()
+    conversation_id = uuid.uuid4()
+    source = QuerySourceDTO(
+        chunk_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        document_title="Architecture Notes",
+        content="Clean Architecture keeps dependencies pointing inward.",
+        page_number=12,
+        chunk_index=0,
+        score=0.75,
+    )
+    use_case = _ReturningUseCase(
+        QueryResultDTO(
+            conversation_id=conversation_id,
+            query="Clean Architecture",
+            answer="Found relevant saved context.",
+            sources=[source],
+            refrag_context=HeuristicRefragContextBuilder().build_context(
+                query="Clean Architecture",
+                sources=[source],
+            ),
+        )
+    )
+    client = _make_client(user, {QueryUseCase: use_case})
+
+    try:
+        response = client.post(
+            "/api/v1/query",
+            headers={"Authorization": "Bearer access-token"},
+            json={"query": "Clean Architecture", "conversation_id": str(conversation_id), "limit": 5},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["conversation_id"] == str(conversation_id)
+    assert response.json()["sources"][0]["page_number"] == 12
+    assert response.json()["sources"][0]["document_title"] == "Architecture Notes"
+    assert response.json()["sources"][0]["citation"] == "[1]"
+    assert response.json()["sources"][0]["content"] == source.content
+    assert response.json()["refrag_context"]["full_text_chunks"][0]["representation"] == "FULL_TEXT"
+    assert use_case.received_dto is not None
+    assert cast("QueryDTO", use_case.received_dto).conversation_id == conversation_id
+
+
+def test_query_stream_route_returns_sse_events() -> None:
+    user = _make_user()
+    conversation_id = uuid.uuid4()
+    use_case = _StreamingUseCase(
+        [
+            QueryStreamEventDTO(
+                event=QueryStreamEventType.METADATA,
+                data={"query_id": "query-1", "query": "Clean Architecture", "sources": []},
+            ),
+            QueryStreamEventDTO(event=QueryStreamEventType.TOKEN, data={"text": "Hello"}),
+            QueryStreamEventDTO(event=QueryStreamEventType.DONE, data={"query_id": "query-1"}),
+        ]
+    )
+    client = _make_client(user, {StreamQueryUseCase: use_case})
+
+    try:
+        response = client.post(
+            "/api/v1/query/stream",
+            headers={"Authorization": "Bearer access-token"},
+            json={"query": "Clean Architecture", "conversation_id": str(conversation_id), "limit": 5},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert 'event: metadata\ndata: {"query_id":"query-1","query":"Clean Architecture","sources":[]}' in response.text
+    assert 'event: token\ndata: {"text":"Hello"}' in response.text
+    assert 'event: done\ndata: {"query_id":"query-1"}' in response.text
+    assert use_case.received_dto is not None
+    assert cast("QueryDTO", use_case.received_dto).conversation_id == conversation_id

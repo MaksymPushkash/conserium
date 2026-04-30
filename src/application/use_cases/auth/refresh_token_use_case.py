@@ -1,8 +1,8 @@
 import uuid
 
 from src.application.dtos.auth_dtos import RefreshDTO, TokenResponseDTO
-from src.application.interfaces.cache import ICache
-from src.application.interfaces.jwt_service import IJWTService
+from src.application.ports.auth.jwt_service import IJWTService
+from src.application.ports.cache.cache import ICache
 from src.application.use_cases.auth.base import BaseAuthUseCase
 from src.domain.exceptions import InvalidTokenException
 

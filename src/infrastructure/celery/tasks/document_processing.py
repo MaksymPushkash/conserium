@@ -4,8 +4,7 @@ Pipeline:
     process_document (document_processing queue)
       ├─ _step_extract   — extract raw text from file bytes or URL
       ├─ _step_chunk     — split text into chunks using SimpleTextChunker
-      ├─ _step_embed     — [placeholder] embed chunks (embeddings queue in Month 2)
-      └─ _step_finalize  — persist chunks to DB, mark document READY
+      └─ enqueue embed_and_finalize_document (embeddings queue)
 
 Status is written to Redis at every step so callers can poll
 GET /documents/{id}/status.
@@ -18,8 +17,8 @@ Progress milestones:
   0%   → QUEUED  (set by the API before dispatching)
   10%  → PROCESSING, extracting content
   40%  → PROCESSING, chunking text
-  60%  → PROCESSING, embedding chunks (placeholder)
-  90%  → PROCESSING, persisting to database
+  60%  → PROCESSING, queued for embedding
+  90%  → PROCESSING, persisting to database (embeddings queue)
   100% → READY / FAILED
 """
 
@@ -27,11 +26,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
-from celery import Task
-from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -64,6 +62,18 @@ _SyncSession = sessionmaker(bind=_sync_engine, autoflush=True, expire_on_commit=
 # Chunker singleton (stateless, safe to share across task invocations)
 _chunker = SimpleTextChunker()
 
+
+@dataclass(frozen=True, slots=True)
+class _PageRange:
+    page_number: int
+    start_char: int
+    end_char: int
+
+
+@dataclass(frozen=True, slots=True)
+class _ExtractedDocument:
+    text: str
+    page_ranges: list[_PageRange]
 
 
 
@@ -107,7 +117,7 @@ def _get_document_row(session: Session, document_id: str) -> DocumentModel | Non
 
 
 
-@celery_app.task(
+@celery_app.task(  # type: ignore[untyped-decorator]
     name="src.infrastructure.celery.tasks.document_processing.process_document",
     queue="document_processing",
     bind=True,
@@ -115,7 +125,7 @@ def _get_document_row(session: Session, document_id: str) -> DocumentModel | Non
     default_retry_delay=60,
     acks_late=True,
 )
-def process_document(self: Task, document_id: str) -> dict[str, Any]:
+def process_document(self: Any, document_id: str) -> dict[str, Any]:
     """Entry point for the document processing pipeline.
 
     Args:
@@ -129,50 +139,20 @@ def process_document(self: Task, document_id: str) -> dict[str, Any]:
     log.info("Document processing started")
 
     try:
-        with _SyncSession() as session:
-            doc = _get_document_row(session, document_id)
-            if doc is None:
-                log.error("Document not found — skipping")
-                return {"document_id": document_id, "status": "NOT_FOUND"}
+        from src.infrastructure.ingestion.document_processing_pipeline import DocumentProcessingPipeline
 
-            # mark PROCESSING, extract content
-            _set_status_sync(document_id, "PROCESSING", 10, "Extracting content…")
-            _mark_document_status(session, document_id, DocumentStatus.PROCESSING)
-
-            raw_text = _step_extract(doc, log)
-
-            # chunk text
-            _set_status_sync(document_id, "PROCESSING", 40, "Splitting into chunks…")
-            chunks_data = _step_chunk(raw_text, log)
-
-            # embed (placeholder — real embeddings in Month 2)
-            _set_status_sync(document_id, "PROCESSING", 60, "Generating embeddings…")
-            embedded_chunks = _step_embed_placeholder(chunks_data, log)
-
-            # persist chunks + mark READY
-            _set_status_sync(document_id, "PROCESSING", 90, "Saving to database…")
-            _step_finalize(session, document_id, doc, raw_text, embedded_chunks, log)
-
-        _set_status_sync(document_id, "READY", 100, "Processing complete.")
-        log.info("Document processing completed")
-        return {"document_id": document_id, "status": "READY"}
-
-    except MaxRetriesExceededError:
-        _handle_failure(document_id, "Max retries exceeded", log)
-        raise
+        return DocumentProcessingPipeline().process(document_id=document_id, log=log)
     except Exception as exc:
         log.exception("Document processing failed", error=str(exc))
-        try:
-            self.retry(exc=exc)
-        except MaxRetriesExceededError:
+        if self.request.retries >= self.max_retries:
             _handle_failure(document_id, str(exc), log)
             return {"document_id": document_id, "status": "FAILED"}
-        return {"document_id": document_id, "status": "RETRYING"}
+        raise self.retry(exc=exc) from exc
 
 
 
 
-def _step_extract(doc: DocumentModel, log: Any) -> str:
+def _step_extract(doc: DocumentModel, log: Any) -> _ExtractedDocument:
     """Extract raw text from the document.
 
     Currently handles:
@@ -189,7 +169,7 @@ def _step_extract(doc: DocumentModel, log: Any) -> str:
     if doc_type in (DocumentType.TEXT, DocumentType.MARKDOWN):
         if doc.raw_content:
             log.debug("Using stored raw_content", type=doc_type.value)
-            return doc.raw_content
+            return _ExtractedDocument(text=doc.raw_content, page_ranges=[])
         raise ValueError(f"Document {doc.id} has type {doc_type.value} but no raw_content stored")
 
     # URL extraction
@@ -198,10 +178,10 @@ def _step_extract(doc: DocumentModel, log: Any) -> str:
             raise ValueError(f"Document {doc.id} is type URL but has no source_url")
         log.info("Fetching URL content", url=doc.source_url)
         from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
-        extractor = UrlExtractor()
+        url_extractor = UrlExtractor()
         import asyncio
-        result = asyncio.run(extractor.extract_from_url(doc.source_url))
-        return result.text
+        result = asyncio.run(url_extractor.extract_from_url(doc.source_url))
+        return _ExtractedDocument(text=result.text, page_ranges=[])
 
     # PDF extraction
     if doc_type == DocumentType.PDF:
@@ -211,10 +191,10 @@ def _step_extract(doc: DocumentModel, log: Any) -> str:
         with open(doc.file_path, "rb") as f:
             pdf_bytes = f.read()
         from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
-        extractor = PdfExtractor()
+        pdf_extractor = PdfExtractor()
         import asyncio
-        result = asyncio.run(extractor.extract_from_bytes(pdf_bytes, filename=doc.file_path))
-        return result.text
+        result = asyncio.run(pdf_extractor.extract_from_bytes(pdf_bytes, filename=doc.file_path))
+        return _ExtractedDocument(text=result.text, page_ranges=_build_page_ranges(result.pages))
 
     raise NotImplementedError(
         f"Extraction not yet implemented for document type: {doc_type.value}. "
@@ -222,13 +202,13 @@ def _step_extract(doc: DocumentModel, log: Any) -> str:
     )
 
 
-def _step_chunk(raw_text: str, log: Any) -> list[dict[str, Any]]:
+def _step_chunk(extracted_document: _ExtractedDocument, log: Any) -> list[dict[str, Any]]:
     """Split raw text into chunks using SimpleTextChunker.
 
     Returns a list of dicts (JSON-serialisable) with chunk fields.
     This keeps the step boundary clean for future distribution.
     """
-    text_chunks = _chunker.chunk_text(raw_text)
+    text_chunks = _chunker.chunk_text(extracted_document.text)
     if not text_chunks:
         raise ValueError("Text produced no chunks after splitting")
 
@@ -239,29 +219,41 @@ def _step_chunk(raw_text: str, log: Any) -> list[dict[str, Any]]:
             "chunk_index": tc.chunk_index,
             "start_char": tc.start_char,
             "end_char": tc.end_char,
+            "page_number": _page_number_for_span(tc.start_char, tc.end_char, extracted_document.page_ranges),
             "token_count": tc.token_count,
         }
         for tc in text_chunks
     ]
 
 
-def _step_embed_placeholder(
+def _step_embed(
     chunks_data: list[dict[str, Any]],
     log: Any,
 ) -> list[dict[str, Any]]:
-    """Placeholder embedding step — inserts zero vectors.
+    """Generate chunk embeddings.
 
-    Real OpenAI embeddings are implemented in Month 2 when the
-    embeddings queue worker is wired up. Zero vectors still satisfy
-    the NOT NULL constraint and pgvector schema so the document
-    reaches READY status and chunks are queryable by exact match.
+    Requires OpenAI embeddings so READY documents always have meaningful vectors.
     """
-    from src.domain.entities.chunk_entity import ChunkEntity
+    import asyncio
 
-    dim = ChunkEntity.EMBEDDING_DIMENSIONS
-    log.debug("Embedding step (placeholder)", num_chunks=len(chunks_data), dimensions=dim)
-    for chunk in chunks_data:
-        chunk["embedding"] = [0.0] * dim
+    from redis.asyncio import Redis
+
+    from src.infrastructure.ai.providers.cached_embedding_provider import CachedEmbeddingProvider
+    from src.infrastructure.ai.providers.openai_embedding_provider import OpenAIEmbeddingProvider
+    from src.infrastructure.cache.redis_cache import RedisCache
+
+    async def _embed_with_cache(texts: list[str]) -> list[list[float]]:
+        redis = Redis.from_url(settings.REDIS_URL, decode_responses=False)
+        try:
+            provider = CachedEmbeddingProvider(OpenAIEmbeddingProvider(), RedisCache(redis))
+            return await provider.embed_texts(texts)
+        finally:
+            await redis.aclose()
+
+    embeddings = asyncio.run(_embed_with_cache([str(chunk["content"]) for chunk in chunks_data]))
+    for chunk, embedding in zip(chunks_data, embeddings, strict=True):
+        chunk["embedding"] = embedding
+    log.debug("Embedding step completed", num_chunks=len(chunks_data))
     return chunks_data
 
 
@@ -292,7 +284,7 @@ def _step_finalize(
             chunk_index=c["chunk_index"],
             start_char=c["start_char"],
             end_char=c["end_char"],
-            page_number=None,
+            page_number=c["page_number"],
             token_count=c["token_count"],
             created_at=datetime.now(UTC),
         )
@@ -314,6 +306,27 @@ def _step_finalize(
     )
     session.commit()
     log.info("Document finalized", chunks_saved=len(chunk_models))
+
+
+def _build_page_ranges(pages: dict[int, str]) -> list[_PageRange]:
+    page_ranges: list[_PageRange] = []
+    cursor = 0
+    for page_number in sorted(pages):
+        text = pages[page_number]
+        start_char = cursor
+        end_char = start_char + len(text)
+        page_ranges.append(_PageRange(page_number=page_number, start_char=start_char, end_char=end_char))
+        cursor = end_char + 2
+    return page_ranges
+
+
+def _page_number_for_span(start_char: int, end_char: int, page_ranges: list[_PageRange]) -> int | None:
+    if not page_ranges:
+        return None
+    for page_range in page_ranges:
+        if start_char < page_range.end_char and end_char > page_range.start_char:
+            return page_range.page_number
+    return page_ranges[-1].page_number
 
 
 def _handle_failure(document_id: str, reason: str, log: Any) -> None:

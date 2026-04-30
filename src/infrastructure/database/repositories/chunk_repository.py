@@ -1,9 +1,10 @@
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.application.interfaces.chunk_repository import IChunkRepository
+from src.application.ports.persistence.chunk_repository import ChunkSearchResult, IChunkRepository
 from src.domain.entities.chunk_entity import ChunkEntity
 from src.infrastructure.database.models.chunk import ChunkModel
 from src.infrastructure.database.models.document import DocumentModel
@@ -53,6 +54,50 @@ class SQLAlchemyChunkRepository(IChunkRepository):
         result = await self._session.execute(statement)
         return [self._to_entity(model) for model in result.scalars().all()]
 
+    async def hybrid_search(
+        self,
+        *,
+        query: str,
+        embedding: list[float],
+        user_id: UUID,
+        limit: int = 10,
+        collection_id: UUID | None = None,
+    ) -> list[ChunkSearchResult]:
+        self._validate_search_embedding(embedding)
+        vector_limit = max(limit * 4, limit)
+        distance = ChunkModel.embedding.cosine_distance(embedding)
+        vector_statement = (
+            select(
+                ChunkModel,
+                DocumentModel.title,
+                (literal(1.0) - distance).label("score"),
+            )
+            .join(DocumentModel, ChunkModel.document_id == DocumentModel.id)
+            .where(DocumentModel.user_id == user_id)
+            .order_by(distance)
+            .limit(vector_limit)
+        )
+        keyword_statement = self._keyword_statement(query, user_id, limit=vector_limit, collection_id=collection_id)
+        if collection_id is not None:
+            vector_statement = vector_statement.where(DocumentModel.collection_id == collection_id)
+
+        vector_rows = (await self._session.execute(vector_statement)).all()
+        keyword_rows = (await self._session.execute(keyword_statement)).all()
+
+        fused: dict[UUID, tuple[ChunkModel, str | None, float]] = {}
+        self._add_rrf_rows(fused, list(vector_rows), weight=1.0)
+        self._add_rrf_rows(fused, list(keyword_rows), weight=1.2)
+
+        ranked = sorted(fused.values(), key=lambda item: item[2], reverse=True)[:limit]
+        return [
+            ChunkSearchResult(
+                chunk=self._to_entity(chunk_model),
+                document_title=document_title,
+                score=score,
+            )
+            for chunk_model, document_title, score in ranked
+        ]
+
     def _to_entity(self, model: ChunkModel) -> ChunkEntity:
         return ChunkEntity(
             id=model.id,
@@ -85,3 +130,47 @@ class SQLAlchemyChunkRepository(IChunkRepository):
     def _validate_search_embedding(embedding: list[float]) -> None:
         if len(embedding) != ChunkEntity.EMBEDDING_DIMENSIONS:
             raise ValueError(f"embedding must have {ChunkEntity.EMBEDDING_DIMENSIONS} dimensions")
+
+    @staticmethod
+    def _add_rrf_rows(
+        fused: dict[UUID, tuple[ChunkModel, str | None, float]],
+        rows: list[Any],
+        *,
+        weight: float,
+    ) -> None:
+        for rank, row in enumerate(rows, start=1):
+            chunk_model = row[0]
+            document_title = row[1]
+            row_score = float(row[2] or 0.0)
+            rrf_score = weight * (1.0 / (60 + rank)) + row_score * 0.001
+            existing = fused.get(chunk_model.id)
+            if existing is None:
+                fused[chunk_model.id] = (chunk_model, document_title, rrf_score)
+                continue
+            fused[chunk_model.id] = (existing[0], existing[1], existing[2] + rrf_score)
+
+    @staticmethod
+    def _keyword_statement(
+        query: str,
+        user_id: UUID,
+        *,
+        limit: int,
+        collection_id: UUID | None,
+    ) -> Any:
+        ts_query = func.plainto_tsquery("simple", query)
+        search_vector = func.to_tsvector("simple", ChunkModel.content)
+        statement = (
+            select(
+                ChunkModel,
+                DocumentModel.title,
+                func.ts_rank_cd(search_vector, ts_query).label("score"),
+            )
+            .join(DocumentModel, ChunkModel.document_id == DocumentModel.id)
+            .where(DocumentModel.user_id == user_id)
+            .where(search_vector.op("@@")(ts_query))
+            .order_by(func.ts_rank_cd(search_vector, ts_query).desc())
+            .limit(limit)
+        )
+        if collection_id is not None:
+            statement = statement.where(DocumentModel.collection_id == collection_id)
+        return statement

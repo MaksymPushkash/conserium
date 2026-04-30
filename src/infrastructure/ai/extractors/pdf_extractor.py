@@ -18,7 +18,7 @@ from functools import partial
 import pdfplumber
 import structlog
 
-from src.application.interfaces.content_extractor import ExtractedContent, IContentExtractor
+from src.application.ports.ingestion.content_extractor import ExtractedContent, IContentExtractor
 
 logger = structlog.get_logger(__name__)
 

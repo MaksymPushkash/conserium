@@ -1,6 +1,6 @@
 from redis.asyncio import Redis
 
-from src.application.interfaces.cache import ICache
+from src.application.ports.cache.cache import ICache
 
 
 class RedisCache(ICache):

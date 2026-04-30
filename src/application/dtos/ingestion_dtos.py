@@ -25,3 +25,17 @@ class IngestTextDocumentDTO:
     type: DocumentType = DocumentType.TEXT
     source_url: str | None = None
     language: str | None = None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class IngestDocumentDTO:
+    user_id: UUID
+    title: str
+    type: DocumentType
+    collection_id: UUID | None = None
+    source_url: str | None = None
+    file_path: str | None = None
+    file_size_bytes: int | None = None
+    raw_content: str | None = None
+    language: str | None = None

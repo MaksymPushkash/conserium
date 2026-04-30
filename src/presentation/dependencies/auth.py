@@ -4,8 +4,8 @@ from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from src.application.interfaces.jwt_service import IJWTService
-from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.ports.auth.jwt_service import IJWTService
+from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.domain.entities.user_entity import UserEntity
 from src.domain.exceptions import InvalidTokenException, UserInactiveException
 

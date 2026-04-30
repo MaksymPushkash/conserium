@@ -22,7 +22,9 @@ from src.domain.exceptions import (
     UserInactiveException,
 )
 from src.presentation.api.v1.auth import router as auth_router
-from src.presentation.api.v1.document import router as document_router
+from src.presentation.api.v1.documents import router as document_router
+from src.presentation.api.v1.ingestion import router as ingestion_router
+from src.presentation.api.v1.query import router as query_router
 from src.presentation.api.v1.user import router as user_router
 
 logger = structlog.get_logger(__name__)
@@ -84,6 +86,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(user_router, prefix="/api/v1")
     app.include_router(document_router, prefix="/api/v1")
+    app.include_router(ingestion_router, prefix="/api/v1")
+    app.include_router(query_router, prefix="/api/v1")
 
     @app.get("/", tags=["health"])
     async def health_check() -> dict[str, str]:

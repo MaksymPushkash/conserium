@@ -14,7 +14,7 @@ from uuid import UUID
 import structlog
 from redis.asyncio import Redis
 
-from src.application.interfaces.document_status_cache import DocumentStatusDTO, IDocumentStatusCache
+from src.application.ports.cache.document_status_cache import DocumentStatusDTO, IDocumentStatusCache
 from src.core.config import settings
 
 logger = structlog.get_logger(__name__)

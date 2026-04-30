@@ -5,7 +5,7 @@ from typing import cast
 import pytest
 
 from src.application.dtos.document_dtos import CreateDocumentDTO, DeleteDocumentDTO, GetDocumentDTO, ListDocumentsDTO
-from src.application.interfaces.unit_of_work import IUnitOfWork
+from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
