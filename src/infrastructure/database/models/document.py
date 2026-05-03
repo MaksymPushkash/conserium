@@ -4,19 +4,24 @@ from typing import TYPE_CHECKING
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.infrastructure.database.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, document_tags
+from src.domain.value_objects.document_status import DocumentStatus
+from src.domain.value_objects.document_type import DocumentType
+from src.infrastructure.database.models.base import (
+    Base,
+    TimestampMixin,
+    UUIDPrimaryKeyMixin,
+    document_tags,
+)
 
 if TYPE_CHECKING:
     from src.infrastructure.database.models.chunk import ChunkModel
     from src.infrastructure.database.models.collection import CollectionModel
     from src.infrastructure.database.models.tag import TagModel
     from src.infrastructure.database.models.user import UserModel
-
-from src.domain.value_objects.document_status import DocumentStatus
-from src.domain.value_objects.document_type import DocumentType
 
 
 class DocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -48,6 +53,10 @@ class DocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     summary: Mapped[str | None] = mapped_column(Text) 
     word_count: Mapped[int | None] = mapped_column(Integer)
     language: Mapped[str | None] = mapped_column(String(10)) 
+
+    entities: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
+    categories: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
+    visual_metadata: Mapped[dict[str, object] | None] = mapped_column(JSONB)
  
     doc_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
  

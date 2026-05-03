@@ -1,23 +1,40 @@
-from collections.abc import AsyncIterator
+from __future__ import annotations
+
 from datetime import UTC, datetime
-from uuid import uuid4
+from time import perf_counter
+from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
 
 from src.application.agents.query.state import CortexQueryState
-from src.application.agents.query.streaming_graph_runner import StreamingQueryGraphRunner
 from src.application.dtos.conversation_dtos import ConversationSourceDTO, ConversationTurnDTO
-from src.application.dtos.query_dtos import QueryDTO
+from src.application.dtos.evaluation_dtos import QueryEvaluationRecordDTO
 from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStreamEventType
-from src.application.dtos.refrag_dtos import RefragChunk
-from src.application.ports.conversations.conversation_store import IConversationStore
+from src.application.use_cases.query.query_use_case import _refrag_context_payload, _source_payload, _title_from_query
 from src.core.config import settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Mapping
+
+    from src.application.agents.query.streaming_graph_runner import StreamingQueryGraphRunner
+    from src.application.dtos.query_dtos import QueryDTO, QuerySourceDTO
+    from src.application.dtos.refrag_dtos import RefragChunk
+    from src.application.ports.conversations.conversation_store import IConversationStore
+    from src.application.ports.persistence.chat_repository import IChatRepository
+    from src.application.ports.persistence.unit_of_work import IUnitOfWork
 
 
 class StreamQueryUseCase:
     RECENT_TURN_LIMIT = 6
 
-    def __init__(self, graph_runner: StreamingQueryGraphRunner, conversation_store: IConversationStore) -> None:
+    def __init__(
+        self,
+        graph_runner: StreamingQueryGraphRunner,
+        conversation_store: IConversationStore,
+        uow: IUnitOfWork,
+    ) -> None:
         self._graph_runner = graph_runner
         self._conversation_store = conversation_store
+        self._uow = uow
 
     async def __call__(self, dto: QueryDTO) -> AsyncIterator[QueryStreamEventDTO]:
         query = dto.query.strip()
@@ -30,12 +47,19 @@ class StreamQueryUseCase:
 
         query_id = uuid4()
         conversation_id = dto.conversation_id or uuid4()
+        started_at = perf_counter()
         try:
+            await self._ensure_chat_session(user_id=dto.user_id, conversation_id=conversation_id, title=query)
             conversation_turns = await self._conversation_store.get_recent_turns(
                 user_id=dto.user_id,
                 conversation_id=conversation_id,
                 limit=self.RECENT_TURN_LIMIT,
             )
+            if not conversation_turns:
+                conversation_turns = await self._get_persisted_recent_turns(
+                    user_id=dto.user_id,
+                    conversation_id=conversation_id,
+                )
             state = await self._graph_runner.prepare(
                 CortexQueryState(
                     query=query,
@@ -43,6 +67,7 @@ class StreamQueryUseCase:
                     limit=dto.limit,
                     conversation_id=conversation_id,
                     collection_id=dto.collection_id,
+                    document_types=dto.document_types,
                     conversation_turns=conversation_turns,
                 )
             )
@@ -140,15 +165,115 @@ class StreamQueryUseCase:
                 ),
                 ttl_seconds=settings.REDIS_CONVERSATION_TTL,
             )
+            state.answer = "".join(answer_parts)
+            state = await self._graph_runner.evaluate(state)
+            latency_ms = int((perf_counter() - started_at) * 1000)
+            await self._record_query(dto, query, state, latency_ms)
+            if state.refrag_context is None:
+                raise ValueError("query graph did not produce refrag_context")
+            await self._record_chat_messages(
+                conversation_id=conversation_id,
+                query=query,
+                answer=state.answer,
+                sources=state.sources,
+                refrag_context=_refrag_context_payload(state.refrag_context),
+                eval_scores=state.eval_scores,
+                trace_id=state.trace_id,
+            )
             yield QueryStreamEventDTO(
                 event=QueryStreamEventType.DONE,
-                data={"query_id": str(query_id), "conversation_id": str(conversation_id)},
+                data={
+                    "query_id": str(query_id),
+                    "conversation_id": str(conversation_id),
+                    "eval_scores": state.eval_scores,
+                    "trace_id": state.trace_id,
+                },
             )
         except Exception as exc:
             yield QueryStreamEventDTO(
                 event=QueryStreamEventType.ERROR,
                 data={"query_id": str(query_id), "conversation_id": str(conversation_id), "message": str(exc)},
             )
+
+    async def _record_query(
+        self,
+        dto: QueryDTO,
+        query: str,
+        state: CortexQueryState,
+        latency_ms: int,
+    ) -> None:
+        async with self._uow:
+            await self._uow.search_query_repo.record_query(
+                QueryEvaluationRecordDTO(
+                    user_id=dto.user_id,
+                    collection_id=dto.collection_id,
+                    query_text=query,
+                    query_type=state.query_type.value,
+                    result_count=len(state.sources),
+                    answer_text=state.answer,
+                    latency_ms=latency_ms,
+                    ragas_faithfulness=state.eval_scores.get("faithfulness"),
+                    ragas_answer_relevancy=state.eval_scores.get("answer_relevancy"),
+                    ragas_context_recall=state.eval_scores.get("context_recall"),
+                    langfuse_trace_id=state.trace_id,
+                )
+            )
+            await self._uow.commit()
+
+    async def _ensure_chat_session(self, *, user_id: UUID, conversation_id: UUID, title: str) -> None:
+        chat_repo = getattr(self._uow, "chat_repo", None)
+        if chat_repo is None:
+            return
+        repository: IChatRepository = chat_repo
+        async with self._uow:
+            session = await repository.get_session(user_id=user_id, chat_id=conversation_id)
+            if session is None:
+                await repository.create_session(
+                    user_id=user_id,
+                    chat_id=conversation_id,
+                    title=_title_from_query(title),
+                )
+                await self._uow.commit()
+
+    async def _get_persisted_recent_turns(self, *, user_id: UUID, conversation_id: UUID) -> list[ConversationTurnDTO]:
+        chat_repo = getattr(self._uow, "chat_repo", None)
+        if chat_repo is None:
+            return []
+        repository: IChatRepository = chat_repo
+        async with self._uow:
+            return await repository.get_recent_turns(
+                user_id=user_id,
+                chat_id=conversation_id,
+                limit=self.RECENT_TURN_LIMIT,
+            )
+
+    async def _record_chat_messages(
+        self,
+        *,
+        conversation_id: UUID,
+        query: str,
+        answer: str,
+        sources: list[QuerySourceDTO],
+        refrag_context: dict[str, object],
+        eval_scores: Mapping[str, object],
+        trace_id: str | None,
+    ) -> None:
+        chat_repo = getattr(self._uow, "chat_repo", None)
+        if chat_repo is None:
+            return
+        repository: IChatRepository = chat_repo
+        async with self._uow:
+            await repository.append_message(chat_id=conversation_id, role="user", content=query)
+            await repository.append_message(
+                chat_id=conversation_id,
+                role="assistant",
+                content=answer,
+                sources=[_source_payload(source) for source in sources],
+                refrag_context=refrag_context,
+                eval_scores=dict(eval_scores),
+                trace_id=trace_id,
+            )
+            await self._uow.commit()
 
 
 def _stream_refrag_chunk(chunk: RefragChunk, citation_index: int | None) -> dict[str, object]:

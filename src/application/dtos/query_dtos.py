@@ -3,6 +3,7 @@ from typing import final
 from uuid import UUID
 
 from src.application.dtos.refrag_dtos import RefragContextPackage
+from src.domain.value_objects.document_type import DocumentType
 
 
 @final
@@ -12,6 +13,7 @@ class QueryDTO:
     query: str
     conversation_id: UUID | None = None
     collection_id: UUID | None = None
+    document_types: tuple[DocumentType, ...] | None = None
     limit: int = 5
 
 

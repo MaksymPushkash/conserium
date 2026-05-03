@@ -5,6 +5,8 @@ from uuid import UUID
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 
+MetadataItem = dict[str, object]
+
 
 class DocumentEntity:
     EMBEDDING_DIMENSIONS = 1536
@@ -25,11 +27,15 @@ class DocumentEntity:
         summary: str | None,
         word_count: int | None,
         language: str | None,
+        entities: list[MetadataItem] | None = None,
+        categories: list[MetadataItem] | None = None,
         doc_embedding: list[float] | None,
         is_duplicate: bool,
         duplicate_of_id: UUID | None,
         created_at: datetime,
         updated_at: datetime | None,
+        visual_metadata: MetadataItem | None = None,
+        tags: list[str] | None = None,
     ) -> None:
         self._id = id
         self._user_id = user_id
@@ -44,6 +50,10 @@ class DocumentEntity:
         self._summary = self._validate_optional_text(summary, "summary")
         self._word_count = self._validate_non_negative_optional_int(word_count, "word_count")
         self._language = self._validate_language(language)
+        self._entities = entities
+        self._categories = categories
+        self._visual_metadata = visual_metadata.copy() if visual_metadata is not None else None
+        self._tags = list(tags) if tags is not None else []
         self._doc_embedding = self._validate_embedding(doc_embedding)
         self._is_duplicate = is_duplicate
         self._duplicate_of_id = duplicate_of_id
@@ -105,10 +115,32 @@ class DocumentEntity:
         return self._language
 
     @property
+    def entities(self) -> list[MetadataItem] | None:
+        if self._entities is None:
+            return None
+        return list(self._entities)
+
+    @property
+    def categories(self) -> list[MetadataItem] | None:
+        if self._categories is None:
+            return None
+        return list(self._categories)
+
+    @property
     def doc_embedding(self) -> list[float] | None:
         if self._doc_embedding is None:
             return None
         return self._doc_embedding.copy()
+
+    @property
+    def visual_metadata(self) -> MetadataItem | None:
+        if self._visual_metadata is None:
+            return None
+        return self._visual_metadata.copy()
+
+    @property
+    def tags(self) -> list[str]:
+        return list(self._tags)
 
     @property
     def is_duplicate(self) -> bool:
@@ -158,11 +190,15 @@ class DocumentEntity:
             summary=summary,
             word_count=word_count,
             language=language,
+            entities=None,
+            categories=None,
             doc_embedding=doc_embedding,
             is_duplicate=False,
             duplicate_of_id=None,
             created_at=datetime.now(UTC),
             updated_at=None,
+            visual_metadata=None,
+            tags=[],
         )
 
     def rename(self, title: str) -> None:
@@ -211,6 +247,27 @@ class DocumentEntity:
         if new_embedding == self._doc_embedding:
             return
         self._doc_embedding = new_embedding
+        self._touch()
+
+    def update_enrichment(
+        self,
+        entities: list[MetadataItem] | None = None,
+        categories: list[MetadataItem] | None = None,
+        tags: list[str] | None = None,
+    ) -> None:
+        if entities is not None:
+            self._entities = entities
+        if categories is not None:
+            self._categories = categories
+        if tags is not None:
+            self._tags = list(tags)
+        if entities is not None or categories is not None or tags is not None:
+            self._touch()
+
+    def update_visual_metadata(self, visual_metadata: MetadataItem | None) -> None:
+        if visual_metadata == self._visual_metadata:
+            return
+        self._visual_metadata = visual_metadata.copy() if visual_metadata is not None else None
         self._touch()
 
     def mark_queued(self) -> None:

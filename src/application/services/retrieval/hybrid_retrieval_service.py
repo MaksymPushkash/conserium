@@ -3,6 +3,7 @@ from uuid import UUID
 from src.application.dtos.query_dtos import QuerySourceDTO
 from src.application.ports.ai.embedding_provider import IEmbeddingProvider
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
+from src.domain.value_objects.document_type import DocumentType
 
 
 class HybridRetrievalService:
@@ -21,6 +22,7 @@ class HybridRetrievalService:
         user_id: UUID,
         limit: int,
         collection_id: UUID | None,
+        document_types: tuple[DocumentType, ...] | None = None,
     ) -> list[QuerySourceDTO]:
         embedding = await self._embedding_provider.embed_text(query)
         async with self._uow:
@@ -30,6 +32,7 @@ class HybridRetrievalService:
                 user_id=user_id,
                 limit=limit,
                 collection_id=collection_id,
+                document_types=document_types,
             )
 
         return [

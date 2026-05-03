@@ -36,6 +36,9 @@ class Settings(BaseSettings):
 
     FILE_STORAGE_TYPE: str = "local"
     LOCAL_STORAGE_PATH: str = "./storage"
+    AWS_REGION: str = "eu-central-1"
+    AWS_S3_BUCKET: str = ""
+    AWS_S3_PREFIX: str = "uploads"
 
     LANGFUSE_SECRET_KEY: str = ""
     LANGFUSE_PUBLIC_KEY: str = ""
@@ -47,6 +50,27 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_SECRET: str = ""
 
     FRONTEND_URL: str
+
+    # OCR / Image preprocessing tuning
+    OCR_TESSERACT_PSM: str = "3"
+    OCR_TESSERACT_OEM: str = "3"
+    OCR_TESSERACT_LANG: str = "eng"
+    OCR_PREPROCESS_MIN_DIMENSION: int = 800
+    OCR_PREPROCESS_AUTOCONTRAST: bool = True
+    OCR_PREPROCESS_DENOISE: bool = True
+    OCR_PREPROCESS_SHARPEN: bool = True
+    OCR_PREPROCESS_DESKEW: bool = False
+    OCR_PREPROCESS_THRESHOLD: bool = False
+
+    # Retrieval reranker
+    RERANKER_ENABLED: bool = True
+    RERANKER_TOP_K: int = 10
+
+    # Evaluation
+    EVAL_SCORER: str = "heuristic"
+
+    # Deduplication threshold (cosine similarity)
+    DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.95
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue]

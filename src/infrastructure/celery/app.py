@@ -13,8 +13,10 @@ from celery import Celery
 from kombu import Exchange, Queue
 
 from src.core.config import settings
+from src.core.startup_checks import validate_startup_settings
 
 _cortex_exchange = Exchange("cortex", type="direct", durable=True)
+validate_startup_settings()
 
 
 # Queues
@@ -44,6 +46,8 @@ celery_app = Celery(
     include=[
         "src.infrastructure.celery.tasks.document_processing",
         "src.infrastructure.celery.tasks.embeddings",
+        "src.infrastructure.celery.tasks.enrichment",
+        "src.infrastructure.celery.tasks.hf_processing",
     ],
 )
 
@@ -60,6 +64,9 @@ celery_app.conf.update(
             "queue": "embeddings",
         },
         "src.infrastructure.celery.tasks.hf_processing.*": {
+            "queue": "hf_processing",
+        },
+        "src.infrastructure.celery.tasks.enrichment.*": {
             "queue": "hf_processing",
         },
     },

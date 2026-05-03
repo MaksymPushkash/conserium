@@ -6,6 +6,8 @@ from uuid import UUID
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 
+MetadataItem = dict[str, object]
+
 
 @final
 @dataclass(frozen=True, slots=True)
@@ -61,10 +63,14 @@ class DocumentDTO:
     summary: str | None
     word_count: int | None
     language: str | None
+    entities: list[MetadataItem] | None
+    categories: list[MetadataItem] | None
     is_duplicate: bool
     duplicate_of_id: UUID | None
     created_at: datetime
     updated_at: datetime | None
+    visual_metadata: MetadataItem | None = None
+    tags: list[str] | None = None
 
 
 @final

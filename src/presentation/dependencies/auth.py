@@ -9,7 +9,7 @@ from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.domain.entities.user_entity import UserEntity
 from src.domain.exceptions import InvalidTokenException, UserInactiveException
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 @inject
@@ -18,6 +18,13 @@ async def get_current_user(
     uow: FromDishka[IUnitOfWork],
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> UserEntity:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
         user_id = jwt_service.verify_access_token(credentials.credentials)
     except InvalidTokenException as e:

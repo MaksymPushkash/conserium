@@ -1,5 +1,5 @@
 import uuid
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -22,6 +22,10 @@ from src.application.services.refrag.heuristic_context_builder import HeuristicR
 from src.application.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
 from src.application.use_cases.query.query_use_case import QueryUseCase
 from src.domain.entities.chunk_entity import ChunkEntity
+from src.domain.value_objects.document_type import DocumentType
+
+if TYPE_CHECKING:
+    from src.application.agents.query.eval_agent import EvalAgent
 
 
 class _FakeEmbeddingProvider:
@@ -51,6 +55,7 @@ class _FakeChunkRepository:
         user_id: uuid.UUID,
         limit: int = 10,
         collection_id: uuid.UUID | None = None,
+        document_types: tuple[DocumentType, ...] | None = None,
     ) -> list[ChunkSearchResult]:
         self.received_embedding = embedding
         self.received_user_id = user_id
@@ -72,12 +77,28 @@ class _FakeLLMService:
 class _FakeUnitOfWork:
     def __init__(self, chunk_repo: _FakeChunkRepository) -> None:
         self.chunk_repo = chunk_repo
+        self.search_query_repo = _FakeSearchQueryRepository()
+        self.commit_count = 0
 
     async def __aenter__(self) -> "_FakeUnitOfWork":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
+
+    async def commit(self) -> None:
+        self.commit_count += 1
+
+    async def rollback(self) -> None:
+        return None
+
+
+class _FakeSearchQueryRepository:
+    def __init__(self) -> None:
+        self.records: list[object] = []
+
+    async def record_query(self, record: object) -> None:
+        self.records.append(record)
 
 
 class _FakeConversationStore:
@@ -106,6 +127,11 @@ class _FakeConversationStore:
     ) -> None:
         self.appended_conversation_id = conversation_id
         self.appended_turn = turn
+
+
+class _FakeEvalAgent:
+    async def evaluate(self, state: object) -> object:
+        return state
 
 
 def _as_embedding_provider(provider: _FakeEmbeddingProvider) -> IEmbeddingProvider:
@@ -144,6 +170,7 @@ def _make_graph_runner(
         RetrievalAgent(retrieval_service),
         RefragContextAgent(_as_refrag_builder(refrag_builder)),
         SynthesisAgent(_as_llm_service(llm_service)),
+        cast("EvalAgent", _FakeEvalAgent()),
     )
 
 
@@ -162,8 +189,9 @@ async def test_query_use_case_embeds_query_and_returns_sources() -> None:
     llm_service = _FakeLLMService()
     graph_runner = _make_graph_runner(chunk_repo, embedding_provider, HeuristicRefragContextBuilder(), llm_service)
     conversation_store = _FakeConversationStore()
+    uow = _FakeUnitOfWork(chunk_repo)
     conversation_id = uuid.uuid4()
-    use_case = QueryUseCase(graph_runner, _as_conversation_store(conversation_store))
+    use_case = QueryUseCase(graph_runner, _as_conversation_store(conversation_store), _as_uow(uow))
 
     result = await use_case(
         QueryDTO(user_id=user_id, conversation_id=conversation_id, query="  Clean Architecture  ", limit=5)
@@ -184,6 +212,7 @@ async def test_query_use_case_embeds_query_and_returns_sources() -> None:
     assert conversation_store.appended_conversation_id == conversation_id
     assert conversation_store.appended_turn is not None
     assert conversation_store.appended_turn.answer == "Synthesized answer [1]"
+    assert len(uow.search_query_repo.records) == 1
 
 
 async def test_query_use_case_rejects_blank_query() -> None:
@@ -193,7 +222,11 @@ async def test_query_use_case_rejects_blank_query() -> None:
         HeuristicRefragContextBuilder(),
         _FakeLLMService(),
     )
-    use_case = QueryUseCase(graph_runner, _as_conversation_store(_FakeConversationStore()))
+    use_case = QueryUseCase(
+        graph_runner,
+        _as_conversation_store(_FakeConversationStore()),
+        _as_uow(_FakeUnitOfWork(_FakeChunkRepository([]))),
+    )
 
     with pytest.raises(ValueError, match="query cannot be empty"):
         await use_case(QueryDTO(user_id=uuid.uuid4(), query="  "))

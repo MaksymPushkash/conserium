@@ -8,6 +8,8 @@ from src.application.ports.cache.document_status_cache import DocumentStatusDTO
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 
+MetadataItem = dict[str, object]
+
 
 class CreateDocumentRequest(BaseModel):
     title: str = Field(min_length=1, max_length=500)
@@ -61,10 +63,10 @@ class IngestDocumentRequest(BaseModel):
             self.raw_content and self.raw_content.strip()
         ):
             raise ValueError("raw_content is required for text ingestion")
-        if self.type == DocumentType.URL and self.source_url is None:
-            raise ValueError("source_url is required for URL ingestion")
-        if self.type == DocumentType.PDF and self.file_path is None:
-            raise ValueError("file_path is required for PDF ingestion")
+        if self.type in (DocumentType.URL, DocumentType.YOUTUBE) and self.source_url is None:
+            raise ValueError(f"source_url is required for {self.type.value.lower()} ingestion")
+        if self.type in (DocumentType.PDF, DocumentType.AUDIO, DocumentType.IMAGE) and self.file_path is None:
+            raise ValueError(f"file_path is required for {self.type.value} ingestion")
         return self
 
 
@@ -82,6 +84,10 @@ class DocumentResponse(BaseModel):
     summary: str | None
     word_count: int | None
     language: str | None
+    entities: list[MetadataItem] | None = None
+    categories: list[MetadataItem] | None = None
+    visual_metadata: MetadataItem | None = None
+    tags: list[str] = Field(default_factory=list)
     is_duplicate: bool
     duplicate_of_id: UUID | None
     created_at: datetime
@@ -103,6 +109,10 @@ class DocumentResponse(BaseModel):
             summary=dto.summary,
             word_count=dto.word_count,
             language=dto.language,
+            entities=dto.entities,
+            categories=dto.categories,
+            visual_metadata=dto.visual_metadata,
+            tags=dto.tags or [],
             is_duplicate=dto.is_duplicate,
             duplicate_of_id=dto.duplicate_of_id,
             created_at=dto.created_at,
@@ -123,6 +133,7 @@ class DocumentListItemResponse(BaseModel):
     summary: str | None
     word_count: int | None
     language: str | None
+    tags: list[str] = Field(default_factory=list)
     is_duplicate: bool
     duplicate_of_id: UUID | None
     created_at: datetime
@@ -143,6 +154,7 @@ class DocumentListItemResponse(BaseModel):
             summary=dto.summary,
             word_count=dto.word_count,
             language=dto.language,
+            tags=dto.tags or [],
             is_duplicate=dto.is_duplicate,
             duplicate_of_id=dto.duplicate_of_id,
             created_at=dto.created_at,

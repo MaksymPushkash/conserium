@@ -35,7 +35,13 @@ class PdfExtractor(IContentExtractor):
         """
         self._min_page_chars = min_page_chars
 
-    async def extract_from_bytes(self, data: bytes, *, filename: str = "") -> ExtractedContent:
+    async def extract_from_bytes(
+        self,
+        data: bytes,
+        *,
+        filename: str = "",
+        language: str | None = None,
+    ) -> ExtractedContent:
         """Run blocking pdfplumber I/O in a thread pool executor."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, partial(self._extract_sync, data, filename))

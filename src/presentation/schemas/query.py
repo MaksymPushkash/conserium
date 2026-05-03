@@ -4,12 +4,14 @@ from pydantic import BaseModel, Field
 
 from src.application.dtos.query_dtos import QueryResultDTO, QuerySourceDTO
 from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage, RefragRepresentation
+from src.domain.value_objects.document_type import DocumentType
 
 
 class QueryRequest(BaseModel):
     query: str = Field(min_length=1)
     conversation_id: UUID | None = None
     collection_id: UUID | None = None
+    document_types: list[DocumentType] | None = None
     limit: int = Field(default=5, ge=1, le=20)
 
 

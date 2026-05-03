@@ -2,9 +2,11 @@ from uuid import UUID
 
 from sqlalchemy import delete, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.application.ports.persistence.document_repository import IDocumentRepository
 from src.domain.entities.document_entity import DocumentEntity
+from src.domain.value_objects.document_type import DocumentType
 from src.infrastructure.database.models.document import DocumentModel
 
 
@@ -13,7 +15,11 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
         self._session = session
 
     async def get_by_id(self, document_id: UUID) -> DocumentEntity | None:
-        result = await self._session.execute(select(DocumentModel).where(DocumentModel.id == document_id))
+        result = await self._session.execute(
+            select(DocumentModel)
+            .options(selectinload(DocumentModel.tags))
+            .where(DocumentModel.id == document_id)
+        )
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None
 
@@ -23,10 +29,15 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
         *,
         limit: int = 50,
         offset: int = 0,
+        document_type: DocumentType | None = None,
     ) -> list[DocumentEntity]:
+        conditions = [DocumentModel.user_id == user_id]
+        if document_type is not None:
+            conditions.append(DocumentModel.type == document_type)
         result = await self._session.execute(
             select(DocumentModel)
-            .where(DocumentModel.user_id == user_id)
+            .options(selectinload(DocumentModel.tags))
+            .where(*conditions)
             .order_by(DocumentModel.created_at.desc())
             .limit(limit)
             .offset(offset)
@@ -48,9 +59,12 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
         result = await self._session.execute(select(exists().where(DocumentModel.id == document_id)))
         return result.scalar_one()
 
-    async def count_by_user_id(self, user_id: UUID) -> int:
+    async def count_by_user_id(self, user_id: UUID, *, document_type: DocumentType | None = None) -> int:
+        conditions = [DocumentModel.user_id == user_id]
+        if document_type is not None:
+            conditions.append(DocumentModel.type == document_type)
         result = await self._session.execute(
-            select(func.count()).select_from(DocumentModel).where(DocumentModel.user_id == user_id)
+            select(func.count()).select_from(DocumentModel).where(*conditions)
         )
         return result.scalar_one()
 
@@ -69,6 +83,10 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
             summary=model.summary,
             word_count=model.word_count,
             language=model.language,
+            entities=model.entities,
+            categories=model.categories,
+            visual_metadata=model.visual_metadata,
+            tags=[tag.name for tag in model.tags],
             doc_embedding=list(model.doc_embedding) if model.doc_embedding is not None else None,
             is_duplicate=model.is_duplicate,
             duplicate_of_id=model.duplicate_of_id,
@@ -91,6 +109,9 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
             summary=entity.summary,
             word_count=entity.word_count,
             language=entity.language,
+            entities=entity.entities,
+            categories=entity.categories,
+            visual_metadata=entity.visual_metadata,
             doc_embedding=entity.doc_embedding,
             is_duplicate=entity.is_duplicate,
             duplicate_of_id=entity.duplicate_of_id,
@@ -111,6 +132,9 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
         model.summary = entity.summary
         model.word_count = entity.word_count
         model.language = entity.language
+        model.entities = entity.entities
+        model.categories = entity.categories
+        model.visual_metadata = entity.visual_metadata
         model.doc_embedding = entity.doc_embedding
         model.is_duplicate = entity.is_duplicate
         model.duplicate_of_id = entity.duplicate_of_id

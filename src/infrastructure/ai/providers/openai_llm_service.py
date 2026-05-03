@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage
 from src.application.ports.ai.llm_service import ILLMService, IStreamingLLMService
 from src.core.config import settings
+from src.core.metrics import metrics_registry
 
 
 class OpenAILLMService(ILLMService, IStreamingLLMService):
@@ -19,10 +20,23 @@ class OpenAILLMService(ILLMService, IStreamingLLMService):
         if self._client is None:
             self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-        response = await self._client.chat.completions.create(
-            model=self._model,
-            messages=_build_messages(query=query, context=context),
-            temperature=0.2,
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=_build_messages(query=query, context=context),
+                temperature=0.2,
+            )
+        except Exception:
+            metrics_registry.inc_counter(
+                "cortex_openai_requests_total",
+                "OpenAI API requests grouped by operation and outcome.",
+                labels={"operation": "chat", "status": "error"},
+            )
+            raise
+        metrics_registry.inc_counter(
+            "cortex_openai_requests_total",
+            "OpenAI API requests grouped by operation and outcome.",
+            labels={"operation": "chat", "status": "success"},
         )
         return response.choices[0].message.content or _fallback_answer(context)
 
@@ -33,14 +47,27 @@ class OpenAILLMService(ILLMService, IStreamingLLMService):
         if self._client is None:
             self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-        stream = cast(
-            "Any",
-            await self._client.chat.completions.create(
-                model=self._model,
-                messages=_build_messages(query=query, context=context),
-                temperature=0.2,
-                stream=True,
-            ),
+        try:
+            stream = cast(
+                "Any",
+                await self._client.chat.completions.create(
+                    model=self._model,
+                    messages=_build_messages(query=query, context=context),
+                    temperature=0.2,
+                    stream=True,
+                ),
+            )
+        except Exception:
+            metrics_registry.inc_counter(
+                "cortex_openai_requests_total",
+                "OpenAI API requests grouped by operation and outcome.",
+                labels={"operation": "chat_stream", "status": "error"},
+            )
+            raise
+        metrics_registry.inc_counter(
+            "cortex_openai_requests_total",
+            "OpenAI API requests grouped by operation and outcome.",
+            labels={"operation": "chat_stream", "status": "success"},
         )
         async for chunk in stream:
             token = chunk.choices[0].delta.content

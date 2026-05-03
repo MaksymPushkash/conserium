@@ -4,6 +4,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from src.application.agents.query.conversation_context_agent import ConversationContextAgent
+from src.application.agents.query.eval_agent import EvalAgent
 from src.application.agents.query.refrag_context_agent import RefragContextAgent
 from src.application.agents.query.retrieval_agent import RetrievalAgent
 from src.application.agents.query.router_agent import RouterAgent
@@ -19,12 +20,14 @@ class StreamingQueryGraphRunner:
         retrieval_agent: RetrievalAgent,
         refrag_context_agent: RefragContextAgent,
         synthesis_agent: StreamingSynthesisAgent,
+        eval_agent: EvalAgent,
     ) -> None:
         self._conversation_context_agent = conversation_context_agent
         self._router_agent = router_agent
         self._retrieval_agent = retrieval_agent
         self._refrag_context_agent = refrag_context_agent
         self._synthesis_agent = synthesis_agent
+        self._eval_agent = eval_agent
         self._prepare_graph = self._build_prepare_graph()
 
     async def prepare(self, state: CortexQueryState) -> CortexQueryState:
@@ -33,6 +36,9 @@ class StreamingQueryGraphRunner:
 
     def stream_answer(self, state: CortexQueryState) -> AsyncIterator[str]:
         return self._synthesis_agent.stream(state)
+
+    async def evaluate(self, state: CortexQueryState) -> CortexQueryState:
+        return await self._eval_agent.evaluate(state)
 
     def _build_prepare_graph(self) -> Any:
         graph = StateGraph(CortexQueryState)

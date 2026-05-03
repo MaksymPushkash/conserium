@@ -201,3 +201,21 @@ def test_get_me_returns_403_for_inactive_user() -> None:
 
     assert response.status_code == 403
     assert response.json() == {"detail": "user inactive"}
+
+
+def test_get_me_returns_401_without_authorization_header() -> None:
+    user_id = uuid.uuid4()
+    client = _make_client(
+        {
+            IJWTService: _make_jwt_service(user_id),
+            IUnitOfWork: _FakeUnitOfWork(_make_user()),
+        }
+    )
+
+    try:
+        response = client.get("/api/v1/users/me")
+    finally:
+        client.close()
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Not authenticated"}

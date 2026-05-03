@@ -3,7 +3,31 @@ from uuid import UUID
 from src.application.agents.query.state import CortexQueryState
 from src.application.dtos.conversation_dtos import ConversationTurnDTO
 
-_FOLLOW_UP_MARKERS = frozenset(
+_FOLLOW_UP_EXACT_MARKERS = frozenset(
+    {
+        "it",
+        "its",
+        "that",
+        "this",
+        "they",
+        "them",
+        "those",
+        "there",
+        "he",
+        "she",
+        "same",
+        "more",
+        "another",
+        "його",
+        "її",
+        "це",
+        "цей",
+        "ця",
+        "вони",
+        "також",
+    }
+)
+_FOLLOW_UP_PREFIX_MARKERS = frozenset(
     {
         "it",
         "its",
@@ -37,7 +61,7 @@ class ConversationContextAgent:
     RECENT_CONTEXT_LIMIT = 3
 
     def apply(self, state: CortexQueryState) -> CortexQueryState:
-        state.promoted_document_ids = _recent_document_ids(state.conversation_turns)
+        state.promoted_document_ids = []
         if not state.conversation_turns:
             state.retrieval_query = state.query
             return state
@@ -47,18 +71,16 @@ class ConversationContextAgent:
             return state
 
         recent_turns = state.conversation_turns[-self.RECENT_CONTEXT_LIMIT :]
+        state.promoted_document_ids = _recent_document_ids(recent_turns)
         state.retrieval_query = _build_contextual_query(state.query, recent_turns)
         return state
 
 
 def _looks_like_follow_up(query: str) -> bool:
     normalized_query = query.casefold().strip()
-    if normalized_query in _FOLLOW_UP_MARKERS:
+    if normalized_query in _FOLLOW_UP_EXACT_MARKERS:
         return True
-    return any(
-        normalized_query.startswith(f"{marker} ") or f" {marker} " in normalized_query
-        for marker in _FOLLOW_UP_MARKERS
-    )
+    return any(normalized_query.startswith(f"{marker} ") for marker in _FOLLOW_UP_PREFIX_MARKERS)
 
 
 def _build_contextual_query(query: str, turns: list[ConversationTurnDTO]) -> str:

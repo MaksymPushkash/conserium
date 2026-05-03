@@ -8,6 +8,7 @@ from src.application.agents.query.router_agent import RouterAgent
 from src.application.agents.query.state import CortexQueryState, QueryType
 from src.application.dtos.conversation_dtos import ConversationSourceDTO, ConversationTurnDTO
 from src.application.dtos.query_dtos import QuerySourceDTO
+from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
     from src.application.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
@@ -96,6 +97,7 @@ def test_conversation_context_agent_keeps_standalone_query_unchanged() -> None:
 
 
 def test_conversation_context_agent_does_not_rewrite_short_standalone_query() -> None:
+    previous_document_id = uuid.uuid4()
     state = CortexQueryState(
         query="PostgreSQL indexes",
         user_id=uuid.uuid4(),
@@ -105,7 +107,16 @@ def test_conversation_context_agent_does_not_rewrite_short_standalone_query() ->
             ConversationTurnDTO(
                 query="What did I read about Clean Architecture?",
                 answer="You read that dependencies should point inward.",
-                sources=[],
+                sources=[
+                    ConversationSourceDTO(
+                        chunk_id=uuid.uuid4(),
+                        document_id=previous_document_id,
+                        document_title="Architecture Notes",
+                        page_number=None,
+                        chunk_index=0,
+                        score=0.7,
+                    )
+                ],
                 created_at=datetime.now(UTC),
             )
         ],
@@ -114,9 +125,46 @@ def test_conversation_context_agent_does_not_rewrite_short_standalone_query() ->
     result = ConversationContextAgent().apply(state)
 
     assert result.retrieval_query == "PostgreSQL indexes"
+    assert result.promoted_document_ids == []
+
+
+def test_conversation_context_agent_does_not_treat_connective_search_as_follow_up() -> None:
+    previous_document_id = uuid.uuid4()
+    state = CortexQueryState(
+        query="PostgreSQL and pgvector",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+        conversation_turns=[
+            ConversationTurnDTO(
+                query="What did I read about Clean Architecture?",
+                answer="You read that dependencies should point inward.",
+                sources=[
+                    ConversationSourceDTO(
+                        chunk_id=uuid.uuid4(),
+                        document_id=previous_document_id,
+                        document_title="Architecture Notes",
+                        page_number=None,
+                        chunk_index=0,
+                        score=0.7,
+                    )
+                ],
+                created_at=datetime.now(UTC),
+            )
+        ],
+    )
+
+    result = ConversationContextAgent().apply(state)
+
+    assert result.retrieval_query == "PostgreSQL and pgvector"
+    assert result.promoted_document_ids == []
 
 
 class _FakeRetrievalService:
+    def __init__(self) -> None:
+        self.received_query: str | None = None
+        self.received_document_types: tuple[DocumentType, ...] | None = None
+
     async def retrieve(
         self,
         *,
@@ -124,7 +172,10 @@ class _FakeRetrievalService:
         user_id: uuid.UUID,
         limit: int,
         collection_id: uuid.UUID | None,
+        document_types: tuple[DocumentType, ...] | None = None,
     ) -> list[QuerySourceDTO]:
+        self.received_query = query
+        self.received_document_types = document_types
         promoted_document_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
         other_document_id = uuid.UUID("00000000-0000-0000-0000-000000000002")
         return [
@@ -163,3 +214,34 @@ async def test_retrieval_agent_uses_contextual_query_and_promotes_previous_docum
     result = await RetrievalAgent(cast("HybridRetrievalService", _FakeRetrievalService())).retrieve(state)
 
     assert result.sources[0].document_id == promoted_document_id
+
+
+async def test_retrieval_agent_filters_to_notes_when_query_requests_notes_only() -> None:
+    service = _FakeRetrievalService()
+    state = CortexQueryState(
+        query="from my notes only give me a quote about sql",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+    )
+
+    await RetrievalAgent(cast("HybridRetrievalService", service)).retrieve(state)
+
+    assert service.received_document_types == (DocumentType.MARKDOWN,)
+    assert service.received_query == "give me a quote about sql"
+
+
+async def test_retrieval_agent_prefers_explicit_document_type_filter() -> None:
+    service = _FakeRetrievalService()
+    state = CortexQueryState(
+        query="give me a quote about sql",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+        document_types=(DocumentType.MARKDOWN,),
+    )
+
+    await RetrievalAgent(cast("HybridRetrievalService", service)).retrieve(state)
+
+    assert service.received_document_types == (DocumentType.MARKDOWN,)
+    assert service.received_query == "give me a quote about sql"

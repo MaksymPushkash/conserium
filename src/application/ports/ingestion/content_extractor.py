@@ -15,6 +15,7 @@ class ExtractedContent:
     page_count: int | None = None  # PDF-only
     # Per-page text keyed by 1-based page number (PDF-only, optional)
     pages: dict[int, str] = field(default_factory=dict)
+    visual: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not self.text.strip():
@@ -31,7 +32,13 @@ class IContentExtractor(ABC):
     """
 
     @abstractmethod
-    async def extract_from_bytes(self, data: bytes, *, filename: str = "") -> ExtractedContent:
+    async def extract_from_bytes(
+        self,
+        data: bytes,
+        *,
+        filename: str = "",
+        language: str | None = None,
+    ) -> ExtractedContent:
         """Extract content from raw bytes (e.g. an uploaded file)."""
 
     @abstractmethod

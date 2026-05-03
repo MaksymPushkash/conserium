@@ -20,19 +20,16 @@ class RefreshTokenUseCase(BaseAuthUseCase):
         token_user_id = self._jwt_service.verify_refresh_token(dto.refresh_token)
         key = f"refresh:{dto.refresh_token}"
 
-        cached_user_id = await self._cache.get(key)
+        cached_user_id = await self._cache.get_del(key)
         if cached_user_id is None:
             raise InvalidTokenException("refresh token not found or expired")
 
         try:
             cache_user_id = uuid.UUID(cached_user_id)
         except ValueError as e:
-            await self._cache.delete(key)
             raise InvalidTokenException("refresh token session is corrupted") from e
 
         if cache_user_id != token_user_id:
-            await self._cache.delete(key)
             raise InvalidTokenException("refresh token session does not match token subject")
 
-        await self._cache.delete(key)
         return await self._issue_tokens(token_user_id)

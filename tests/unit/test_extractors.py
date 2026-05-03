@@ -1,8 +1,10 @@
-"""Unit tests for PDF and URL extractors."""
+"""Unit tests for content extractors."""
 from __future__ import annotations
 
 import textwrap
+from email.message import Message
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
 
 import pytest
 
@@ -224,9 +226,44 @@ class TestUrlExtractor:
         from src.infrastructure.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
         extractor = UrlExtractor()
 
-        with patch("socket.getaddrinfo", return_value=[(0, 0, 0, "", ("127.0.0.1", 0))]):
-            with pytest.raises(UnsafeUrlError, match="non-public"):
-                await extractor.extract_from_url("https://example.com/private")
+        with (
+            patch("socket.getaddrinfo", return_value=[(0, 0, 0, "", ("127.0.0.1", 0))]),
+            pytest.raises(UnsafeUrlError, match="non-public"),
+        ):
+            await extractor.extract_from_url("https://example.com/private")
+
+    @pytest.mark.asyncio
+    async def test_extract_from_url_blocks_redirect_to_private_host(self) -> None:
+        from src.infrastructure.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
+
+        extractor = UrlExtractor()
+        headers = Message()
+        headers["Location"] = "http://127.0.0.1/private"
+        redirect_error = HTTPError(
+            url="https://example.com/article",
+            code=302,
+            msg="Found",
+            hdrs=headers,
+            fp=None,
+        )
+
+        def _fake_getaddrinfo(
+            hostname: str,
+            *_args: object,
+            **_kwargs: object,
+        ) -> list[tuple[int, int, int, str, tuple[str, int]]]:
+            if hostname == "example.com":
+                return [(0, 0, 0, "", ("93.184.216.34", 0))]
+            if hostname == "127.0.0.1":
+                return [(0, 0, 0, "", ("127.0.0.1", 0))]
+            raise AssertionError(f"Unexpected hostname: {hostname}")
+
+        with (
+            patch("socket.getaddrinfo", side_effect=_fake_getaddrinfo),
+            patch("src.infrastructure.ai.extractors.url_extractor._URL_OPENER.open", side_effect=redirect_error),
+            pytest.raises(UnsafeUrlError, match="non-public"),
+        ):
+            await extractor.extract_from_url("https://example.com/article")
 
     @pytest.mark.asyncio
     async def test_language_truncated_to_10_chars(self) -> None:
@@ -241,3 +278,98 @@ class TestUrlExtractor:
             result = await extractor.extract_from_bytes(self._SAMPLE_HTML)
 
         assert len(result.language or "") <= 10
+
+
+# ---------------------------------------------------------------------------
+# YoutubeExtractor
+# ---------------------------------------------------------------------------
+
+
+class TestYoutubeExtractor:
+
+    @pytest.mark.asyncio
+    async def test_extract_from_url_success(self) -> None:
+        from src.infrastructure.ai.extractors.youtube_extractor import YoutubeExtractor
+
+        extractor = YoutubeExtractor()
+
+        with patch(
+            "src.infrastructure.ai.extractors.youtube_extractor._fetch_transcript",
+            return_value=[
+                {"text": "First line", "start": 0.0, "duration": 1.0},
+                {"text": "Second line", "start": 1.0, "duration": 1.0},
+            ],
+        ):
+            result = await extractor.extract_from_url("https://youtu.be/abc123")
+
+        assert result.title == "YouTube abc123"
+        assert result.word_count == 4
+        assert "First line" in result.text
+        assert "Second line" in result.text
+
+    @pytest.mark.asyncio
+    async def test_extract_from_url_rejects_non_youtube_url(self) -> None:
+        from src.infrastructure.ai.extractors.youtube_extractor import YoutubeExtractor
+
+        extractor = YoutubeExtractor()
+
+        with pytest.raises(ValueError, match="Unsupported YouTube URL"):
+            await extractor.extract_from_url("https://example.com/video")
+
+    def test_transcript_to_raw_items_supports_new_api_result(self) -> None:
+        from src.infrastructure.ai.extractors.youtube_extractor import _transcript_to_raw_items
+
+        class _FetchedTranscript:
+            def to_raw_data(self) -> list[dict[str, object]]:
+                return [{"text": "Fetched line", "start": 0.0, "duration": 1.5}]
+
+        assert _transcript_to_raw_items(_FetchedTranscript()) == [
+            {"text": "Fetched line", "start": 0.0, "duration": 1.5}
+        ]
+
+    def test_transcript_to_raw_items_supports_iterable_snippets(self) -> None:
+        from dataclasses import dataclass
+
+        from src.infrastructure.ai.extractors.youtube_extractor import _transcript_to_raw_items
+
+        @dataclass
+        class _Snippet:
+            text: str
+            start: float
+            duration: float
+
+        assert _transcript_to_raw_items([_Snippet("Snippet line", 2.0, 3.5)]) == [
+            {"text": "Snippet line", "start": 2.0, "duration": 3.5}
+        ]
+
+
+# ---------------------------------------------------------------------------
+# AudioExtractor
+# ---------------------------------------------------------------------------
+
+
+class TestAudioExtractor:
+
+    @pytest.mark.asyncio
+    async def test_extract_from_bytes_success(self) -> None:
+        from src.infrastructure.ai.extractors.audio_extractor import AudioExtractor
+
+        extractor = AudioExtractor()
+
+        with patch(
+            "src.infrastructure.ai.extractors.audio_extractor._transcribe_audio_bytes",
+            return_value="transcribed speech from whisper",
+        ):
+            result = await extractor.extract_from_bytes(b"audio-bytes", filename="voice-note.m4a")
+
+        assert result.text == "transcribed speech from whisper"
+        assert result.title == "voice-note"
+        assert result.word_count == 4
+
+    @pytest.mark.asyncio
+    async def test_extract_from_url_raises(self) -> None:
+        from src.infrastructure.ai.extractors.audio_extractor import AudioExtractor
+
+        extractor = AudioExtractor()
+        with pytest.raises(NotImplementedError):
+            await extractor.extract_from_url("https://example.com/audio.mp3")

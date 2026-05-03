@@ -17,9 +17,19 @@ class _FakeCache:
     async def get(self, key: str) -> str | None:
         return self.values.get(key)
 
+    async def get_del(self, key: str) -> str | None:
+        return self.values.pop(key, None)
+
     async def set(self, key: str, value: str, ttl: int) -> None:
         self.values[key] = value
         self.ttls[key] = ttl
+
+    async def set_if_absent(self, key: str, value: str, ttl: int) -> bool:
+        if key in self.values:
+            return False
+        self.values[key] = value
+        self.ttls[key] = ttl
+        return True
 
     async def delete(self, key: str) -> None:
         self.values.pop(key, None)

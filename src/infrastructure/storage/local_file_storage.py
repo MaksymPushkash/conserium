@@ -14,7 +14,7 @@ _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 class LocalFileStorage(IFileStorage):
     def __init__(self, root_path: str | Path = settings.LOCAL_STORAGE_PATH) -> None:
-        self._root_path = Path(root_path)
+        self._root_path = Path(root_path).expanduser().resolve()
 
     async def save_document_file(
         self,
@@ -32,6 +32,12 @@ class LocalFileStorage(IFileStorage):
 
         await asyncio.to_thread(self._write_file, absolute_path, content)
         return StoredFile(path=str(absolute_path), size_bytes=len(content))
+
+    async def read_document_file(self, path: str) -> bytes:
+        return await asyncio.to_thread(Path(path).read_bytes)
+
+    async def delete_document_file(self, path: str) -> None:
+        await asyncio.to_thread(Path(path).unlink, missing_ok=True)
 
     @staticmethod
     def _write_file(path: Path, content: bytes) -> None:

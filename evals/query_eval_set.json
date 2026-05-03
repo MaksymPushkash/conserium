@@ -1,0 +1,23 @@
+[
+  {
+    "id": "clean-architecture",
+    "query": "What did I save about Clean Architecture?",
+    "expected_answer_terms": ["clean", "architecture", "dependencies", "layers"],
+    "context": "Clean Architecture keeps dependencies pointing inward across presentation, application, domain, and infrastructure layers. Clean Architecture documents dependencies, layers, and application boundaries.",
+    "answer": "Your Clean Architecture notes say dependencies point inward across presentation, application, domain, and infrastructure layers. [1]"
+  },
+  {
+    "id": "pgvector",
+    "query": "Which documents mention PostgreSQL and pgvector?",
+    "expected_answer_terms": ["postgresql", "pgvector", "vector", "search"],
+    "context": "PostgreSQL with pgvector stores embeddings and supports vector search next to relational metadata. PostgreSQL, pgvector, vector indexes, and semantic search are discussed together.",
+    "answer": "The document mentions PostgreSQL and pgvector for embedding storage, vector indexes, and semantic search. [1]"
+  },
+  {
+    "id": "refrag",
+    "query": "Why does Cortex use REFRAG?",
+    "expected_answer_terms": ["context", "compressed", "tokens", "retrieval"],
+    "context": "REFRAG compresses retrieved context before synthesis to reduce token usage while preserving source references. The retrieval context is compressed so fewer tokens are sent to the LLM.",
+    "answer": "Cortex uses REFRAG because retrieved context is compressed before synthesis, reducing tokens while preserving citations. [1]"
+  }
+]

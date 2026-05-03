@@ -1,8 +1,18 @@
 from dataclasses import dataclass
-from typing import final
+from typing import TypedDict, final
 from uuid import UUID
 
 from src.domain.value_objects.document_type import DocumentType
+
+
+class EntityDTO(TypedDict):
+    text: str
+    label: str
+
+
+class CategoryDTO(TypedDict):
+    label: str
+    score: float
 
 
 @final

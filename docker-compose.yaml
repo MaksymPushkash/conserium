@@ -11,8 +11,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LOCAL_STORAGE_PATH: /app/storage
     ports:
       - "8000:8000"
+    volumes:
+      - app_storage:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,6 +37,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LOCAL_STORAGE_PATH: /app/storage
+    volumes:
+      - app_storage:/app/storage
     command: ["uv", "run", "celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=document_processing,notifications,cleanup", "--concurrency=4"]
     depends_on:
       postgres:
@@ -56,6 +62,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LOCAL_STORAGE_PATH: /app/storage
     command: ["uv", "run", "celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=embeddings", "--concurrency=4"]
     depends_on:
       postgres:
@@ -78,6 +85,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LOCAL_STORAGE_PATH: /app/storage
+    volumes:
+      - app_storage:/app/storage
     command: ["uv", "run", "celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=hf_processing", "--concurrency=2"]
     depends_on:
       postgres:
@@ -167,6 +177,7 @@ services:
 
 
 volumes:
+  app_storage:
   postgres_data:
   pgadmin_data:
   redis_data:

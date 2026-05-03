@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from src.domain.value_objects.document_type import DocumentType
+
 if TYPE_CHECKING:
     from src.domain.entities.chunk_entity import ChunkEntity
 
@@ -46,4 +48,5 @@ class IChunkRepository(ABC):
         user_id: UUID,
         limit: int = 10,
         collection_id: UUID | None = None,
+        document_types: tuple[DocumentType, ...] | None = None,
     ) -> list[ChunkSearchResult]: ...

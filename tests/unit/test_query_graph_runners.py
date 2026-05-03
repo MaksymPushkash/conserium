@@ -8,6 +8,7 @@ from src.application.agents.query.streaming_graph_runner import StreamingQueryGr
 
 if TYPE_CHECKING:
     from src.application.agents.query.conversation_context_agent import ConversationContextAgent
+    from src.application.agents.query.eval_agent import EvalAgent
     from src.application.agents.query.refrag_context_agent import RefragContextAgent
     from src.application.agents.query.retrieval_agent import RetrievalAgent
     from src.application.agents.query.router_agent import RouterAgent
@@ -63,6 +64,17 @@ class _Synthesis:
         return state
 
 
+class _Eval:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    async def evaluate(self, state: CortexQueryState) -> CortexQueryState:
+        self._calls.append("eval")
+        state.eval_scores = {"faithfulness": 1.0, "answer_relevancy": 1.0, "context_recall": 1.0}
+        state.trace_id = "trace-1"
+        return state
+
+
 class _StreamingSynthesis:
     def __init__(self, calls: list[str]) -> None:
         self._calls = calls
@@ -83,6 +95,7 @@ async def test_query_graph_runner_preserves_node_order_and_final_state() -> None
         cast("RetrievalAgent", _Retrieval(calls)),
         cast("RefragContextAgent", _RefragContext(calls)),
         cast("SynthesisAgent", _Synthesis(calls)),
+        cast("EvalAgent", _Eval(calls)),
     )
 
     result = await runner.run(
@@ -94,10 +107,11 @@ async def test_query_graph_runner_preserves_node_order_and_final_state() -> None
         )
     )
 
-    assert calls == ["conversation_context", "router", "retrieval", "refrag_context", "synthesis"]
+    assert calls == ["conversation_context", "router", "retrieval", "refrag_context", "synthesis", "eval"]
     assert result.retrieval_query == "contextual: Summarize my notes"
     assert result.query_type == QueryType.SUMMARY
     assert result.answer == "final answer"
+    assert result.trace_id == "trace-1"
 
 
 async def test_streaming_query_graph_runner_prepare_preserves_node_order_and_streaming_state() -> None:
@@ -108,6 +122,7 @@ async def test_streaming_query_graph_runner_prepare_preserves_node_order_and_str
         cast("RetrievalAgent", _Retrieval(calls)),
         cast("RefragContextAgent", _RefragContext(calls)),
         cast("StreamingSynthesisAgent", _StreamingSynthesis(calls)),
+        cast("EvalAgent", _Eval(calls)),
     )
 
     prepared_state = await runner.prepare(
@@ -124,3 +139,6 @@ async def test_streaming_query_graph_runner_prepare_preserves_node_order_and_str
     assert prepared_state.retrieval_query == "contextual: Summarize my notes"
     assert prepared_state.query_type == QueryType.SUMMARY
     assert tokens == ["final"]
+
+    evaluated_state = await runner.evaluate(prepared_state)
+    assert evaluated_state.trace_id == "trace-1"

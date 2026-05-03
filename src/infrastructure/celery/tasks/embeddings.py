@@ -1,20 +1,26 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import structlog
 
-from src.domain.value_objects.document_status import DocumentStatus
-from src.infrastructure.celery.app import celery_app
-from src.infrastructure.celery.tasks.document_processing import (
-    _get_document_row,
-    _handle_failure,
-    _mark_document_status,
-    _set_status_sync,
-    _step_embed,
-    _step_finalize,
-    _SyncSession,
+from src.application.use_cases.documents.process_document_embeddings_use_case import (
+    ProcessDocumentEmbeddingsUseCase,
 )
+from src.infrastructure.ai.providers.cached_embedding_provider import CachedEmbeddingProvider
+from src.infrastructure.ai.providers.openai_embedding_provider import OpenAIEmbeddingProvider
+from src.infrastructure.cache.document_status_cache import RedisDocumentStatusCache
+from src.infrastructure.cache.redis_cache import RedisCache
+from src.infrastructure.celery.app import celery_app
+from src.infrastructure.celery.dependencies import get_worker_redis, get_worker_session_factory
+from src.infrastructure.celery.tasks.document_processing import (
+    _handle_failure,
+)
+from src.infrastructure.celery.tasks.enrichment import (
+    enrich_document_task,
+)
+from src.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 
 logger = structlog.get_logger(__name__)
 
@@ -33,31 +39,62 @@ def embed_and_finalize_document(
     document_id: str,
     raw_text: str,
     chunks_data: list[dict[str, Any]],
+    expected_content_hash: str | None = None,
 ) -> dict[str, str]:
     log = logger.bind(document_id=document_id, task_id=self.request.id)
     log.info("Embedding task started", chunks=len(chunks_data))
 
     try:
-        with _SyncSession() as session:
-            doc = _get_document_row(session, document_id)
-            if doc is None:
-                log.error("Document not found — skipping embeddings")
-                return {"document_id": document_id, "status": "NOT_FOUND"}
+        result = asyncio.run(
+            _run_process_document_embeddings_use_case(
+                document_id=document_id,
+                raw_text=raw_text,
+                chunks_data=chunks_data,
+                expected_content_hash=expected_content_hash,
+            )
+        )
+        log.info("Embedding task completed", status=result["status"])
 
-            _set_status_sync(document_id, "PROCESSING", 70, "Generating embeddings…")
-            _mark_document_status(session, document_id, DocumentStatus.PROCESSING)
-            embedded_chunks = _step_embed(chunks_data, log)
+        # Dispatch enrichment orchestration after embeddings are ready.
+        if result["status"] == "READY" and raw_text:
+            try:
+                log.info("Dispatching enrichment tasks", document_id=document_id)
+                enrich_document_task.apply_async(args=[document_id], priority=5)
+            except Exception as e:
+                log.warning("Failed to dispatch enrichment tasks, but document is READY", error=str(e))
 
-            _set_status_sync(document_id, "PROCESSING", 90, "Saving to database…")
-            _step_finalize(session, document_id, doc, raw_text, embedded_chunks, log)
-
-        _set_status_sync(document_id, "READY", 100, "Processing complete.")
-        log.info("Embedding task completed")
-        return {"document_id": document_id, "status": "READY"}
-
+        return result
     except Exception as exc:
         log.exception("Embedding task failed", error=str(exc))
         if self.request.retries >= self.max_retries:
             _handle_failure(document_id, str(exc), log)
             return {"document_id": document_id, "status": "FAILED"}
         raise self.retry(exc=exc) from exc
+
+
+async def _run_process_document_embeddings_use_case(
+    *,
+    document_id: str,
+    raw_text: str,
+    chunks_data: list[dict[str, Any]],
+    expected_content_hash: str | None = None,
+) -> dict[str, str]:
+    factory = get_worker_session_factory()
+    redis = get_worker_redis(decode_responses=False)
+
+    async with factory() as session:
+        use_case = ProcessDocumentEmbeddingsUseCase(
+            uow=SQLAlchemyUnitOfWork(session),
+            status_cache=RedisDocumentStatusCache(redis),
+            embedding_provider=CachedEmbeddingProvider(
+                OpenAIEmbeddingProvider(),
+                RedisCache(redis),
+            ),
+        )
+        result = await use_case(
+            document_id=document_id,
+            raw_text=raw_text,
+            chunks_data=chunks_data,
+            expected_content_hash=expected_content_hash,
+        )
+        return {"document_id": result.document_id, "status": result.status}

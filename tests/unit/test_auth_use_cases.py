@@ -50,7 +50,9 @@ def mock_jwt_service():
 def mock_cache():
     cache = AsyncMock()
     cache.get.return_value = None
+    cache.get_del.return_value = None
     cache.set.return_value = None
+    cache.set_if_absent.return_value = True
     cache.delete.return_value = None
     return cache
 
@@ -211,7 +213,7 @@ class TestRefreshTokenUseCase:
     async def test_successful_refresh(self, mock_jwt_service, mock_cache):
         user_id = uuid.uuid4()
         mock_jwt_service.verify_refresh_token.return_value = user_id
-        mock_cache.get.return_value = str(user_id)
+        mock_cache.get_del.return_value = str(user_id)
 
         use_case = RefreshTokenUseCase(
             mock_jwt_service,
@@ -225,8 +227,7 @@ class TestRefreshTokenUseCase:
         mock_jwt_service.verify_refresh_token.assert_called_once_with("old-refresh-token")
         mock_jwt_service.generate_access_token.assert_called_once_with(user_id)
         mock_jwt_service.generate_refresh_token.assert_called_once_with(user_id)
-        mock_cache.get.assert_awaited_once_with("refresh:old-refresh-token")
-        mock_cache.delete.assert_awaited_once_with("refresh:old-refresh-token")
+        mock_cache.get_del.assert_awaited_once_with("refresh:old-refresh-token")
         mock_cache.set.assert_awaited_once()
 
     async def test_refresh_missing_cache_entry_raises(self, mock_jwt_service, mock_cache):
@@ -243,14 +244,13 @@ class TestRefreshTokenUseCase:
             await use_case(RefreshDTO(refresh_token="expired-cache-token"))
 
         mock_jwt_service.verify_refresh_token.assert_called_once_with("expired-cache-token")
-        mock_cache.get.assert_awaited_once_with("refresh:expired-cache-token")
-        mock_cache.delete.assert_not_awaited()
+        mock_cache.get_del.assert_awaited_once_with("refresh:expired-cache-token")
 
     async def test_refresh_rotates_token(self, mock_jwt_service, mock_cache):
         """Ensure refresh token rotation: old deleted, new stored."""
         user_id = uuid.uuid4()
         mock_jwt_service.verify_refresh_token.return_value = user_id
-        mock_cache.get.return_value = str(user_id)
+        mock_cache.get_del.return_value = str(user_id)
 
         use_case = RefreshTokenUseCase(
             mock_jwt_service,
@@ -259,7 +259,7 @@ class TestRefreshTokenUseCase:
         )
         await use_case(RefreshDTO(refresh_token="old-token"))
 
-        mock_cache.delete.assert_awaited_once_with("refresh:old-token")
+        mock_cache.get_del.assert_awaited_once_with("refresh:old-token")
 
         set_call = mock_cache.set.call_args
         assert set_call.kwargs["key"] == "refresh:refresh-token-456"
@@ -277,8 +277,7 @@ class TestRefreshTokenUseCase:
             await use_case(RefreshDTO(refresh_token="access-token"))
 
         mock_jwt_service.verify_refresh_token.assert_called_once_with("access-token")
-        mock_cache.get.assert_not_awaited()
-        mock_cache.delete.assert_not_awaited()
+        mock_cache.get_del.assert_not_awaited()
 
     async def test_refresh_corrupted_cache_user_id_raises(self, mock_jwt_service, mock_cache):
         mock_jwt_service.verify_refresh_token.return_value = uuid.uuid4()
@@ -293,7 +292,7 @@ class TestRefreshTokenUseCase:
         with pytest.raises(InvalidTokenException):
             await use_case(RefreshDTO(refresh_token="refresh-token"))
 
-        mock_cache.delete.assert_awaited_once_with("refresh:refresh-token")
+        mock_cache.get_del.assert_awaited_once_with("refresh:refresh-token")
 
     async def test_refresh_cache_subject_mismatch_raises(self, mock_jwt_service, mock_cache):
         mock_jwt_service.verify_refresh_token.return_value = uuid.uuid4()
@@ -308,4 +307,4 @@ class TestRefreshTokenUseCase:
         with pytest.raises(InvalidTokenException):
             await use_case(RefreshDTO(refresh_token="refresh-token"))
 
-        mock_cache.delete.assert_awaited_once_with("refresh:refresh-token")
+        mock_cache.get_del.assert_awaited_once_with("refresh:refresh-token")

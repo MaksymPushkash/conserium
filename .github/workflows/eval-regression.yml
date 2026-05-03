@@ -1,0 +1,38 @@
+name: Eval Regression
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  eval-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Static checks
+        run: |
+          uv run ruff check src tests
+          uv run mypy src tests
+      - name: Unit tests
+        run: uv run pytest
+      - name: Offline RAGAS-compatible eval
+        run: >
+          uv run python scripts/run_eval_harness.py
+          --min-faithfulness 0.8
+          --min-answer-relevancy 0.6
+          --min-context-recall 0.6
+          --output artifacts/eval-regression-report.json
+      - name: Upload eval regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-regression-report
+          path: artifacts/eval-regression-report.json
+          if-no-files-found: warn

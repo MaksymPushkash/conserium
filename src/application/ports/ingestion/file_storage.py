@@ -18,3 +18,9 @@ class IFileStorage(ABC):
         filename: str,
         content: bytes,
     ) -> StoredFile: ...
+
+    @abstractmethod
+    async def read_document_file(self, path: str) -> bytes: ...
+
+    @abstractmethod
+    async def delete_document_file(self, path: str) -> None: ...

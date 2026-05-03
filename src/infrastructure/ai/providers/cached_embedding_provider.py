@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from src.application.ports.ai.embedding_provider import IEmbeddingProvider
 from src.core.config import settings
+from src.core.metrics import metrics_registry
 
 if TYPE_CHECKING:
     from src.application.ports.cache.cache import ICache
@@ -31,8 +32,18 @@ class CachedEmbeddingProvider(IEmbeddingProvider):
             key = _embedding_cache_key(text)
             cached = await self._cache.get(key)
             if cached is None:
+                metrics_registry.inc_counter(
+                    "cortex_embedding_cache_events_total",
+                    "Embedding cache hit/miss events.",
+                    labels={"result": "miss"},
+                )
                 misses.append((index, key, text))
                 continue
+            metrics_registry.inc_counter(
+                "cortex_embedding_cache_events_total",
+                "Embedding cache hit/miss events.",
+                labels={"result": "hit"},
+            )
             cached_by_index[index] = [float(value) for value in json.loads(cached)]
 
         if misses:

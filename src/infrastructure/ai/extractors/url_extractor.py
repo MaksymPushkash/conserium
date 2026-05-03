@@ -16,9 +16,10 @@ import ipaddress
 import socket
 from functools import partial
 from http.client import HTTPResponse
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import structlog
 import trafilatura
@@ -36,6 +37,22 @@ _MAX_RESPONSE_BYTES = 2_000_000
 _USER_AGENT = "CortexBot/0.1"
 
 
+class _NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> None:
+        return None
+
+
+_URL_OPENER = build_opener(_NoRedirectHandler())
+
+
 class UnsafeUrlError(ValueError):
     pass
 
@@ -49,7 +66,13 @@ class UrlExtractor(IContentExtractor):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, partial(self._fetch_and_extract_sync, url))
 
-    async def extract_from_bytes(self, data: bytes, *, filename: str = "") -> ExtractedContent:
+    async def extract_from_bytes(
+        self,
+        data: bytes,
+        *,
+        filename: str = "",
+        language: str | None = None,
+    ) -> ExtractedContent:
         """Extract content from raw HTML bytes (e.g. for tests or cached pages)."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, partial(self._extract_from_html_sync, data, filename))
@@ -117,11 +140,7 @@ def _fetch_url_safely(url: str, *, timeout_seconds: float) -> bytes:
     for _ in range(_MAX_REDIRECTS + 1):
         request = Request(current_url, headers={"User-Agent": _USER_AGENT})
         try:
-            with urlopen(request, timeout=timeout_seconds) as response:
-                final_url = _validate_public_url(response.geturl())
-                if final_url != current_url:
-                    current_url = final_url
-                    continue
+            with _URL_OPENER.open(request, timeout=timeout_seconds) as response:
                 _validate_response(response, current_url)
                 return _read_limited(response)
         except HTTPError as exc:

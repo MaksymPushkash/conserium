@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.ports.persistence.chunk_repository import ChunkSearchResult, IChunkRepository
 from src.domain.entities.chunk_entity import ChunkEntity
+from src.domain.value_objects.document_type import DocumentType
 from src.infrastructure.database.models.chunk import ChunkModel
 from src.infrastructure.database.models.document import DocumentModel
 
@@ -62,6 +63,7 @@ class SQLAlchemyChunkRepository(IChunkRepository):
         user_id: UUID,
         limit: int = 10,
         collection_id: UUID | None = None,
+        document_types: tuple[DocumentType, ...] | None = None,
     ) -> list[ChunkSearchResult]:
         self._validate_search_embedding(embedding)
         vector_limit = max(limit * 4, limit)
@@ -77,9 +79,17 @@ class SQLAlchemyChunkRepository(IChunkRepository):
             .order_by(distance)
             .limit(vector_limit)
         )
-        keyword_statement = self._keyword_statement(query, user_id, limit=vector_limit, collection_id=collection_id)
+        keyword_statement = self._keyword_statement(
+            query,
+            user_id,
+            limit=vector_limit,
+            collection_id=collection_id,
+            document_types=document_types,
+        )
         if collection_id is not None:
             vector_statement = vector_statement.where(DocumentModel.collection_id == collection_id)
+        if document_types is not None:
+            vector_statement = vector_statement.where(DocumentModel.type.in_([document_type.value for document_type in document_types]))
 
         vector_rows = (await self._session.execute(vector_statement)).all()
         keyword_rows = (await self._session.execute(keyword_statement)).all()
@@ -156,6 +166,7 @@ class SQLAlchemyChunkRepository(IChunkRepository):
         *,
         limit: int,
         collection_id: UUID | None,
+        document_types: tuple[DocumentType, ...] | None,
     ) -> Any:
         ts_query = func.plainto_tsquery("simple", query)
         search_vector = func.to_tsvector("simple", ChunkModel.content)
@@ -173,4 +184,6 @@ class SQLAlchemyChunkRepository(IChunkRepository):
         )
         if collection_id is not None:
             statement = statement.where(DocumentModel.collection_id == collection_id)
+        if document_types is not None:
+            statement = statement.where(DocumentModel.type.in_([document_type.value for document_type in document_types]))
         return statement
