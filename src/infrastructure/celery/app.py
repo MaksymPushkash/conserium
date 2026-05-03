@@ -94,8 +94,8 @@ celery_app.conf.update(
     worker_send_task_events=True,
     task_send_sent_event=True,
 )
-
-
-@worker_init.connect
 def _validate_worker_startup(**_: object) -> None:
     validate_startup_settings()
+
+
+worker_init.connect(_validate_worker_startup)
