@@ -1,0 +1,69 @@
+{
+  "title": "Cortex Backend",
+  "uid": "cortex-backend",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Query Latency",
+      "targets": [
+        {
+          "expr": "cortex_query_latency_seconds_sum / clamp_min(cortex_query_latency_seconds_count, 1)"
+        }
+      ],
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingestion Latency",
+      "targets": [
+        {
+          "expr": "cortex_ingestion_latency_seconds_sum / clamp_min(cortex_ingestion_latency_seconds_count, 1)"
+        }
+      ],
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Embedding Cache Events",
+      "targets": [
+        {
+          "expr": "sum by (status) (cortex_embedding_cache_events_total)"
+        }
+      ],
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Reranker Events",
+      "targets": [
+        {
+          "expr": "sum by (backend, status) (cortex_reranker_events_total)"
+        }
+      ],
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Eval Scores",
+      "targets": [
+        {
+          "expr": "sum by (score) (cortex_query_eval_score_sum) / clamp_min(sum by (score) (cortex_query_eval_score_count), 1)"
+        }
+      ],
+      "gridPos": {"x": 0, "y": 16, "w": 24, "h": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue Depth",
+      "targets": [
+        {
+          "expr": "cortex_queue_depth"
+        }
+      ],
+      "gridPos": {"x": 0, "y": 24, "w": 24, "h": 8}
+    }
+  ]
+}

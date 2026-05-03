@@ -10,6 +10,12 @@ dist/
 *.egg-info/
 .eggs/
 
+# Frontend artifacts
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
 # Virtual environments and local Python config
 .venv/
 venv/

@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.application.interfaces.user_repository import IUserRepository
+from src.application.ports.persistence.user_repository import IUserRepository
 from src.domain.entities.user_entity import UserEntity
 from src.domain.value_objects.email import Email
 from src.infrastructure.database.models.user import UserModel

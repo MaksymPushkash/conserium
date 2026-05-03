@@ -17,7 +17,7 @@ migrate:
 	alembic revision --autogenerate -m "$(msg)"
 
 logs:
-	docker compose logs -f cortex
+	docker compose logs -f app
 	
 lint:
 	uv run ruff check .

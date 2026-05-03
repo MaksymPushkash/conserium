@@ -1,8 +1,8 @@
 from uuid import UUID
 
 from src.application.dtos.auth_dtos import TokenResponseDTO
-from src.application.interfaces.cache import ICache
-from src.application.interfaces.jwt_service import IJWTService
+from src.application.ports.auth.jwt_service import IJWTService
+from src.application.ports.cache.cache import ICache
 
 
 class BaseAuthUseCase:
