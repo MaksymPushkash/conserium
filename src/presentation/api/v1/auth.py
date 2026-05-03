@@ -26,7 +26,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _build_redirect_uri(request: Request, path: str) -> str:
-    base = str(request.base_url).rstrip("/")
+    base = str(request.base_url).rstrip("/").replace("http://", "https://")
     return f"{base}{path}"
 
 
