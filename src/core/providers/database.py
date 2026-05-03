@@ -18,6 +18,10 @@ class DatabaseProvider(Provider):
             max_overflow=settings.DATABASE_MAX_OVERFLOW,
             pool_pre_ping=True,
             pool_recycle=300,
+            connect_args={
+                "timeout": settings.DB_CONNECT_TIMEOUT,
+                "command_timeout": settings.DB_QUERY_TIMEOUT,
+            },
         )
         yield engine
         await engine.dispose()

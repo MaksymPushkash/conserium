@@ -30,6 +30,7 @@ from src.infrastructure.cache.document_status_cache import RedisDocumentStatusCa
 from src.infrastructure.celery.app import celery_app
 from src.infrastructure.celery.dependencies import get_worker_redis, get_worker_session_factory
 from src.infrastructure.celery.dispatcher import CeleryTaskDispatcher
+from src.infrastructure.celery.error_handling import classify_error
 from src.infrastructure.database.models.document import DocumentModel
 from src.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 from src.infrastructure.storage.factory import build_file_storage
@@ -50,6 +51,10 @@ _sync_engine = create_engine(
     max_overflow=2,
     pool_pre_ping=True,
     pool_recycle=300,
+    connect_args={
+        "timeout": settings.DB_CONNECT_TIMEOUT,
+        "connect_timeout": settings.DB_CONNECT_TIMEOUT,
+    },
 )
 _SyncSession = sessionmaker(bind=_sync_engine, autoflush=True, expire_on_commit=False)
 
@@ -121,11 +126,28 @@ def process_document(self: Any, document_id: str) -> dict[str, Any]:
 
         return asyncio.run(_run_process_document_use_case(document_id))
     except Exception as exc:
-        log.exception("Document processing failed", error=str(exc))
-        if self.request.retries >= self.max_retries:
-            _handle_failure(document_id, str(exc), log)
-            return {"document_id": document_id, "status": "FAILED"}
-        raise self.retry(exc=exc) from exc
+        is_retryable, reason = classify_error(exc)
+
+        log.error(
+            "document_processing_error",
+            error_type=type(exc).__name__,
+            error_reason=reason,
+            is_retryable=is_retryable,
+            retry_count=self.request.retries,
+            max_retries=self.max_retries,
+            error=str(exc),
+        )
+
+        if is_retryable and self.request.retries < self.max_retries:
+            # Retryable error - retry with exponential backoff
+            countdown = min(2 ** self.request.retries * 60, 3600)  # Up to 1 hour
+            log.info("retrying_task", countdown=countdown)
+            raise self.retry(exc=exc, countdown=countdown) from exc
+
+        # Permanent error - log and fail
+        log.error("document_processing_permanent_failure", reason=reason)
+        _handle_failure(document_id, str(exc), log)
+        return {"document_id": document_id, "status": "FAILED", "error": str(exc)}
 
 
 async def _run_process_document_use_case(document_id: str) -> dict[str, str]:

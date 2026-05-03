@@ -14,6 +14,7 @@ from src.infrastructure.cache.document_status_cache import RedisDocumentStatusCa
 from src.infrastructure.cache.redis_cache import RedisCache
 from src.infrastructure.celery.app import celery_app
 from src.infrastructure.celery.dependencies import get_worker_redis, get_worker_session_factory
+from src.infrastructure.celery.error_handling import classify_error
 from src.infrastructure.celery.tasks.document_processing import (
     _handle_failure,
 )
@@ -65,11 +66,26 @@ def embed_and_finalize_document(
 
         return result
     except Exception as exc:
-        log.exception("Embedding task failed", error=str(exc))
-        if self.request.retries >= self.max_retries:
-            _handle_failure(document_id, str(exc), log)
-            return {"document_id": document_id, "status": "FAILED"}
-        raise self.retry(exc=exc) from exc
+        is_retryable, reason = classify_error(exc)
+
+        log.error(
+            "embedding_task_error",
+            error_type=type(exc).__name__,
+            error_reason=reason,
+            is_retryable=is_retryable,
+            retry_count=self.request.retries,
+            max_retries=self.max_retries,
+            error=str(exc),
+        )
+
+        if is_retryable and self.request.retries < self.max_retries:
+            countdown = min(2 ** self.request.retries * 60, 3600)
+            log.info("retrying_task", countdown=countdown)
+            raise self.retry(exc=exc, countdown=countdown) from exc
+
+        log.error("embedding_task_permanent_failure", reason=reason)
+        _handle_failure(document_id, str(exc), log)
+        return {"document_id": document_id, "status": "FAILED", "error": str(exc)}
 
 
 async def _run_process_document_embeddings_use_case(

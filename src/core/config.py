@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     DATABASE_POOL_SIZE: int = 20
     DATABASE_MAX_OVERFLOW: int = 10
+    DB_CONNECT_TIMEOUT: int = 10
+    DB_QUERY_TIMEOUT: int = 30
 
     REDIS_URL: str
     REDIS_EMBEDDING_CACHE_TTL: int = 3600

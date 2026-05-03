@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from dishka.integrations.fastapi import FromDishka, inject
-from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi import APIRouter, File, Form, Request, UploadFile, status
 
 from src.application.dtos.ingestion_dtos import IngestDocumentDTO
 from src.application.ports.ingestion.file_storage import IFileStorage
@@ -10,6 +10,7 @@ from src.application.use_cases.documents.ingest_document_use_case import IngestD
 from src.core.metrics import metrics_registry
 from src.domain.value_objects.document_type import DocumentType
 from src.presentation.dependencies.auth import CurrentUser
+from src.presentation.middleware.rate_limit import limiter
 from src.presentation.schemas.document import (
     DocumentResponse,
     DocumentStatusResponse,
@@ -27,8 +28,10 @@ router = APIRouter(tags=["ingestion"])
     deprecated=True,
 )
 @router.post("/ingest", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("50/minute")
 @inject
 async def ingest_document(
+    request: Request,
     body: IngestDocumentRequest,
     current_user: CurrentUser,
     use_case: FromDishka[IngestDocumentUseCase],

@@ -18,7 +18,7 @@ class CreateDocumentRequest(BaseModel):
     source_url: str | None = None
     file_path: str | None = None
     file_size_bytes: int | None = Field(default=None, ge=0)
-    raw_content: str | None = None
+    raw_content: str | None = Field(default=None, max_length=1_000_000)
     summary: str | None = None
     word_count: int | None = Field(default=None, ge=0)
     language: str | None = Field(default=None, max_length=10)
@@ -32,7 +32,7 @@ class CreateDocumentRequest(BaseModel):
 
 class IngestTextDocumentRequest(BaseModel):
     title: str = Field(min_length=1, max_length=500)
-    raw_text: str = Field(min_length=1)
+    raw_text: str = Field(min_length=1, max_length=1_000_000)
     collection_id: UUID | None = None
     type: DocumentType = DocumentType.TEXT
     source_url: str | None = None
@@ -54,7 +54,7 @@ class IngestDocumentRequest(BaseModel):
     source_url: str | None = None
     file_path: str | None = None
     file_size_bytes: int | None = Field(default=None, ge=0)
-    raw_content: str | None = None
+    raw_content: str | None = Field(default=None, max_length=1_000_000)
     language: str | None = Field(default=None, max_length=10)
 
     @model_validator(mode="after")

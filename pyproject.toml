@@ -28,6 +28,7 @@ dependencies = [
     "pytesseract>=0.3.13",
     "httpx>=0.28.1",
     "redis>=7.4.0",
+    "slowapi>=0.1.9",
     "sqlalchemy>=2.0.49",
     "structlog>=25.5.0",
     "trafilatura>=2.0.0",

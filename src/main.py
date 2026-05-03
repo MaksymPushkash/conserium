@@ -30,6 +30,7 @@ from src.presentation.api.v1.ingestion import router as ingestion_router
 from src.presentation.api.v1.notes import router as note_router
 from src.presentation.api.v1.query import router as query_router
 from src.presentation.api.v1.user import router as user_router
+from src.presentation.middleware.rate_limit import setup_rate_limiting
 
 logger = structlog.get_logger(__name__)
 
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan, title="cortex")
     setup_dishka(container, app)
+    setup_rate_limiting(app)
 
     app.add_middleware(
         CORSMiddleware,
@@ -98,6 +100,10 @@ def create_app() -> FastAPI:
 
     @app.get("/", tags=["health"])
     async def health_check() -> dict[str, str]:
+        return {"status": "OK"}
+
+    @app.get("/health", tags=["health"], include_in_schema=False)
+    async def health_check_alias() -> dict[str, str]:
         return {"status": "OK"}
 
     @app.get("/metrics", include_in_schema=False)

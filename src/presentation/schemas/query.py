@@ -8,7 +8,7 @@ from src.domain.value_objects.document_type import DocumentType
 
 
 class QueryRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=2000)
     conversation_id: UUID | None = None
     collection_id: UUID | None = None
     document_types: list[DocumentType] | None = None
