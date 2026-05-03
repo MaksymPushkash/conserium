@@ -10,13 +10,13 @@ Workers are started with:
 """
 
 from celery import Celery
+from celery.signals import worker_init
 from kombu import Exchange, Queue
 
 from src.core.config import settings
 from src.core.startup_checks import validate_startup_settings
 
 _cortex_exchange = Exchange("cortex", type="direct", durable=True)
-validate_startup_settings()
 
 
 # Queues
@@ -94,3 +94,8 @@ celery_app.conf.update(
     worker_send_task_events=True,
     task_send_sent_event=True,
 )
+
+
+@worker_init.connect
+def _validate_worker_startup(**_: object) -> None:
+    validate_startup_settings()
