@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 import redis
 from kombu.exceptions import KombuError
 from redis.exceptions import RedisError
+from amqp.exceptions import NotFound as AMQPNotFound
 
 from src.core.config import settings
 
@@ -286,8 +287,11 @@ def _render_queue_depth_metrics() -> list[str]:
             try:
                 for queue_def in celery_app.conf.task_queues:
                     bound_queue = queue_def(channel)
-                    declare_result = bound_queue.queue_declare(passive=True)
-                    message_count = int(declare_result.message_count)
+                    try:
+                        declare_result = bound_queue.queue_declare(passive=True)
+                        message_count = int(declare_result.message_count)
+                    except AMQPNotFound:
+                        continue
                     lines.append(f'cortex_queue_depth{{queue="{queue_def.name}"}} {message_count}')
             finally:
                 channel.close()
