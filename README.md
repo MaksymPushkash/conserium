@@ -4,6 +4,9 @@ Cortex is a personal knowledge base for indexing and searching your content. Upl
 
 **TL;DR:** Personal knowledge base + AI chat with citations.
 
+- App: https://cortexx.me/
+- Frontend: https://github.com/MaksymPushkash/cortex_client
+
 ---
 
 ## How It Works
