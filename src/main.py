@@ -102,6 +102,10 @@ def create_app() -> FastAPI:
     async def health_check() -> dict[str, str]:
         return {"status": "OK"}
 
+    @app.get("/health", tags=["health"], include_in_schema=False)
+    async def health_check_alias() -> dict[str, str]:
+        return {"status": "OK"}
+
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> PlainTextResponse:
         return PlainTextResponse(metrics_registry.render_prometheus(), media_type="text/plain; version=0.0.4")
