@@ -8,9 +8,9 @@ from time import perf_counter
 from typing import TYPE_CHECKING, cast
 
 import redis
+from amqp.exceptions import NotFound as AMQPNotFound
 from kombu.exceptions import KombuError
 from redis.exceptions import RedisError
-from amqp.exceptions import NotFound as AMQPNotFound
 
 from src.core.config import settings
 
