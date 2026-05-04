@@ -36,3 +36,9 @@ def get_worker_redis(*, decode_responses: Literal[False]) -> Redis: ...
 
 def get_worker_redis(*, decode_responses: bool) -> Redis:
     return Redis.from_url(settings.REDIS_URL, decode_responses=decode_responses)
+
+
+async def dispose_worker_engine() -> None:
+    global _engine
+    if _engine is not None:
+        await _engine.dispose()
