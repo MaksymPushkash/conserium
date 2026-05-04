@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from functools import partial
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
@@ -19,8 +18,7 @@ class YoutubeExtractor(IContentExtractor):
         raise NotImplementedError("YoutubeExtractor does not support byte extraction")
 
     async def extract_from_url(self, url: str) -> ExtractedContent:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, partial(self._extract_sync, url))
+        return await asyncio.to_thread(self._extract_sync, url)
 
     def _extract_sync(self, url: str) -> ExtractedContent:
         video_id = _extract_video_id(url)
