@@ -1,9 +1,3 @@
-"""ITaskDispatcher — application-layer interface for dispatching background tasks.
-
-This keeps the application layer decoupled from Celery. The infrastructure
-implementation just calls process_document.apply_async().
-"""
-
 from abc import ABC, abstractmethod
 from typing import Any
 

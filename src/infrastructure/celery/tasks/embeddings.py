@@ -56,7 +56,6 @@ def embed_and_finalize_document(
         )
         log.info("Embedding task completed", status=result["status"])
 
-        # Dispatch enrichment orchestration after embeddings are ready.
         if result["status"] == "READY" and raw_text:
             try:
                 log.info("Dispatching enrichment tasks", document_id=document_id)

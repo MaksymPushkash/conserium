@@ -1,5 +1,3 @@
-"""Audio transcription extractor backed by Whisper on the HF worker."""
-
 from __future__ import annotations
 
 import asyncio

@@ -11,8 +11,6 @@ if TYPE_CHECKING:
 
 
 class EnrichDocumentUseCase:
-    """Orchestrate document enrichment (NER, classification, deduplication) after ingestion."""
-
     def __init__(self, enrichment_service: EnrichmentService) -> None:
         self._enrichment_service = enrichment_service
 

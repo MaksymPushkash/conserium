@@ -1,5 +1,3 @@
-"""Celery error classification and handling."""
-
 from typing import Any
 
 import structlog
@@ -96,12 +94,10 @@ def handle_celery_error(
     logger.error("celery_task_error", **log_context)
 
     if is_retryable and current_retries < max_retries:
-        # Calculate exponential backoff: 2^retries * 60 seconds, max 1 hour
         countdown = min(2**current_retries * 60, 3600)
         logger.info("retrying_task", countdown=countdown, **log_context)
         return {"retry": True, "countdown": countdown}
 
-    # Permanent failure
     logger.error("celery_task_permanent_failure", reason=reason, **log_context)
     return {
         "status": "FAILED",

@@ -1,16 +1,3 @@
-"""URL content extractor using trafilatura.
-
-Responsibilities:
-- Download a web page and extract its main content (stripping nav, ads,
-  footers, boilerplate).
-- Return clean prose text suitable for chunking and embedding.
-- Detect language from HTTP headers or HTML meta tags.
-- Fall back gracefully when trafilatura cannot extract meaningful content.
-
-Design note: extract_from_bytes accepts raw HTML bytes for cases where the
-caller has already downloaded the page (e.g. testing, cached responses).
-"""
-
 import asyncio
 import ipaddress
 import socket
@@ -62,7 +49,6 @@ class UrlExtractor(IContentExtractor):
         self._timeout_seconds = timeout_seconds
 
     async def extract_from_url(self, url: str) -> ExtractedContent:
-        """Fetch and extract content from a URL, running I/O in a thread pool."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, partial(self._fetch_and_extract_sync, url))
 
@@ -73,11 +59,10 @@ class UrlExtractor(IContentExtractor):
         filename: str = "",
         language: str | None = None,
     ) -> ExtractedContent:
-        """Extract content from raw HTML bytes (e.g. for tests or cached pages)."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, partial(self._extract_from_html_sync, data, filename))
 
-    # Internal sync helpers (run in thread pool executor)
+
     def _fetch_and_extract_sync(self, url: str) -> ExtractedContent:
         try:
             downloaded = _fetch_url_safely(url, timeout_seconds=self._timeout_seconds)

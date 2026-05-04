@@ -10,7 +10,7 @@
       "title": "Query Latency",
       "targets": [
         {
-          "expr": "cortex_query_latency_seconds_sum / clamp_min(cortex_query_latency_seconds_count, 1)"
+          "expr": "rate(cortex_query_latency_seconds_sum[5m]) / clamp_min(rate(cortex_query_latency_seconds_count[5m]), 1e-9)"
         }
       ],
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}
@@ -20,7 +20,7 @@
       "title": "Ingestion Latency",
       "targets": [
         {
-          "expr": "cortex_ingestion_latency_seconds_sum / clamp_min(cortex_ingestion_latency_seconds_count, 1)"
+          "expr": "rate(cortex_ingestion_latency_seconds_sum[5m]) / clamp_min(rate(cortex_ingestion_latency_seconds_count[5m]), 1e-9)"
         }
       ],
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}

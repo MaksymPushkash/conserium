@@ -21,13 +21,6 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 class EmbeddingReranker(IReranker):
-    """A simple embedding-based reranker used as a lightweight cross-encoder fallback.
-
-    This computes embeddings for the query and candidate contents and ranks by cosine similarity.
-    It is intentionally lightweight so it can run synchronously in an async worker and be
-    swapped with a true cross-encoder later.
-    """
-
     def __init__(self, embedding_provider: IEmbeddingProvider) -> None:
         self._emb = embedding_provider
 

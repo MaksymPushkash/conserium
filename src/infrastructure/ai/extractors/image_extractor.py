@@ -1,10 +1,3 @@
-"""Image OCR extractor for screenshots and uploaded images.
-
-Adds a small, fast preprocessing pipeline (autocontrast, denoise, sharpen,
-optional upscaling) and a tunable Tesseract config to improve OCR quality
-without changing the OCR engine (free improvements).
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -83,7 +76,6 @@ class ImageExtractor(IContentExtractor):
         except ImportError as exc:
             raise RuntimeError("pytesseract is required for image OCR ingestion.") from exc
 
-        # Allow quick experimentation via env vars without code edits
         psm_env = os.getenv("OCR_TESSERACT_PSM")
         tesseract_psm = psm_env if psm_env is not None else "3"
         tesseract_oem = os.getenv("OCR_TESSERACT_OEM", "3")
@@ -92,7 +84,6 @@ class ImageExtractor(IContentExtractor):
 
         try:
             with Image.open(io.BytesIO(data)) as image:
-                # Normalize orientation and ensure a working mode
                 img: PILImage | Any = image
                 try:
                     from PIL import ImageOps
@@ -103,7 +94,6 @@ class ImageExtractor(IContentExtractor):
 
                 img = img.convert("RGB")
 
-                # Fast preprocessing pipeline (configurable via settings)
                 if settings.OCR_PREPROCESS_AUTOCONTRAST:
                     img = self._autocontrast(img)
 
@@ -607,7 +597,6 @@ class ImageExtractor(IContentExtractor):
         try:
             import pytesseract
 
-            # Use Tesseract OSD when available to detect rotation
             osd = pytesseract.image_to_osd(img)
             for line in osd.splitlines():
                 if line.strip().startswith("Rotate:"):

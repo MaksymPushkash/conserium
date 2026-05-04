@@ -1,16 +1,3 @@
-"""PDF content extractor using pdfplumber.
-
-Responsibilities:
-- Extract raw text from PDF bytes, page by page.
-- Preserve page numbers on each text span for chunk-level citations.
-- Detect language tag from PDF metadata when available.
-- Extract title from PDF metadata, falling back to filename.
-
-Design note: extract_from_url is not supported for PDFs — callers must
-download the file first and pass the bytes. This avoids having the extractor
-own HTTP logic.
-"""
-
 import asyncio
 import io
 from functools import partial
@@ -28,11 +15,6 @@ _STRIP_CHARS = " \t\r\n\x0c"
 
 class PdfExtractor(IContentExtractor):
     def __init__(self, *, min_page_chars: int = 10) -> None:
-        """
-        Args:
-            min_page_chars: pages with fewer characters after stripping are
-                            treated as blank (scanned images, separators, etc.)
-        """
         self._min_page_chars = min_page_chars
 
     async def extract_from_bytes(
@@ -42,7 +24,6 @@ class PdfExtractor(IContentExtractor):
         filename: str = "",
         language: str | None = None,
     ) -> ExtractedContent:
-        """Run blocking pdfplumber I/O in a thread pool executor."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, partial(self._extract_sync, data, filename))
 

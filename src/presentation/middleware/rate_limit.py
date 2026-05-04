@@ -1,5 +1,3 @@
-"""Rate limiting middleware for production protection."""
-
 import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -13,7 +11,6 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 
 async def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Handle rate limit exceeded errors."""
     logger.warning(
         "rate_limit_exceeded",
         client=request.client.host if request.client else "unknown",
@@ -30,7 +27,6 @@ async def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONR
 
 
 def setup_rate_limiting(app: FastAPI) -> None:
-    """Configure rate limiting on FastAPI app."""
     limiter.reset()
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)

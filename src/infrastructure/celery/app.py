@@ -1,14 +1,3 @@
-"""Celery application instance and queue configuration.
-
-This module is the single authoritative source of the Celery app object.
-Import it as:
-
-    from src.infrastructure.celery.app import celery_app
-
-Workers are started with:
-    celery -A src.infrastructure.celery worker --queues document_processing ...
-"""
-
 from celery import Celery
 from celery.signals import worker_init
 from kombu import Exchange, Queue
