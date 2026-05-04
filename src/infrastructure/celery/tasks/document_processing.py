@@ -99,7 +99,15 @@ def process_document(self: Any, document_id: str) -> dict[str, Any]:
     try:
         import asyncio
 
-        return asyncio.run(_run_process_document_use_case(document_id))
+        from src.infrastructure.celery.dependencies import dispose_worker_engine
+
+        async def safe_process() -> dict[str, str]:
+            try:
+                return await _run_process_document_use_case(document_id)
+            finally:
+                await dispose_worker_engine()
+
+        return asyncio.run(safe_process())
     except Exception as exc:
         is_retryable, reason = classify_error(exc)
 
