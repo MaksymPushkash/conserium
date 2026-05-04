@@ -24,7 +24,7 @@ class RetrievalAgent:
             collection_id=state.collection_id,
             document_types=document_types,
         )
-        # Optional reranking step (lightweight embedding-based by default)
+
         if settings.RERANKER_ENABLED and self._reranker is not None and state.sources:
             top_k = min(settings.RERANKER_TOP_K, len(state.sources))
             state.sources = await self._reranker.rerank(state.retrieval_query or state.query, state.sources, top_k)

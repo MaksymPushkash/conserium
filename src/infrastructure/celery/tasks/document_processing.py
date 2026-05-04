@@ -1,13 +1,3 @@
-"""Document processing Celery task adapter.
-
-The task itself only:
-- bootstraps infrastructure dependencies for a worker process
-- calls the application-layer use case
-- handles retry / terminal failure behavior
-
-Business workflow lives in application use cases.
-"""
-
 from __future__ import annotations
 
 import json
@@ -45,7 +35,6 @@ logger = structlog.get_logger(__name__)
 # This engine is module-level so it is created once per worker process.
 
 _sync_engine = create_engine(
-    # asyncpg DSN → psycopg2-compatible DSN
     settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://"),
     pool_size=5,
     max_overflow=2,
@@ -61,11 +50,6 @@ _SyncSession = sessionmaker(bind=_sync_engine, autoflush=True, expire_on_commit=
 
 
 def _set_status_sync(document_id: str, status: str, progress: int, message: str) -> None:
-    """Write document processing status to Redis synchronously.
-
-    Uses raw redis-py (sync client) to avoid spinning up an event loop
-    inside a Celery task.
-    """
     import redis as redis_sync
 
     client = redis_sync.from_url(settings.REDIS_URL, decode_responses=True)
@@ -109,15 +93,6 @@ def _get_document_row(session: Session, document_id: str) -> DocumentModel | Non
     acks_late=True,
 )
 def process_document(self: Any, document_id: str) -> dict[str, Any]:
-    """Entry point for the document processing pipeline.
-
-    Args:
-        document_id: string UUID of the document row already persisted
-                     in PostgreSQL with status=QUEUED.
-
-    Returns:
-        dict with {"document_id": ..., "status": "READY"|"FAILED"}
-    """
     log = logger.bind(document_id=document_id, task_id=self.request.id)
     log.info("Document processing started")
 
@@ -139,12 +114,10 @@ def process_document(self: Any, document_id: str) -> dict[str, Any]:
         )
 
         if is_retryable and self.request.retries < self.max_retries:
-            # Retryable error - retry with exponential backoff
             countdown = min(2 ** self.request.retries * 60, 3600)  # Up to 1 hour
             log.info("retrying_task", countdown=countdown)
             raise self.retry(exc=exc, countdown=countdown) from exc
 
-        # Permanent error - log and fail
         log.error("document_processing_permanent_failure", reason=reason)
         _handle_failure(document_id, str(exc), log)
         return {"document_id": document_id, "status": "FAILED", "error": str(exc)}
@@ -170,7 +143,6 @@ async def _run_process_document_use_case(document_id: str) -> dict[str, str]:
 
 
 def _handle_failure(document_id: str, reason: str, log: Any) -> None:
-    """Mark document as FAILED in DB and Redis."""
     try:
         with _SyncSession() as session:
             _mark_document_status(session, document_id, DocumentStatus.FAILED)

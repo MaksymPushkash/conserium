@@ -5,8 +5,6 @@ from uuid import UUID
 
 @dataclass(frozen=True, slots=True)
 class DocumentStatusDTO:
-    """Snapshot of async processing progress for a document."""
-
     document_id: UUID
     status: str
     progress: int
@@ -14,8 +12,6 @@ class DocumentStatusDTO:
 
 
 class IDocumentStatusCache(ABC):
-    """Interface for reading / writing document processing status in Redis."""
-
     @abstractmethod
     async def set_status(
         self,

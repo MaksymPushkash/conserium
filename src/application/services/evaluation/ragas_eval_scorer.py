@@ -14,12 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class RagasEvalScorer(IEvalScorer):
-    """External RAGAS-backed scorer with deterministic fallback.
-
-    The import and evaluation happen lazily so deployments can run without the
-    optional `eval` extra unless `EVAL_SCORER=ragas` is configured.
-    """
-
     def __init__(self, fallback: IEvalScorer) -> None:
         self._fallback = fallback
 

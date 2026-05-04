@@ -6,14 +6,12 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True, slots=True)
 class ExtractedContent:
-    """Result of extracting text from a document source."""
-
     text: str
     title: str | None = None
     language: str | None = None
     word_count: int = 0
-    page_count: int | None = None  # PDF-only
-    # Per-page text keyed by 1-based page number (PDF-only, optional)
+    page_count: int | None = None  # PDF only
+
     pages: dict[int, str] = field(default_factory=dict)
     visual: dict[str, object] | None = None
 
@@ -25,12 +23,6 @@ class ExtractedContent:
 
 
 class IContentExtractor(ABC):
-    """Interface for extracting plain text from a document source.
-
-    Concrete implementations live in infrastructure and are unaware
-    of Celery, FastAPI, or SQLAlchemy.
-    """
-
     @abstractmethod
     async def extract_from_bytes(
         self,

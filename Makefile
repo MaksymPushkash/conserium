@@ -24,3 +24,6 @@ lint:
 
 typecheck:
 	uv run mypy .
+
+test:
+	uv run pytest

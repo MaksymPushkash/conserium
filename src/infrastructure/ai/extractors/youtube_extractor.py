@@ -1,16 +1,3 @@
-"""YouTube transcript extractor.
-
-Current scope:
-- Accept a YouTube watch/share URL.
-- Resolve the video ID.
-- Fetch the public transcript when available.
-- Return transcript text suitable for chunking/embedding.
-
-Future work:
-- Persist timestamp metadata at chunk level once chunk schema supports it.
-- Enrich title/language from a video metadata source if needed.
-"""
-
 from __future__ import annotations
 
 import asyncio

@@ -14,12 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class CrossEncoderReranker(IReranker):
-    """A cross-encoder reranker using sentence-transformers.
-    
-    This provides true second-stage reranking by scoring query-document
-    pairs jointly through a cross-attention transformer.
-    """
-
     def __init__(
         self,
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
@@ -41,17 +35,15 @@ class CrossEncoderReranker(IReranker):
         if len(sources) <= 1:
             return sources[:top_k]
 
-        # Prepare pairs: (query, document_text)
         pairs = [[query, source.content] for source in sources]
 
-        # Score pairs
         try:
             import asyncio
 
             model = self._get_model()
             loop = asyncio.get_running_loop()
             started_at = perf_counter()
-            # Predict can be CPU-heavy depending on the model, run in executor
+
             scores = await loop.run_in_executor(None, model.predict, pairs)
             metrics_registry.observe_histogram(
                 "cortex_reranker_latency_seconds",
@@ -65,13 +57,11 @@ class CrossEncoderReranker(IReranker):
                 labels={"backend": "cross_encoder", "status": "success"},
             )
 
-            # Attach scores to a list of tuples (score, source)
+
             scored_sources = list(zip(scores, sources, strict=True))
 
-            # Sort descending by score
             scored_sources.sort(key=lambda x: x[0], reverse=True)
 
-            # Return top_k
             return [source for _, source in scored_sources[:top_k]]
 
         except Exception as e:

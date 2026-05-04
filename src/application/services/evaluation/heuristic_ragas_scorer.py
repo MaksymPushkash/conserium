@@ -13,12 +13,6 @@ _WORD_RE = re.compile(r"[a-zA-Z0-9_]{3,}")
 
 
 class HeuristicRagasScorer(IEvalScorer):
-    """Lightweight RAGAS-compatible scorer for CI/local runs.
-
-    It intentionally avoids model calls. The keys match RAGAS concepts so this
-    can later be replaced by a true RAGAS adapter without changing graph state.
-    """
-
     async def score(
         self,
         *,

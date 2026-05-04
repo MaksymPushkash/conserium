@@ -1,0 +1,78 @@
+# VCS
+.git
+.gitignore
+
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Frontend artifacts
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Virtual environments and local Python config
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Local secrets and env files (keep template)
+.env
+.env.*
+!.env.example
+
+# IDE/editor and notebooks
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Desktop.ini
+
+# Logs and runtime files
+*.log
+*.pid
+*.out
+
+# Local DB/state files
+*.sqlite3
+*.sqlite3-journal
+
+# Local docker compose overrides
+docker-compose.override.yaml
+docker-compose.local.yaml
+
+# Local notes
+.notes.txt
+
+# GitHub and CI metadata not needed in image builds
+.github/

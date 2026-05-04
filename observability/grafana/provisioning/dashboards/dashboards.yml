@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: Cortex
+    orgId: 1
+    folder: Cortex
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,13 +1,3 @@
-"""Document processing status cache backed by Redis.
-
-Key schema:  doc:status:{document_id}
-Value:       JSON with keys: status, progress, message
-TTL:         from settings.REDIS_DOC_STATUS_TTL (default 1 hour)
-
-This lets API consumers poll GET /documents/{id}/status without
-touching PostgreSQL during long-running processing.
-"""
-
 import json
 from uuid import UUID
 

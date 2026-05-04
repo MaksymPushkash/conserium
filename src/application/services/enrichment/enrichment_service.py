@@ -80,7 +80,7 @@ class EnrichmentService:
             emb = await self._emb.embed_text(text)
             doc.update_embedding(emb)
 
-        # deduplication: compare to other documents for the same user
+        # deduplication
         if doc.doc_embedding is not None:
             async with self._uow:
                 others = await self._uow.document_repo.get_by_user_id(doc.user_id, limit=50)

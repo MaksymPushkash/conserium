@@ -1,17 +1,3 @@
-"""IngestDocumentUseCase — async ingestion entry point.
-
-Responsibilities:
-1. Create a DocumentEntity with status=PENDING.
-2. Persist it to the database (so the caller gets an ID immediately).
-3. Transition status to QUEUED + set initial Redis status.
-4. Dispatch the Celery `process_document` task.
-5. Return the DocumentDTO (status=QUEUED) with 202 semantics.
-
-The use case deliberately does NOT know about Celery internals —
-it receives an ICeleryDispatcher interface, keeping the application
-layer decoupled from infrastructure.
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -62,15 +48,14 @@ class IngestDocumentUseCase:
             word_count=len(dto.raw_content.split()) if dto.raw_content else None,
             language=dto.language,
         )
-        # PENDING → QUEUED before persisting so the DB row is never left in PENDING
+
         document.mark_queued()
 
         async with self._uow:
             await self._uow.document_repo.create(document)
             await self._uow.commit()
 
-        # Set initial Redis status before dispatching so GET /status always
-        # returns something meaningful from the moment the task is sent.
+
         await self._status_cache.set_status(
             document.id,
             status="QUEUED",
@@ -79,7 +64,6 @@ class IngestDocumentUseCase:
         )
 
         try:
-            # Dispatch — fire and forget
             await self._task_dispatcher.dispatch_process_document(str(document.id))
         except Exception:
             document.mark_failed()
