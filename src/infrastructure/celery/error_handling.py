@@ -39,13 +39,9 @@ def classify_error(exc: Exception) -> tuple[bool, str]:
     if isinstance(exc, ConnectionError):
         return True, "connection_error"
 
-    # Permanent: Domain/business logic errors
+    # Permanent: Domain/business logic and validation errors
     if isinstance(exc, DomainException):
         return False, "domain_error"
-
-    # Permanent: Validation errors
-    if isinstance(exc, ValueError):
-        return False, "validation_error"
 
     # Permanent: Code bugs (missing keys, attributes)
     if isinstance(exc, (KeyError, AttributeError)):

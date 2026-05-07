@@ -4,6 +4,7 @@ from math import sqrt
 from typing import TYPE_CHECKING, TypedDict, cast
 
 from src.core.config import settings
+from src.domain.exceptions import DocumentNotFoundException
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -53,7 +54,7 @@ class EnrichmentService:
         async with self._uow:
             doc = await self._uow.document_repo.get_by_id(document_id)
             if doc is None:
-                raise ValueError("document not found")
+                raise DocumentNotFoundException("document not found")
 
         result: EnrichmentResult = {
             "entities": [],

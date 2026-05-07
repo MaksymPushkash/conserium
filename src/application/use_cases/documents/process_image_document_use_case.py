@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from src.domain.exceptions import DocumentValidationException
 from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
@@ -44,9 +45,9 @@ class ProcessImageDocumentUseCase:
         if document is None:
             return ProcessImageDocumentResult(document_id=document_id, status="NOT_FOUND")
         if document.type != DocumentType.IMAGE:
-            raise ValueError(f"Document {document.id} is not an IMAGE document")
+            raise DocumentValidationException(f"Document {document.id} is not an IMAGE document")
         if not document.file_path:
-            raise ValueError(f"Document {document.id} is type IMAGE but has no file_path")
+            raise DocumentValidationException(f"Document {document.id} is type IMAGE but has no file_path")
 
         await self._status_cache.set_status(
             document.id,
@@ -80,7 +81,7 @@ class ProcessImageDocumentUseCase:
         prepared_text = _build_image_ingest_text(extracted)
         chunks = self._text_chunker.chunk_text(prepared_text)
         if not chunks:
-            raise ValueError("Image OCR produced no chunks after splitting")
+            raise DocumentValidationException("Image OCR produced no chunks after splitting")
 
         chunks_data = [
             {

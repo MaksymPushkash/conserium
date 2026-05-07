@@ -10,6 +10,7 @@ from src.application.dtos.conversation_dtos import ConversationSourceDTO, Conver
 from src.application.dtos.evaluation_dtos import QueryEvaluationRecordDTO
 from src.application.dtos.query_dtos import QueryResultDTO
 from src.core.config import settings
+from src.domain.exceptions import QueryProcessingException, QueryValidationException
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -38,7 +39,7 @@ class QueryUseCase:
     async def __call__(self, dto: QueryDTO) -> QueryResultDTO:
         query = dto.query.strip()
         if not query:
-            raise ValueError("query cannot be empty")
+            raise QueryValidationException("query cannot be empty")
 
         conversation_id = dto.conversation_id or uuid4()
         await self._ensure_chat_session(user_id=dto.user_id, conversation_id=conversation_id, title=query)
@@ -66,7 +67,7 @@ class QueryUseCase:
         )
         latency_ms = int((perf_counter() - started_at) * 1000)
         if state.refrag_context is None:
-            raise ValueError("query graph did not produce refrag_context")
+            raise QueryProcessingException("query graph did not produce refrag_context")
         await self._conversation_store.append_turn(
             user_id=dto.user_id,
             conversation_id=conversation_id,

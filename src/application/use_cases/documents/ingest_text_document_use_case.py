@@ -7,6 +7,7 @@ from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.base import document_to_dto
 from src.domain.entities.chunk_entity import ChunkEntity
 from src.domain.entities.document_entity import DocumentEntity
+from src.domain.exceptions import DocumentValidationException
 
 
 class IngestTextDocumentUseCase:
@@ -16,7 +17,7 @@ class IngestTextDocumentUseCase:
 
     async def __call__(self, dto: IngestTextDocumentDTO) -> DocumentDTO:
         if not dto.raw_text.strip():
-            raise ValueError("raw_text cannot be empty")
+            raise DocumentValidationException("raw_text cannot be empty")
 
         document = DocumentEntity.create(
             id=uuid.uuid4(),
@@ -36,7 +37,7 @@ class IngestTextDocumentUseCase:
 
             text_chunks = self._text_chunker.chunk_text(dto.raw_text)
             if not text_chunks:
-                raise ValueError("raw_text produced no chunks")
+                raise DocumentValidationException("raw_text produced no chunks")
 
             chunks = [
                 ChunkEntity.create(

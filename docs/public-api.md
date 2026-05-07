@@ -18,9 +18,13 @@ Authorization: Bearer <access_token>
 
 ## Health
 
-`GET /`
+`GET /health`
 
 Returns a small service health payload.
+
+`GET /`
+
+Legacy alias for the same health payload.
 
 `GET /metrics`
 

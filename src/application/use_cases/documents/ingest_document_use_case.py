@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from src.application.use_cases.documents.base import document_to_dto
 from src.domain.entities.document_entity import DocumentEntity
+from src.domain.exceptions import DocumentValidationException
 from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
@@ -29,11 +30,11 @@ class IngestDocumentUseCase:
 
     async def __call__(self, dto: IngestDocumentDTO) -> DocumentDTO:
         if dto.type in (DocumentType.TEXT, DocumentType.MARKDOWN) and not (dto.raw_content and dto.raw_content.strip()):
-            raise ValueError("raw_content is required for text ingestion")
+            raise DocumentValidationException("raw_content is required for text ingestion")
         if dto.type in (DocumentType.URL, DocumentType.YOUTUBE) and not dto.source_url:
-            raise ValueError(f"source_url is required for {dto.type.value.lower()} ingestion")
+            raise DocumentValidationException(f"source_url is required for {dto.type.value.lower()} ingestion")
         if dto.type in (DocumentType.PDF, DocumentType.AUDIO, DocumentType.IMAGE) and not dto.file_path:
-            raise ValueError(f"file_path is required for {dto.type.value} ingestion")
+            raise DocumentValidationException(f"file_path is required for {dto.type.value} ingestion")
 
         document = DocumentEntity.create(
             id=uuid.uuid4(),

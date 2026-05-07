@@ -3,13 +3,19 @@ from uuid import UUID
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, File, Form, Request, UploadFile, status
 
-from src.application.dtos.ingestion_dtos import IngestDocumentDTO
+from src.application.dtos.document_dtos import DocumentDTO
 from src.application.ports.ingestion.file_storage import IFileStorage
 from src.application.use_cases.documents.get_document_status_use_case import GetDocumentStatusUseCase
 from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
 from src.core.metrics import metrics_registry
 from src.domain.value_objects.document_type import DocumentType
 from src.presentation.dependencies.auth import CurrentUser
+from src.presentation.mappers.document_mapper import to_document_response, to_document_status_response
+from src.presentation.mappers.document_request_mapper import (
+    to_ingest_document_dto,
+    to_ingest_text_document_dto,
+    to_uploaded_ingest_document_dto,
+)
 from src.presentation.middleware.rate_limit import limiter
 from src.presentation.schemas.document import (
     DocumentResponse,
@@ -41,25 +47,13 @@ async def ingest_document(
         "Latency of ingestion HTTP requests in seconds.",
         labels={"endpoint": "ingest_document"},
     ):
-        result = await use_case(
-            IngestDocumentDTO(
-                user_id=current_user.id,
-                title=body.title,
-                type=body.type,
-                collection_id=body.collection_id,
-                source_url=body.source_url,
-                file_path=body.file_path,
-                file_size_bytes=body.file_size_bytes,
-                raw_content=body.raw_content,
-                language=body.language,
-            )
-        )
+        result = await use_case(to_ingest_document_dto(body, current_user.id))
     metrics_registry.inc_counter(
         "cortex_http_requests_total",
         "HTTP requests handled by selected endpoints.",
         labels={"endpoint": "ingest_document", "method": "POST", "status": "202"},
     )
-    return DocumentResponse.from_dto(result)
+    return to_document_response(result)
 
 
 @router.post(
@@ -79,34 +73,20 @@ async def ingest_pdf_document(
     collection_id: UUID | None = Form(default=None),
     language: str | None = Form(default=None),
 ) -> DocumentResponse:
-    content = await file.read()
-    stored_file = await file_storage.save_document_file(
-        user_id=current_user.id,
-        filename=file.filename or "upload.pdf",
-        content=content,
+    result = await _ingest_uploaded_file(
+        current_user=current_user,
+        use_case=use_case,
+        file_storage=file_storage,
+        file=file,
+        title=title,
+        collection_id=collection_id,
+        language=language,
+        document_type=DocumentType.PDF,
+        fallback_filename="upload.pdf",
+        default_title="Uploaded PDF",
+        endpoint="ingest_pdf_document",
     )
-    with metrics_registry.timer(
-        "cortex_ingestion_latency_seconds",
-        "Latency of ingestion HTTP requests in seconds.",
-        labels={"endpoint": "ingest_pdf_document"},
-    ):
-        result = await use_case(
-            IngestDocumentDTO(
-                user_id=current_user.id,
-                title=title or file.filename or "Uploaded PDF",
-                type=DocumentType.PDF,
-                collection_id=collection_id,
-                file_path=stored_file.path,
-                file_size_bytes=stored_file.size_bytes,
-                language=language,
-            )
-        )
-    metrics_registry.inc_counter(
-        "cortex_http_requests_total",
-        "HTTP requests handled by selected endpoints.",
-        labels={"endpoint": "ingest_pdf_document", "method": "POST", "status": "202"},
-    )
-    return DocumentResponse.from_dto(result)
+    return to_document_response(result)
 
 
 @router.post(
@@ -126,34 +106,20 @@ async def ingest_audio_document(
     collection_id: UUID | None = Form(default=None),
     language: str | None = Form(default=None),
 ) -> DocumentResponse:
-    content = await file.read()
-    stored_file = await file_storage.save_document_file(
-        user_id=current_user.id,
-        filename=file.filename or "upload.audio",
-        content=content,
+    result = await _ingest_uploaded_file(
+        current_user=current_user,
+        use_case=use_case,
+        file_storage=file_storage,
+        file=file,
+        title=title,
+        collection_id=collection_id,
+        language=language,
+        document_type=DocumentType.AUDIO,
+        fallback_filename="upload.audio",
+        default_title="Uploaded Audio",
+        endpoint="ingest_audio_document",
     )
-    with metrics_registry.timer(
-        "cortex_ingestion_latency_seconds",
-        "Latency of ingestion HTTP requests in seconds.",
-        labels={"endpoint": "ingest_audio_document"},
-    ):
-        result = await use_case(
-            IngestDocumentDTO(
-                user_id=current_user.id,
-                title=title or file.filename or "Uploaded Audio",
-                type=DocumentType.AUDIO,
-                collection_id=collection_id,
-                file_path=stored_file.path,
-                file_size_bytes=stored_file.size_bytes,
-                language=language,
-            )
-        )
-    metrics_registry.inc_counter(
-        "cortex_http_requests_total",
-        "HTTP requests handled by selected endpoints.",
-        labels={"endpoint": "ingest_audio_document", "method": "POST", "status": "202"},
-    )
-    return DocumentResponse.from_dto(result)
+    return to_document_response(result)
 
 
 @router.post(
@@ -173,34 +139,20 @@ async def ingest_image_document(
     collection_id: UUID | None = Form(default=None),
     language: str | None = Form(default=None),
 ) -> DocumentResponse:
-    content = await file.read()
-    stored_file = await file_storage.save_document_file(
-        user_id=current_user.id,
-        filename=file.filename or "upload.image",
-        content=content,
+    result = await _ingest_uploaded_file(
+        current_user=current_user,
+        use_case=use_case,
+        file_storage=file_storage,
+        file=file,
+        title=title,
+        collection_id=collection_id,
+        language=language,
+        document_type=DocumentType.IMAGE,
+        fallback_filename="upload.image",
+        default_title="Uploaded Image",
+        endpoint="ingest_image_document",
     )
-    with metrics_registry.timer(
-        "cortex_ingestion_latency_seconds",
-        "Latency of ingestion HTTP requests in seconds.",
-        labels={"endpoint": "ingest_image_document"},
-    ):
-        result = await use_case(
-            IngestDocumentDTO(
-                user_id=current_user.id,
-                title=title or file.filename or "Uploaded Image",
-                type=DocumentType.IMAGE,
-                collection_id=collection_id,
-                file_path=stored_file.path,
-                file_size_bytes=stored_file.size_bytes,
-                language=language,
-            )
-        )
-    metrics_registry.inc_counter(
-        "cortex_http_requests_total",
-        "HTTP requests handled by selected endpoints.",
-        labels={"endpoint": "ingest_image_document", "method": "POST", "status": "202"},
-    )
-    return DocumentResponse.from_dto(result)
+    return to_document_response(result)
 
 
 @router.post(
@@ -220,23 +172,13 @@ async def ingest_text_document(
         "Latency of ingestion HTTP requests in seconds.",
         labels={"endpoint": "ingest_text_document"},
     ):
-        result = await use_case(
-            IngestDocumentDTO(
-                user_id=current_user.id,
-                title=body.title,
-                type=body.type,
-                collection_id=body.collection_id,
-                source_url=body.source_url,
-                raw_content=body.raw_text,
-                language=body.language,
-            )
-        )
+        result = await use_case(to_ingest_text_document_dto(body, current_user.id))
     metrics_registry.inc_counter(
         "cortex_http_requests_total",
         "HTTP requests handled by selected endpoints.",
         labels={"endpoint": "ingest_text_document", "method": "POST", "status": "202"},
     )
-    return DocumentResponse.from_dto(result)
+    return to_document_response(result)
 
 
 @router.get("/documents/{document_id}/status", response_model=DocumentStatusResponse)
@@ -247,4 +189,48 @@ async def get_document_status(
     use_case: FromDishka[GetDocumentStatusUseCase],
 ) -> DocumentStatusResponse:
     result = await use_case(document_id, current_user.id)
-    return DocumentStatusResponse.from_dto(result)
+    return to_document_status_response(result)
+
+
+async def _ingest_uploaded_file(
+    *,
+    current_user: CurrentUser,
+    use_case: IngestDocumentUseCase,
+    file_storage: IFileStorage,
+    file: UploadFile,
+    title: str | None,
+    collection_id: UUID | None,
+    language: str | None,
+    document_type: DocumentType,
+    fallback_filename: str,
+    default_title: str,
+    endpoint: str,
+) -> DocumentDTO:
+    content = await file.read()
+    stored_file = await file_storage.save_document_file(
+        user_id=current_user.id,
+        filename=file.filename or fallback_filename,
+        content=content,
+    )
+    with metrics_registry.timer(
+        "cortex_ingestion_latency_seconds",
+        "Latency of ingestion HTTP requests in seconds.",
+        labels={"endpoint": endpoint},
+    ):
+        result = await use_case(
+            to_uploaded_ingest_document_dto(
+                user_id=current_user.id,
+                title=title or file.filename or default_title,
+                document_type=document_type,
+                collection_id=collection_id,
+                file_path=stored_file.path,
+                file_size_bytes=stored_file.size_bytes,
+                language=language,
+            )
+        )
+    metrics_registry.inc_counter(
+        "cortex_http_requests_total",
+        "HTTP requests handled by selected endpoints.",
+        labels={"endpoint": endpoint, "method": "POST", "status": "202"},
+    )
+    return result

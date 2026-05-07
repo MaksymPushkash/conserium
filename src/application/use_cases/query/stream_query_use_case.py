@@ -11,6 +11,7 @@ from src.application.dtos.evaluation_dtos import QueryEvaluationRecordDTO
 from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStreamEventType
 from src.application.use_cases.query.query_use_case import _refrag_context_payload, _source_payload, _title_from_query
 from src.core.config import settings
+from src.domain.exceptions import QueryProcessingException
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping
@@ -72,7 +73,7 @@ class StreamQueryUseCase:
                 )
             )
             if state.refrag_context is None:
-                raise ValueError("query graph did not produce refrag_context")
+                raise QueryProcessingException("query graph did not produce refrag_context")
 
             yield QueryStreamEventDTO(
                 event=QueryStreamEventType.METADATA,
@@ -170,7 +171,7 @@ class StreamQueryUseCase:
             latency_ms = int((perf_counter() - started_at) * 1000)
             await self._record_query(dto, query, state, latency_ms)
             if state.refrag_context is None:
-                raise ValueError("query graph did not produce refrag_context")
+                raise QueryProcessingException("query graph did not produce refrag_context")
             await self._record_chat_messages(
                 conversation_id=conversation_id,
                 query=query,

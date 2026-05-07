@@ -42,6 +42,7 @@ htmlcov/
 *.out
 
 # Environment and local secrets
+.env.prod
 .env
 .env.*
 !.env.example
@@ -71,6 +72,7 @@ Desktop.ini
 # Docker overrides and local compose files
 docker-compose.override.yaml
 docker-compose.local.yaml
+docker-compose.dev.yaml
 
 # Misc
 .notes.txt

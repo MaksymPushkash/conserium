@@ -22,6 +22,7 @@ from src.application.services.refrag.heuristic_context_builder import HeuristicR
 from src.application.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
 from src.application.use_cases.query.query_use_case import QueryUseCase
 from src.domain.entities.chunk_entity import ChunkEntity
+from src.domain.exceptions import QueryValidationException
 from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
@@ -228,5 +229,5 @@ async def test_query_use_case_rejects_blank_query() -> None:
         _as_uow(_FakeUnitOfWork(_FakeChunkRepository([]))),
     )
 
-    with pytest.raises(ValueError, match="query cannot be empty"):
+    with pytest.raises(QueryValidationException, match="query cannot be empty"):
         await use_case(QueryDTO(user_id=uuid.uuid4(), query="  "))
