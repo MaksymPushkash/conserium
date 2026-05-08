@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -21,6 +21,17 @@ async def test_openai_embedding_provider_requires_api_key() -> None:
 
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
             await provider.embed_texts(["hello"])
+
+
+async def test_openai_embedding_provider_closes_client() -> None:
+    provider = OpenAIEmbeddingProvider()
+    client = AsyncMock()
+    provider._client = client
+
+    await provider.aclose()
+
+    client.close.assert_awaited_once()
+    assert provider._client is None
 
 
 def test_startup_validation_rejects_mismatched_embedding_dimensions() -> None:

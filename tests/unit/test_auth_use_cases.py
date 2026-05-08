@@ -3,7 +3,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.application.dtos.auth_dtos import LoginDTO, RefreshDTO, RegisterDTO
+from src.application.dtos.auth_dtos import CompleteOAuthLoginDTO, LoginDTO, OAuthProfileDTO, RefreshDTO, RegisterDTO
+from src.application.ports.auth.oauth_provider import IOAuthProviderClient
+from src.application.use_cases.auth.complete_oauth_login_use_case import CompleteOAuthLoginUseCase
 from src.application.use_cases.auth.login_use_case import LoginUserUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.use_cases.auth.register_use_case import RegisterUserUseCase
@@ -69,6 +71,17 @@ def _make_user_entity(*, is_active: bool = True) -> UserEntity:
         created_at=datetime.now(UTC),
         updated_at=None,
     )
+
+
+class _FakeOAuthProvider(IOAuthProviderClient):
+    def __init__(self, profile: OAuthProfileDTO) -> None:
+        self.profile = profile
+
+    def authorization_url(self, *, redirect_uri: str, state: str) -> str:
+        return f"https://provider.example/auth?redirect_uri={redirect_uri}&state={state}"
+
+    async def fetch_user_profile(self, *, code: str, redirect_uri: str) -> OAuthProfileDTO:
+        return self.profile
 
 
 class TestRegisterUserUseCase:
@@ -207,6 +220,79 @@ class TestLoginUserUseCase:
         )
         with pytest.raises(UserInactiveException):
             await use_case(LoginDTO(email="user@example.com", password="password"))
+
+
+class TestCompleteOAuthLoginUseCase:
+    async def test_creates_user_and_issues_tokens(
+        self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache
+    ):
+        mock_uow.user_repo.get_by_email.return_value = None
+        provider = _FakeOAuthProvider(OAuthProfileDTO(email="oauth@example.com", display_name="OAuth User"))
+
+        use_case = CompleteOAuthLoginUseCase(
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
+            refresh_token_ttl_seconds=REFRESH_TTL,
+        )
+        result = await use_case(
+            CompleteOAuthLoginDTO(code="oauth-code", redirect_uri="https://api.example/callback"),
+            provider,
+        )
+
+        assert result.access_token == "access-token-123"
+        assert result.refresh_token == "refresh-token-456"
+        mock_uow.user_repo.get_by_email.assert_awaited_once_with("oauth@example.com")
+        mock_uow.user_repo.create.assert_awaited_once()
+        mock_uow.commit.assert_awaited_once()
+        mock_password_hasher.hash.assert_called_once()
+        mock_cache.set.assert_awaited_once()
+
+    async def test_existing_user_issues_tokens_without_creating_user(
+        self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache
+    ):
+        existing_user = _make_user_entity()
+        mock_uow.user_repo.get_by_email.return_value = existing_user
+        provider = _FakeOAuthProvider(OAuthProfileDTO(email="user@example.com", display_name="OAuth User"))
+
+        use_case = CompleteOAuthLoginUseCase(
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
+            refresh_token_ttl_seconds=REFRESH_TTL,
+        )
+        result = await use_case(
+            CompleteOAuthLoginDTO(code="oauth-code", redirect_uri="https://api.example/callback"),
+            provider,
+        )
+
+        assert result.access_token == "access-token-123"
+        mock_uow.user_repo.create.assert_not_awaited()
+        mock_uow.commit.assert_not_awaited()
+        mock_password_hasher.hash.assert_not_called()
+        mock_cache.set.assert_awaited_once()
+
+    async def test_inactive_existing_user_raises(
+        self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache
+    ):
+        mock_uow.user_repo.get_by_email.return_value = _make_user_entity(is_active=False)
+        provider = _FakeOAuthProvider(OAuthProfileDTO(email="user@example.com", display_name="OAuth User"))
+
+        use_case = CompleteOAuthLoginUseCase(
+            mock_uow,
+            mock_password_hasher,
+            mock_jwt_service,
+            mock_cache,
+            refresh_token_ttl_seconds=REFRESH_TTL,
+        )
+
+        with pytest.raises(UserInactiveException):
+            await use_case(
+                CompleteOAuthLoginDTO(code="oauth-code", redirect_uri="https://api.example/callback"),
+                provider,
+            )
 
 
 class TestRefreshTokenUseCase:

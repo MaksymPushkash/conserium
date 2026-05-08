@@ -41,7 +41,7 @@ def _transcribe_audio_bytes(data: bytes, *, model_name: str, filename: str) -> s
         from transformers import pipeline
     except ImportError as exc:
         raise RuntimeError(
-            "transformers is required for audio ingestion on the hf_processing worker."
+            "transformers is required for audio ingestion on the media_processing worker."
         ) from exc
 
     suffix = _file_suffix(filename)

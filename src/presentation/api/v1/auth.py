@@ -1,44 +1,35 @@
 import secrets
-import uuid
-from urllib.parse import urlencode
 
-from authlib.integrations.httpx_client import AsyncOAuth2Client
 from dishka.integrations.fastapi import FromDishka, inject
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from src.application.dtos.auth_dtos import (
-    LoginDTO,
-    RefreshDTO,
-    RegisterDTO,
-    TokenResponseDTO,
-)
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.cache.cache import ICache
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
+from src.application.ports.auth.oauth_provider import IOAuthProviderClient
+from src.application.use_cases.auth.complete_oauth_login_use_case import CompleteOAuthLoginUseCase
 from src.application.use_cases.auth.login_use_case import LoginUserUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.use_cases.auth.register_use_case import RegisterUserUseCase
-from src.core.config import settings
+from src.domain.exceptions import InvalidTokenException, OAuthAuthenticationException, UserInactiveException
+from src.infrastructure.auth.oauth_clients import GithubOAuthClient, GoogleOAuthClient
+from src.presentation.mappers.auth_mapper import to_token_response
+from src.presentation.mappers.auth_request_mapper import (
+    to_complete_oauth_login_dto,
+    to_login_dto,
+    to_refresh_dto,
+    to_register_dto,
+)
+from src.presentation.oauth_redirects import (
+    OAUTH_REFRESH_COOKIE,
+    OAUTH_STATE_COOKIE,
+    build_callback_uri,
+    build_frontend_error_redirect,
+    build_frontend_token_redirect,
+    set_oauth_refresh_cookie,
+    set_oauth_state_cookie,
+)
 from src.presentation.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-def _build_redirect_uri(request: Request, path: str) -> str:
-    base = str(request.base_url).rstrip("/").replace("http://", "https://")
-    return f"{base}{path}"
-
-
-def _build_frontend_redirect(access_token: str, refresh_token: str) -> str:
-    return f"{settings.FRONTEND_URL}/auth/callback?access_token={access_token}&refresh_token={refresh_token}"
-
-
-async def _issue_tokens_for_user(user_id: uuid.UUID, jwt_service: IJWTService, cache: ICache) -> TokenResponse:
-    access = jwt_service.generate_access_token(user_id)
-    refresh = jwt_service.generate_refresh_token(user_id)
-    await cache.set(key=f"refresh:{refresh}", value=str(user_id), ttl=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600)
-    return TokenResponse(access_token=access, refresh_token=refresh)
 
 
 @router.post(
@@ -51,18 +42,8 @@ async def register(
     body: RegisterRequest,
     use_case: FromDishka[RegisterUserUseCase],
 ) -> TokenResponse:
-    result: TokenResponseDTO = await use_case(
-        RegisterDTO(
-            email=body.email,
-            password=body.password,
-            display_name=body.display_name,
-        )
-    )
-
-    return TokenResponse(
-        access_token=result.access_token,
-        refresh_token=result.refresh_token,
-    )
+    result = await use_case(to_register_dto(body))
+    return to_token_response(result)
 
 
 @router.post(
@@ -75,17 +56,8 @@ async def login(
     body: LoginRequest,
     use_case: FromDishka[LoginUserUseCase],
 ) -> TokenResponse:
-    result: TokenResponseDTO = await use_case(
-        LoginDTO(
-            email=body.email,
-            password=body.password,
-        )
-    )
-
-    return TokenResponse(
-        access_token=result.access_token,
-        refresh_token=result.refresh_token,
-    )
+    result = await use_case(to_login_dto(body))
+    return to_token_response(result)
 
 
 @router.post(
@@ -95,169 +67,109 @@ async def login(
 )
 @inject
 async def refresh(
-    body: RefreshRequest,
+    request: Request,
+    response: Response,
     use_case: FromDishka[RefreshTokenUseCase],
+    body: RefreshRequest | None = None,
 ) -> TokenResponse:
-    result: TokenResponseDTO = await use_case(RefreshDTO(refresh_token=body.refresh_token))
-
-    return TokenResponse(
-        access_token=result.access_token,
-        refresh_token=result.refresh_token,
-    )
+    refresh_token = (body.refresh_token if body else None) or request.cookies.get(OAUTH_REFRESH_COOKIE)
+    if refresh_token is None:
+        raise InvalidTokenException("refresh token invalid")
+    result = await use_case(to_refresh_dto(refresh_token))
+    set_oauth_refresh_cookie(response, request, result.refresh_token)
+    return to_token_response(result)
 
 
 @router.get("/google")
-async def google_start(request: Request) -> RedirectResponse:
-    state = secrets.token_urlsafe(32)
-    params = {
-        "client_id": settings.GOOGLE_CLIENT_ID,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "redirect_uri": _build_redirect_uri(request, "/api/v1/auth/google/callback"),
-        "state": state,
-        "access_type": "offline",
-        "prompt": "consent",
-    }
-    url = "https://accounts.google.com/o/oauth2/v2/auth"
-    redirect = f"{url}?{urlencode(params)}"
-    response = RedirectResponse(redirect, status_code=307)
-    response.set_cookie(
-        key="oauth_state",
-        value=state,
-        max_age=300,
-        httponly=True,
-        secure=_oauth_cookie_secure(request),
-        samesite="lax",
-    )
-    return response
+@inject
+async def google_start(
+    request: Request,
+    provider: FromDishka[GoogleOAuthClient],
+) -> RedirectResponse:
+    return _start_oauth(request, provider, "/api/v1/auth/google/callback")
 
 
 @router.get("/google/callback")
 @inject
 async def google_callback(
     request: Request,
-    uow: FromDishka[IUnitOfWork],
-    register_use_case: FromDishka[RegisterUserUseCase],
-    jwt_service: FromDishka[IJWTService],
-    cache: FromDishka[ICache],
+    provider: FromDishka[GoogleOAuthClient],
+    use_case: FromDishka[CompleteOAuthLoginUseCase],
 ) -> RedirectResponse:
-    code = request.query_params.get("code")
-    state = request.query_params.get("state")
-    cookie_state = request.cookies.get("oauth_state")
-
-    if not code:
-        return RedirectResponse(f"{settings.FRONTEND_URL}/auth?error=missing_code", status_code=302)
-    if not state or not cookie_state or state != cookie_state:
-        return RedirectResponse(f"{settings.FRONTEND_URL}/auth?error=invalid_state", status_code=302)
-
-    token_url = "https://oauth2.googleapis.com/token"
-    redirect_uri = _build_redirect_uri(request, "/api/v1/auth/google/callback")
-    async with AsyncOAuth2Client(client_id=settings.GOOGLE_CLIENT_ID, client_secret=settings.GOOGLE_CLIENT_SECRET) as client:
-        await client.fetch_token(
-            token_url,
-            code=code,
-            redirect_uri=redirect_uri,
-        )
-        userinfo = await client.get("https://www.googleapis.com/oauth2/v3/userinfo")
-        info = userinfo.json()
-
-    email = info.get("email")
-    name = info.get("name") or info.get("email")
-    if not email:
-        return RedirectResponse(f"{settings.FRONTEND_URL}/auth?error=no_email", status_code=302)
-
-    async with uow:
-        existing = await uow.user_repo.get_by_email(email)
-        if existing is None:
-            random_pw = uuid.uuid4().hex
-            result = await register_use_case(RegisterDTO(email=email, password=random_pw, display_name=name))
-            redirect_url = _build_frontend_redirect(result.access_token, result.refresh_token)
-        else:
-            tokens = await _issue_tokens_for_user(existing.id, jwt_service, cache)
-            redirect_url = _build_frontend_redirect(tokens.access_token, tokens.refresh_token)
-
-    response = RedirectResponse(url=redirect_url, status_code=302)
-    response.delete_cookie("oauth_state")
-    return response
+    return await _complete_oauth(
+        request=request,
+        provider=provider,
+        use_case=use_case,
+        callback_path="/api/v1/auth/google/callback",
+    )
 
 
 @router.get("/github")
-async def github_start(request: Request) -> RedirectResponse:
-    state = secrets.token_urlsafe(32)
-    params = {
-        "client_id": settings.GITHUB_CLIENT_ID,
-        "scope": "user:email",
-        "state": state,
-        "redirect_uri": _build_redirect_uri(request, "/api/v1/auth/github/callback"),
-    }
-    url = "https://github.com/login/oauth/authorize"
-    redirect = f"{url}?{urlencode(params)}"
-    response = RedirectResponse(redirect, status_code=307)
-    response.set_cookie(
-        key="oauth_state",
-        value=state,
-        max_age=300,
-        httponly=True,
-        secure=_oauth_cookie_secure(request),
-        samesite="lax",
-    )
-    return response
+@inject
+async def github_start(
+    request: Request,
+    provider: FromDishka[GithubOAuthClient],
+) -> RedirectResponse:
+    return _start_oauth(request, provider, "/api/v1/auth/github/callback")
 
 
 @router.get("/github/callback")
 @inject
 async def github_callback(
     request: Request,
-    uow: FromDishka[IUnitOfWork],
-    register_use_case: FromDishka[RegisterUserUseCase],
-    jwt_service: FromDishka[IJWTService],
-    cache: FromDishka[ICache],
+    provider: FromDishka[GithubOAuthClient],
+    use_case: FromDishka[CompleteOAuthLoginUseCase],
 ) -> RedirectResponse:
-    code = request.query_params.get("code")
-    state = request.query_params.get("state")
-    cookie_state = request.cookies.get("oauth_state")
+    return await _complete_oauth(
+        request=request,
+        provider=provider,
+        use_case=use_case,
+        callback_path="/api/v1/auth/github/callback",
+    )
 
-    if not code:
-        return RedirectResponse(f"{settings.FRONTEND_URL}/auth?error=missing_code", status_code=302)
-    if not state or not cookie_state or state != cookie_state:
-        return RedirectResponse(f"{settings.FRONTEND_URL}/auth?error=invalid_state", status_code=302)
 
-    token_url = "https://github.com/login/oauth/access_token"
-    async with AsyncOAuth2Client(client_id=settings.GITHUB_CLIENT_ID, client_secret=settings.GITHUB_CLIENT_SECRET) as client:
-        token_data = await client.fetch_token(token_url, code=code)
-        access_token = token_data.get("access_token")
-        if not access_token:
-            return RedirectResponse(f"{settings.FRONTEND_URL}/auth?error=no_access_token", status_code=302)
-
-        user_resp = await client.get("https://api.github.com/user")
-        user_info = user_resp.json()
-
-        email = user_info.get("email")
-        if not email:
-            emails_resp = await client.get("https://api.github.com/user/emails")
-            emails = emails_resp.json()
-            primary = next((e for e in emails if e.get("primary") and e.get("verified")), None)
-            email = primary.get("email") if primary else (emails[0].get("email") if emails else None)
-
-    if not email:
-        return RedirectResponse(f"{settings.FRONTEND_URL}/auth?error=no_email", status_code=302)
-
-    name = user_info.get("name") or email
-
-    async with uow:
-        existing = await uow.user_repo.get_by_email(email)
-        if existing is None:
-            random_pw = uuid.uuid4().hex
-            result = await register_use_case(RegisterDTO(email=email, password=random_pw, display_name=name))
-            redirect_url = _build_frontend_redirect(result.access_token, result.refresh_token)
-        else:
-            tokens = await _issue_tokens_for_user(existing.id, jwt_service, cache)
-            redirect_url = _build_frontend_redirect(tokens.access_token, tokens.refresh_token)
-
-    response = RedirectResponse(url=redirect_url, status_code=302)
-    response.delete_cookie("oauth_state")
+def _start_oauth(request: Request, provider: IOAuthProviderClient, callback_path: str) -> RedirectResponse:
+    state = secrets.token_urlsafe(32)
+    redirect_uri = build_callback_uri(request, callback_path)
+    response = RedirectResponse(provider.authorization_url(redirect_uri=redirect_uri, state=state), status_code=307)
+    set_oauth_state_cookie(response, request, state)
     return response
 
 
-def _oauth_cookie_secure(request: Request) -> bool:
-    return request.url.scheme == "https" or settings.FRONTEND_URL.startswith("https://")
+async def _complete_oauth(
+    *,
+    request: Request,
+    provider: IOAuthProviderClient,
+    use_case: CompleteOAuthLoginUseCase,
+    callback_path: str,
+) -> RedirectResponse:
+    code = request.query_params.get("code")
+    state = request.query_params.get("state")
+    cookie_state = request.cookies.get(OAUTH_STATE_COOKIE)
+
+    if not code:
+        return RedirectResponse(build_frontend_error_redirect("missing_code"), status_code=302)
+    if not state or not cookie_state or state != cookie_state:
+        return RedirectResponse(build_frontend_error_redirect("invalid_state"), status_code=302)
+
+    try:
+        tokens = await use_case(
+            to_complete_oauth_login_dto(
+                code=code,
+                redirect_uri=build_callback_uri(request, callback_path),
+            ),
+            provider,
+        )
+    except OAuthAuthenticationException as exc:
+        response = RedirectResponse(build_frontend_error_redirect(exc.code), status_code=302)
+        response.delete_cookie(OAUTH_STATE_COOKIE)
+        return response
+    except UserInactiveException:
+        response = RedirectResponse(build_frontend_error_redirect("user_inactive"), status_code=302)
+        response.delete_cookie(OAUTH_STATE_COOKIE)
+        return response
+
+    response = RedirectResponse(url=build_frontend_token_redirect(tokens), status_code=302)
+    set_oauth_refresh_cookie(response, request, tokens.refresh_token)
+    response.delete_cookie(OAUTH_STATE_COOKIE)
+    return response

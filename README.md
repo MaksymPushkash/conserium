@@ -72,7 +72,7 @@ Four separate Celery workers for parallel processing:
 
 - **document_processing** — extract → chunk → tag (general pipeline)
 - **embeddings** — OpenAI API calls (rate-limited)
-- **hf_processing** — CPU-heavy HF models (separate Docker image)
+- **media_processing** — CPU-heavy media/enrichment models (separate Docker image)
 - **cleanup** — periodic maintenance tasks
 
 ---
@@ -226,7 +226,7 @@ Status: **220 tests passing**, mypy clean, ruff clean.
 
 ## Roadmap
 
-- [ ] Managed HF worker (separate VPS)
+- [ ] Managed media worker (separate VPS)
 - [ ] Role-based access (teams)
 - [ ] Audit logs
 - [ ] SaaS pricing
@@ -240,5 +240,4 @@ Status: **220 tests passing**, mypy clean, ruff clean.
 - [Local Development](docs/local-development.md)
 
 ---
-
 

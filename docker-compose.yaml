@@ -73,11 +73,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  worker-hf:
+  worker-media:
     build:
       context: .
-      dockerfile: docker/Dockerfile.celery-hf
-    container_name: cortex_worker_hf
+      dockerfile: docker/Dockerfile.celery-media
+    container_name: cortex_worker_media
     env_file:
       - .env.prod
     environment:
@@ -88,7 +88,7 @@ services:
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=hf_processing", "--concurrency=2"]
+    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=media_processing", "--concurrency=2"]
     depends_on:
       postgres:
         condition: service_healthy

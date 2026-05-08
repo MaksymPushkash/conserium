@@ -1,12 +1,13 @@
 from uuid import UUID
 
 from dishka.integrations.fastapi import FromDishka, inject
-from fastapi import APIRouter, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
 from src.application.dtos.document_dtos import DocumentDTO
 from src.application.ports.ingestion.file_storage import IFileStorage
 from src.application.use_cases.documents.get_document_status_use_case import GetDocumentStatusUseCase
 from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
+from src.core.config import settings
 from src.core.metrics import metrics_registry
 from src.domain.value_objects.document_type import DocumentType
 from src.presentation.dependencies.auth import CurrentUser
@@ -25,6 +26,7 @@ from src.presentation.schemas.document import (
 )
 
 router = APIRouter(tags=["ingestion"])
+UPLOAD_READ_CHUNK_BYTES = 1024 * 1024
 
 
 @router.post(
@@ -206,7 +208,7 @@ async def _ingest_uploaded_file(
     default_title: str,
     endpoint: str,
 ) -> DocumentDTO:
-    content = await file.read()
+    content = await _read_bounded_upload(file)
     stored_file = await file_storage.save_document_file(
         user_id=current_user.id,
         filename=file.filename or fallback_filename,
@@ -234,3 +236,17 @@ async def _ingest_uploaded_file(
         labels={"endpoint": endpoint, "method": "POST", "status": "202"},
     )
     return result
+
+
+async def _read_bounded_upload(file: UploadFile) -> bytes:
+    total = 0
+    chunks: list[bytes] = []
+    while chunk := await file.read(UPLOAD_READ_CHUNK_BYTES):
+        total += len(chunk)
+        if total > settings.MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"uploaded file exceeds maximum size of {settings.MAX_UPLOAD_BYTES} bytes",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)

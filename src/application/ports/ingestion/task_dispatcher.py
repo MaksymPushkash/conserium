@@ -9,11 +9,11 @@ class ITaskDispatcher(ABC):
 
     @abstractmethod
     async def dispatch_process_audio_document(self, document_id: str) -> None:
-        """Enqueue audio transcription/chunking work on the HF worker."""
+        """Enqueue audio transcription/chunking work on the media worker."""
 
     @abstractmethod
     async def dispatch_process_image_document(self, document_id: str) -> None:
-        """Enqueue image OCR/chunking work on the HF worker."""
+        """Enqueue image OCR/chunking work on the media worker."""
 
     @abstractmethod
     async def dispatch_embed_and_finalize_document(
