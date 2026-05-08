@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from math import sqrt
 from typing import TYPE_CHECKING, TypedDict, cast
 
-from src.core.config import settings
+from src.application.services.enrichment.document_embedding_service import DocumentEmbeddingService
+from src.application.services.enrichment.duplicate_detector import DuplicateDetector
+from src.application.services.enrichment.tag_builder import build_auto_tags
 from src.domain.exceptions import DocumentNotFoundException
 
 if TYPE_CHECKING:
@@ -25,15 +26,6 @@ class EnrichmentResult(TypedDict):
     duplicate_of_id: UUID | None
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = sqrt(sum(x * x for x in a))
-    norm_b = sqrt(sum(y * y for y in b))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
 class EnrichmentService:
     def __init__(
         self,
@@ -44,13 +36,13 @@ class EnrichmentService:
         tag_sync: IDocumentTagSync | None = None,
     ) -> None:
         self._uow = uow
-        self._emb = embedding_provider
+        self._document_embedding = DocumentEmbeddingService(uow, embedding_provider)
+        self._duplicate_detector = DuplicateDetector(uow)
         self._ner = ner_provider
         self._clf = classifier_provider
         self._tag_sync = tag_sync
 
     async def enrich_document(self, document_id: UUID) -> EnrichmentResult:
-        # Load document
         async with self._uow:
             doc = await self._uow.document_repo.get_by_id(document_id)
             if doc is None:
@@ -66,36 +58,23 @@ class EnrichmentService:
 
         text = doc.raw_content or ""
 
-        # NER
         if self._ner and text:
             entities: list[EntityDTO] = await self._ner.extract_entities(text)
             result["entities"] = entities
 
-        # classification
         if self._clf and text:
             cats: list[CategoryDTO] = await self._clf.classify(text)
             result["categories"] = cats
 
-        # update document embedding only when it was not already computed in the ingestion pipeline
-        if text and doc.doc_embedding is None:
-            emb = await self._emb.embed_text(text)
-            doc.update_embedding(emb)
+        await self._document_embedding.ensure_embedding(doc)
 
-        # deduplication
-        if doc.doc_embedding is not None:
-            async with self._uow:
-                others = await self._uow.document_repo.get_by_user_id(doc.user_id, limit=50)
-                for other in others:
-                    if other.id == doc.id or other.doc_embedding is None:
-                        continue
-                    sim = _cosine(doc.doc_embedding, other.doc_embedding)
-                    if sim >= getattr(settings, "DEDUPLICATION_SIMILARITY_THRESHOLD", 0.95):
-                        doc.mark_duplicate(other.id)
-                        result["is_duplicate"] = True
-                        result["duplicate_of_id"] = other.id
-                        break
+        duplicate_id = await self._duplicate_detector.find_duplicate(doc)
+        if duplicate_id is not None:
+            doc.mark_duplicate(duplicate_id)
+            result["is_duplicate"] = True
+            result["duplicate_of_id"] = duplicate_id
 
-        tag_names = _build_auto_tags(result["entities"], result["categories"])
+        tag_names = build_auto_tags(result["entities"], result["categories"])
         if self._tag_sync is not None:
             result["tags"] = await self._tag_sync.sync_auto_tags(
                 user_id=doc.user_id,
@@ -116,22 +95,3 @@ class EnrichmentService:
             await self._uow.commit()
 
         return result
-
-
-def _build_auto_tags(
-    entities: list[EntityDTO],
-    categories: list[CategoryDTO],
-) -> list[str]:
-    entity_tags: list[str] = []
-    for entity in entities:
-        entity_text = str(entity.get("text", "")).strip().lower()
-        if 2 <= len(entity_text) <= 40:
-            entity_tags.append(entity_text)
-
-    category_tags = [
-        str(category.get("label", "")).strip().lower()
-        for category in categories
-        if float(category.get("score", 0.0)) >= 0.5 and str(category.get("label", "")).strip()
-    ]
-
-    return list(dict.fromkeys([*category_tags[:3], *entity_tags[:5]]))

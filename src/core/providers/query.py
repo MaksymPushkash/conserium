@@ -59,7 +59,9 @@ class QueryProvider(Provider):
     @provide(scope=Scope.APP)
     def get_reranker(self, embedding_provider: IEmbeddingProvider) -> IReranker:
         fallback = EmbeddingReranker(embedding_provider)
-        return CrossEncoderReranker(fallback=fallback)
+        if settings.RERANKER_BACKEND.lower() in {"cross_encoder", "cross-encoder"}:
+            return CrossEncoderReranker(fallback=fallback)
+        return fallback
 
     @provide(scope=Scope.APP)
     def get_eval_scorer(self) -> IEvalScorer:

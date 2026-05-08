@@ -66,6 +66,7 @@ class Settings(BaseSettings):
 
     # Retrieval reranker
     RERANKER_ENABLED: bool = True
+    RERANKER_BACKEND: str = "embedding"
     RERANKER_TOP_K: int = 10
 
     # Evaluation
@@ -73,6 +74,12 @@ class Settings(BaseSettings):
 
     # Deduplication threshold (cosine similarity)
     DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.95
+
+    # Ingestion limits
+    MAX_UPLOAD_BYTES: int = 50 * 1024 * 1024
+
+    # Enrichment
+    ENRICHMENT_FULL_TEXT_EMBEDDING_MAX_CHARS: int = 12_000
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue]
