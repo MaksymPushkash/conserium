@@ -59,7 +59,7 @@ class ProcessDocumentIngestionUseCase:
             )
             await self._mark_processing(document)
             await self._task_dispatcher.dispatch_process_audio_document(document_id)
-            return ProcessDocumentIngestionResult(document_id=document_id, status="HF_QUEUED")
+            return ProcessDocumentIngestionResult(document_id=document_id, status="MEDIA_QUEUED")
 
         if document.type == DocumentType.IMAGE:
             await self._status_cache.set_status(
@@ -70,7 +70,7 @@ class ProcessDocumentIngestionUseCase:
             )
             await self._mark_processing(document)
             await self._task_dispatcher.dispatch_process_image_document(document_id)
-            return ProcessDocumentIngestionResult(document_id=document_id, status="HF_QUEUED")
+            return ProcessDocumentIngestionResult(document_id=document_id, status="MEDIA_QUEUED")
 
         await self._status_cache.set_status(
             document.id,

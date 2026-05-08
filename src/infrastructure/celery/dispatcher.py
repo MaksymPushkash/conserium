@@ -3,10 +3,10 @@ from typing import Any
 from src.application.ports.ingestion.task_dispatcher import ITaskDispatcher
 from src.infrastructure.celery.app import celery_app
 
-_EMBED_AND_FINALIZE_TASK = "src.infrastructure.celery.tasks.embeddings.embed_and_finalize_document"
-_PROCESS_AUDIO_TASK = "src.infrastructure.celery.tasks.hf_processing.process_audio_document"
-_PROCESS_IMAGE_TASK = "src.infrastructure.celery.tasks.hf_processing.process_image_document"
-_PROCESS_DOCUMENT_TASK = "src.infrastructure.celery.tasks.document_processing.process_document"
+_EMBED_AND_FINALIZE_TASK = "src.infrastructure.celery.tasks.embedding_tasks.embed_and_finalize_document"
+_PROCESS_AUDIO_TASK = "src.infrastructure.celery.tasks.media_processing_tasks.process_audio_document"
+_PROCESS_IMAGE_TASK = "src.infrastructure.celery.tasks.media_processing_tasks.process_image_document"
+_PROCESS_DOCUMENT_TASK = "src.infrastructure.celery.tasks.document_ingestion_task.process_document"
 
 
 class CeleryTaskDispatcher(ITaskDispatcher):
@@ -22,16 +22,16 @@ class CeleryTaskDispatcher(ITaskDispatcher):
         celery_app.send_task(
             _PROCESS_AUDIO_TASK,
             args=[document_id],
-            queue="hf_processing",
-            routing_key="hf_processing",
+            queue="media_processing",
+            routing_key="media_processing",
         )
 
     async def dispatch_process_image_document(self, document_id: str) -> None:
         celery_app.send_task(
             _PROCESS_IMAGE_TASK,
             args=[document_id],
-            queue="hf_processing",
-            routing_key="hf_processing",
+            queue="media_processing",
+            routing_key="media_processing",
         )
 
     async def dispatch_embed_and_finalize_document(

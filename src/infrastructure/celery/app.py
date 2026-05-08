@@ -17,14 +17,14 @@ _cortex_exchange = Exchange("cortex", type="direct", durable=True)
 #                           Concurrency: 4
 # 4. cleanup              — soft-delete sweeps, orphan file removal
 #                           Concurrency: 2
-# 5. hf_processing        — CPU-heavy HuggingFace models
+# 5. media_processing     — CPU-heavy media extraction/enrichment
 #                           Concurrency: 2, separate image
 _QUEUES = (
     Queue("document_processing", _cortex_exchange, routing_key="document_processing", durable=True),
     Queue("embeddings", _cortex_exchange, routing_key="embeddings", durable=True),
     Queue("notifications", _cortex_exchange, routing_key="notifications", durable=True),
     Queue("cleanup", _cortex_exchange, routing_key="cleanup", durable=True),
-    Queue("hf_processing", _cortex_exchange, routing_key="hf_processing", durable=True),
+    Queue("media_processing", _cortex_exchange, routing_key="media_processing", durable=True),
 )
 
 
@@ -33,10 +33,10 @@ celery_app = Celery(
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
-        "src.infrastructure.celery.tasks.document_processing",
-        "src.infrastructure.celery.tasks.embeddings",
-        "src.infrastructure.celery.tasks.enrichment",
-        "src.infrastructure.celery.tasks.hf_processing",
+        "src.infrastructure.celery.tasks.document_ingestion_task",
+        "src.infrastructure.celery.tasks.embedding_tasks",
+        "src.infrastructure.celery.tasks.enrichment_tasks",
+        "src.infrastructure.celery.tasks.media_processing_tasks",
     ],
 )
 
@@ -46,17 +46,17 @@ celery_app.conf.update(
     task_default_exchange="cortex",
     task_default_routing_key="document_processing",
     task_routes={
-        "src.infrastructure.celery.tasks.document_processing.*": {
+        "src.infrastructure.celery.tasks.document_ingestion_task.*": {
             "queue": "document_processing",
         },
-        "src.infrastructure.celery.tasks.embeddings.*": {
+        "src.infrastructure.celery.tasks.embedding_tasks.*": {
             "queue": "embeddings",
         },
-        "src.infrastructure.celery.tasks.hf_processing.*": {
-            "queue": "hf_processing",
+        "src.infrastructure.celery.tasks.media_processing_tasks.*": {
+            "queue": "media_processing",
         },
-        "src.infrastructure.celery.tasks.enrichment.*": {
-            "queue": "hf_processing",
+        "src.infrastructure.celery.tasks.enrichment_tasks.*": {
+            "queue": "media_processing",
         },
     },
 

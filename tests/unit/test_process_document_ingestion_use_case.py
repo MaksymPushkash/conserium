@@ -287,7 +287,7 @@ async def test_process_document_ingestion_use_case_extracts_youtube_content() ->
 
 
 @pytest.mark.asyncio
-async def test_process_document_ingestion_use_case_dispatches_audio_to_hf_worker() -> None:
+async def test_process_document_ingestion_use_case_dispatches_audio_to_media_worker() -> None:
     document = _make_document(document_type=DocumentType.AUDIO, file_path="/tmp/audio.m4a")
     status_cache = _FakeStatusCache()
     task_dispatcher = _FakeTaskDispatcher()
@@ -305,7 +305,7 @@ async def test_process_document_ingestion_use_case_dispatches_audio_to_hf_worker
 
     result = await use_case(str(document.id))
 
-    assert result.status == "HF_QUEUED"
+    assert result.status == "MEDIA_QUEUED"
     assert document.status == DocumentStatus.PROCESSING
     assert status_cache.calls == [
         ("PROCESSING", 10, "Queued for audio transcription..."),
@@ -315,7 +315,7 @@ async def test_process_document_ingestion_use_case_dispatches_audio_to_hf_worker
 
 
 @pytest.mark.asyncio
-async def test_process_document_ingestion_use_case_dispatches_image_to_hf_worker() -> None:
+async def test_process_document_ingestion_use_case_dispatches_image_to_media_worker() -> None:
     document = _make_document(document_type=DocumentType.IMAGE, file_path="/tmp/image.png")
     status_cache = _FakeStatusCache()
     task_dispatcher = _FakeTaskDispatcher()
@@ -333,7 +333,7 @@ async def test_process_document_ingestion_use_case_dispatches_image_to_hf_worker
 
     result = await use_case(str(document.id))
 
-    assert result.status == "HF_QUEUED"
+    assert result.status == "MEDIA_QUEUED"
     assert document.status == DocumentStatus.PROCESSING
     assert status_cache.calls == [
         ("PROCESSING", 10, "Queued for OCR..."),

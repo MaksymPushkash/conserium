@@ -44,3 +44,10 @@ class OpenAIEmbeddingProvider(IEmbeddingProvider):
             labels={"operation": "embeddings", "status": "success"},
         )
         return [list(item.embedding) for item in response.data]
+
+    async def aclose(self) -> None:
+        if self._client is None:
+            return
+        client = self._client
+        self._client = None
+        await client.close()

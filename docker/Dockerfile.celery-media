@@ -25,4 +25,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY src ./src
 
-CMD ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=hf_processing", "--concurrency=2"]
+CMD ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=media_processing", "--concurrency=2"]
