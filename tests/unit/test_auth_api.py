@@ -8,12 +8,19 @@ from fastapi.testclient import TestClient
 from src.application.dtos.auth_dtos import TokenResponseDTO
 from src.application.ports.auth.jwt_service import IJWTService
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
+from src.application.use_cases.auth.complete_oauth_login_use_case import CompleteOAuthLoginUseCase
 from src.application.use_cases.auth.login_use_case import LoginUserUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.use_cases.auth.register_use_case import RegisterUserUseCase
 from src.domain.entities.user_entity import UserEntity
-from src.domain.exceptions import EmailAlreadyExistsException, InvalidCredentialsException, InvalidTokenException
+from src.domain.exceptions import (
+    EmailAlreadyExistsException,
+    InvalidCredentialsException,
+    InvalidTokenException,
+    OAuthAuthenticationException,
+)
 from src.domain.value_objects.email import Email
+from src.infrastructure.auth.oauth_clients import GoogleOAuthClient
 from src.main import create_app
 
 
@@ -55,6 +62,16 @@ class _RaisingUseCase:
 class _SuccessfulUseCase:
     async def __call__(self, dto: object) -> TokenResponseDTO:
         return TokenResponseDTO(access_token="api-access-token", refresh_token="api-refresh-token")
+
+
+class _SuccessfulOAuthUseCase:
+    async def __call__(self, dto: object, provider: object) -> TokenResponseDTO:
+        return TokenResponseDTO(access_token="oauth-access-token", refresh_token="oauth-refresh-token")
+
+
+class _FailingOAuthUseCase:
+    async def __call__(self, dto: object, provider: object) -> TokenResponseDTO:
+        raise OAuthAuthenticationException("no_email", "oauth provider did not return an email")
 
 
 class _FakeUserRepository:
@@ -165,6 +182,23 @@ def test_refresh_route_returns_token_response_from_injected_use_case() -> None:
         "refresh_token": "api-refresh-token",
         "token_type": "bearer",
     }
+    assert "oauth_refresh_token=api-refresh-token" in response.headers["set-cookie"]
+
+
+def test_refresh_route_accepts_refresh_token_cookie() -> None:
+    use_case = _SuccessfulUseCase()
+    client = _make_client({RefreshTokenUseCase: use_case})
+
+    try:
+        response = client.post(
+            "/api/v1/auth/refresh",
+            cookies={"oauth_refresh_token": "cookie-refresh-token"},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["access_token"] == "api-access-token"
 
 
 def test_get_me_returns_401_for_deleted_user() -> None:
@@ -219,3 +253,98 @@ def test_get_me_returns_401_without_authorization_header() -> None:
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Not authenticated"}
+
+
+def test_google_start_uses_forwarded_origin_and_sets_state_cookie() -> None:
+    client = _make_client(
+        {
+            GoogleOAuthClient: GoogleOAuthClient(client_id="google-client", client_secret="google-secret"),
+        }
+    )
+
+    try:
+        response = client.get(
+            "/api/v1/auth/google",
+            headers={"x-forwarded-proto": "https", "x-forwarded-host": "api.example.com"},
+            follow_redirects=False,
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 307
+    assert "https://accounts.google.com/o/oauth2/v2/auth" in response.headers["location"]
+    assert "redirect_uri=https%3A%2F%2Fapi.example.com%2Fapi%2Fv1%2Fauth%2Fgoogle%2Fcallback" in response.headers[
+        "location"
+    ]
+    assert "oauth_state=" in response.headers["set-cookie"]
+
+
+def test_google_callback_redirects_access_token_in_fragment_and_refresh_token_cookie() -> None:
+    client = _make_client(
+        {
+            GoogleOAuthClient: GoogleOAuthClient(client_id="google-client", client_secret="google-secret"),
+            CompleteOAuthLoginUseCase: _SuccessfulOAuthUseCase(),
+        }
+    )
+
+    try:
+        response = client.get(
+            "/api/v1/auth/google/callback?code=oauth-code&state=state-token",
+            cookies={"oauth_state": "state-token"},
+            follow_redirects=False,
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 302
+    location = response.headers["location"]
+    assert "/auth/callback#" in location
+    assert "?access_token=" not in location
+    assert "access_token=oauth-access-token" in location
+    assert "refresh_token=" not in location
+    set_cookie = response.headers["set-cookie"]
+    assert "oauth_refresh_token=oauth-refresh-token" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "oauth_state=" in set_cookie
+
+
+def test_google_callback_redirects_invalid_state_error() -> None:
+    client = _make_client(
+        {
+            GoogleOAuthClient: GoogleOAuthClient(client_id="google-client", client_secret="google-secret"),
+            CompleteOAuthLoginUseCase: _SuccessfulOAuthUseCase(),
+        }
+    )
+
+    try:
+        response = client.get(
+            "/api/v1/auth/google/callback?code=oauth-code&state=state-token",
+            cookies={"oauth_state": "different-state"},
+            follow_redirects=False,
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 302
+    assert response.headers["location"].endswith("/auth?error=invalid_state")
+
+
+def test_google_callback_redirects_oauth_error_code() -> None:
+    client = _make_client(
+        {
+            GoogleOAuthClient: GoogleOAuthClient(client_id="google-client", client_secret="google-secret"),
+            CompleteOAuthLoginUseCase: _FailingOAuthUseCase(),
+        }
+    )
+
+    try:
+        response = client.get(
+            "/api/v1/auth/google/callback?code=oauth-code&state=state-token",
+            cookies={"oauth_state": "state-token"},
+            follow_redirects=False,
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 302
+    assert response.headers["location"].endswith("/auth?error=no_email")
