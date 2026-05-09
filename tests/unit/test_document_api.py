@@ -5,6 +5,7 @@ from typing import cast
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 
 from src.application.dtos.chat_dtos import ChatDetailDTO, ChatMessageDTO, ChatSessionDTO
 from src.application.dtos.document_dtos import DocumentDTO, DocumentListDTO
@@ -474,7 +475,7 @@ def test_ingest_pdf_document_route_stores_upload_and_queues_document() -> None:
     assert use_case.received_dto is not None
 
 
-def test_ingest_pdf_document_route_rejects_large_upload(monkeypatch) -> None:
+def test_ingest_pdf_document_route_rejects_large_upload(monkeypatch: MonkeyPatch) -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
     use_case = _ReturningUseCase(document)
