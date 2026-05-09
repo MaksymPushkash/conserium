@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from typing import Literal, overload
+import asyncio
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from src.core.config import settings
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -38,7 +42,20 @@ def get_worker_redis(*, decode_responses: bool) -> Redis:
     return Redis.from_url(settings.REDIS_URL, decode_responses=decode_responses)
 
 
+def run_worker_async[T](coro: Coroutine[Any, Any, T]) -> T:
+    async def runner() -> T:
+        try:
+            return await coro
+        finally:
+            await dispose_worker_engine()
+
+    return asyncio.run(runner())
+
+
 async def dispose_worker_engine() -> None:
-    global _engine
-    if _engine is not None:
-        await _engine.dispose()
+    global _engine, _session_factory
+    engine = _engine
+    _engine = None
+    _session_factory = None
+    if engine is not None:
+        await engine.dispose()

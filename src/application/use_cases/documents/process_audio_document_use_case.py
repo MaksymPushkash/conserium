@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from src.domain.exceptions import DocumentValidationException
 from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
@@ -44,9 +45,9 @@ class ProcessAudioDocumentUseCase:
         if document is None:
             return ProcessAudioDocumentResult(document_id=document_id, status="NOT_FOUND")
         if document.type != DocumentType.AUDIO:
-            raise ValueError(f"Document {document.id} is not an AUDIO document")
+            raise DocumentValidationException(f"Document {document.id} is not an AUDIO document")
         if not document.file_path:
-            raise ValueError(f"Document {document.id} is type AUDIO but has no file_path")
+            raise DocumentValidationException(f"Document {document.id} is type AUDIO but has no file_path")
 
         await self._status_cache.set_status(
             document.id,
@@ -74,7 +75,7 @@ class ProcessAudioDocumentUseCase:
         )
         chunks = self._text_chunker.chunk_text(extracted.text)
         if not chunks:
-            raise ValueError("Audio transcription produced no chunks after splitting")
+            raise DocumentValidationException("Audio transcription produced no chunks after splitting")
 
         chunks_data = [
             {

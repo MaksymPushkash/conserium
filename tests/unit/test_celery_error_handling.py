@@ -3,7 +3,7 @@
 from openai import APIConnectionError, APITimeoutError, RateLimitError
 from requests.exceptions import ConnectionError, Timeout  # type: ignore[import-untyped]
 
-from src.domain.exceptions import DomainException
+from src.domain.exceptions import DomainException, ValidationException
 from src.infrastructure.celery.error_handling import classify_error
 
 
@@ -60,12 +60,12 @@ class TestErrorClassification:
         assert is_retryable is False
         assert reason == "domain_error"
 
-    def test_value_error_is_permanent(self) -> None:
-        """ValueError should not be retryable."""
-        exc = ValueError("invalid value")
+    def test_validation_exception_is_permanent(self) -> None:
+        """ValidationException should not be retryable."""
+        exc = ValidationException("invalid value")
         is_retryable, reason = classify_error(exc)
         assert is_retryable is False
-        assert reason == "validation_error"
+        assert reason == "domain_error"
 
     def test_key_error_is_permanent(self) -> None:
         """KeyError should not be retryable."""

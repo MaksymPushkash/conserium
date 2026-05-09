@@ -5,11 +5,12 @@ from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from src.application.dtos.query_dtos import QueryDTO
 from src.application.use_cases.query.query_use_case import QueryUseCase
 from src.application.use_cases.query.stream_query_use_case import StreamQueryUseCase
 from src.core.metrics import metrics_registry
 from src.presentation.dependencies.auth import CurrentUser
+from src.presentation.mappers.query_mapper import to_query_response
+from src.presentation.mappers.query_request_mapper import to_query_dto
 from src.presentation.middleware.rate_limit import limiter
 from src.presentation.schemas.query import QueryRequest, QueryResponse
 from src.presentation.sse import format_sse_event
@@ -31,22 +32,13 @@ async def query_documents(
         "Latency of query execution in seconds.",
         labels={"mode": "sync"},
     ):
-        result = await use_case(
-            QueryDTO(
-                user_id=current_user.id,
-                query=body.query,
-                conversation_id=body.conversation_id,
-                collection_id=body.collection_id,
-                document_types=tuple(body.document_types) if body.document_types else None,
-                limit=body.limit,
-            )
-        )
+        result = await use_case(to_query_dto(body, current_user.id))
     metrics_registry.inc_counter(
         "cortex_http_requests_total",
         "HTTP requests handled by selected endpoints.",
         labels={"endpoint": "query_documents", "method": "POST", "status": "200"},
     )
-    return QueryResponse.from_dto(result)
+    return to_query_response(result)
 
 
 @router.post("/stream")
@@ -61,16 +53,7 @@ async def stream_query_documents(
     async def event_stream() -> AsyncIterator[str]:
         started_at = perf_counter()
         try:
-            async for event in use_case(
-                QueryDTO(
-                    user_id=current_user.id,
-                    query=body.query,
-                    conversation_id=body.conversation_id,
-                    collection_id=body.collection_id,
-                    document_types=tuple(body.document_types) if body.document_types else None,
-                    limit=body.limit,
-                )
-            ):
+            async for event in use_case(to_query_dto(body, current_user.id)):
                 yield format_sse_event(event)
         finally:
             metrics_registry.observe_histogram(

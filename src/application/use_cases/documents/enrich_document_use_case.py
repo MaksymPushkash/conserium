@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from src.domain.exceptions import DocumentNotFoundException
-
 if TYPE_CHECKING:
     from uuid import UUID
 
@@ -15,8 +13,5 @@ class EnrichDocumentUseCase:
         self._enrichment_service = enrichment_service
 
     async def execute(self, document_id: UUID) -> dict[str, object]:
-        try:
-            result = await self._enrichment_service.enrich_document(document_id)
-        except ValueError as exc:
-            raise DocumentNotFoundException(str(exc)) from exc
+        result = await self._enrichment_service.enrich_document(document_id)
         return {**result, "document_id": str(document_id)}

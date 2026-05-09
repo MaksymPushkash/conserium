@@ -10,7 +10,7 @@ from src.application.dtos.chat_dtos import (
     RenameChatDTO,
 )
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.domain.exceptions import DocumentNotFoundException
+from src.domain.exceptions import ChatNotFoundException
 
 
 class CreateChatUseCase:
@@ -46,7 +46,7 @@ class GetChatUseCase:
                 message_limit=dto.message_limit,
             )
         if detail is None:
-            raise DocumentNotFoundException("Chat not found")
+            raise ChatNotFoundException("Chat not found")
         return detail
 
 
@@ -63,7 +63,7 @@ class RenameChatUseCase:
             )
             await self._uow.commit()
         if session is None:
-            raise DocumentNotFoundException("Chat not found")
+            raise ChatNotFoundException("Chat not found")
         return session
 
 

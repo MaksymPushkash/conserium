@@ -7,6 +7,7 @@ import pytest
 
 from src.application.dtos.ingestion_dtos import IngestTextDocumentDTO
 from src.application.use_cases.documents.ingest_text_document_use_case import IngestTextDocumentUseCase
+from src.domain.exceptions import DocumentValidationException
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 from src.infrastructure.text_processing.simple_text_chunker import SimpleTextChunker
@@ -123,5 +124,5 @@ async def test_ingest_text_document_use_case_persists_document_chunks_and_marks_
 async def test_ingest_text_document_use_case_rejects_blank_text() -> None:
     use_case = IngestTextDocumentUseCase(_as_uow(_FakeUnitOfWork()), SimpleTextChunker())
 
-    with pytest.raises(ValueError, match="raw_text cannot be empty"):
+    with pytest.raises(DocumentValidationException, match="raw_text cannot be empty"):
         await use_case(IngestTextDocumentDTO(user_id=uuid.uuid4(), title="Blank", raw_text="  \n"))

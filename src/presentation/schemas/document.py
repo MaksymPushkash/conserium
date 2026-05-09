@@ -3,8 +3,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from src.application.dtos.document_dtos import DocumentDTO, DocumentListDTO
-from src.application.ports.cache.document_status_cache import DocumentStatusDTO
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 
@@ -93,32 +91,6 @@ class DocumentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime | None
 
-    @classmethod
-    def from_dto(cls, dto: DocumentDTO) -> "DocumentResponse":
-        return cls(
-            id=dto.id,
-            user_id=dto.user_id,
-            collection_id=dto.collection_id,
-            title=dto.title,
-            type=dto.type,
-            status=dto.status,
-            source_url=dto.source_url,
-            file_path=dto.file_path,
-            file_size_bytes=dto.file_size_bytes,
-            raw_content=dto.raw_content,
-            summary=dto.summary,
-            word_count=dto.word_count,
-            language=dto.language,
-            entities=dto.entities,
-            categories=dto.categories,
-            visual_metadata=dto.visual_metadata,
-            tags=dto.tags or [],
-            is_duplicate=dto.is_duplicate,
-            duplicate_of_id=dto.duplicate_of_id,
-            created_at=dto.created_at,
-            updated_at=dto.updated_at,
-        )
-
 
 class DocumentListItemResponse(BaseModel):
     id: UUID
@@ -139,28 +111,6 @@ class DocumentListItemResponse(BaseModel):
     created_at: datetime
     updated_at: datetime | None
 
-    @classmethod
-    def from_dto(cls, dto: DocumentDTO) -> "DocumentListItemResponse":
-        return cls(
-            id=dto.id,
-            user_id=dto.user_id,
-            collection_id=dto.collection_id,
-            title=dto.title,
-            type=dto.type,
-            status=dto.status,
-            source_url=dto.source_url,
-            file_path=dto.file_path,
-            file_size_bytes=dto.file_size_bytes,
-            summary=dto.summary,
-            word_count=dto.word_count,
-            language=dto.language,
-            tags=dto.tags or [],
-            is_duplicate=dto.is_duplicate,
-            duplicate_of_id=dto.duplicate_of_id,
-            created_at=dto.created_at,
-            updated_at=dto.updated_at,
-        )
-
 
 class DocumentListResponse(BaseModel):
     items: list[DocumentListItemResponse]
@@ -168,27 +118,9 @@ class DocumentListResponse(BaseModel):
     limit: int
     offset: int
 
-    @classmethod
-    def from_dto(cls, dto: DocumentListDTO) -> "DocumentListResponse":
-        return cls(
-            items=[DocumentListItemResponse.from_dto(item) for item in dto.items],
-            total=dto.total,
-            limit=dto.limit,
-            offset=dto.offset,
-        )
-
 
 class DocumentStatusResponse(BaseModel):
     document_id: UUID
     status: str
     progress: int
     message: str
-
-    @classmethod
-    def from_dto(cls, dto: DocumentStatusDTO) -> "DocumentStatusResponse":
-        return cls(
-            document_id=dto.document_id,
-            status=dto.status,
-            progress=dto.progress,
-            message=dto.message,
-        )

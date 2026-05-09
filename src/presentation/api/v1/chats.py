@@ -3,7 +3,6 @@ from uuid import UUID
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Query, Response, status
 
-from src.application.dtos.chat_dtos import CreateChatDTO, GetChatDTO, ListChatsDTO, RenameChatDTO
 from src.application.use_cases.query.chat_use_cases import (
     CreateChatUseCase,
     DeleteChatUseCase,
@@ -12,6 +11,17 @@ from src.application.use_cases.query.chat_use_cases import (
     RenameChatUseCase,
 )
 from src.presentation.dependencies.auth import CurrentUser
+from src.presentation.mappers.chat_mapper import (
+    to_chat_detail_response,
+    to_chat_list_response,
+    to_chat_session_response,
+)
+from src.presentation.mappers.chat_request_mapper import (
+    to_create_chat_dto,
+    to_get_chat_dto,
+    to_list_chats_dto,
+    to_rename_chat_dto,
+)
 from src.presentation.schemas.chat import (
     ChatDetailResponse,
     ChatListResponse,
@@ -30,8 +40,8 @@ async def create_chat(
     current_user: CurrentUser,
     use_case: FromDishka[CreateChatUseCase],
 ) -> ChatSessionResponse:
-    result = await use_case(CreateChatDTO(user_id=current_user.id, title=body.title))
-    return ChatSessionResponse.from_dto(result)
+    result = await use_case(to_create_chat_dto(body, current_user.id))
+    return to_chat_session_response(result)
 
 
 @router.get("", response_model=ChatListResponse)
@@ -42,8 +52,8 @@ async def list_chats(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> ChatListResponse:
-    result = await use_case(ListChatsDTO(user_id=current_user.id, limit=limit, offset=offset))
-    return ChatListResponse.from_dto(result)
+    result = await use_case(to_list_chats_dto(current_user.id, limit, offset))
+    return to_chat_list_response(result)
 
 
 @router.get("/{chat_id}", response_model=ChatDetailResponse)
@@ -53,8 +63,8 @@ async def get_chat(
     current_user: CurrentUser,
     use_case: FromDishka[GetChatUseCase],
 ) -> ChatDetailResponse:
-    result = await use_case(GetChatDTO(user_id=current_user.id, chat_id=chat_id))
-    return ChatDetailResponse.from_dto(result)
+    result = await use_case(to_get_chat_dto(chat_id, current_user.id))
+    return to_chat_detail_response(result)
 
 
 @router.patch("/{chat_id}", response_model=ChatSessionResponse)
@@ -65,8 +75,8 @@ async def rename_chat(
     current_user: CurrentUser,
     use_case: FromDishka[RenameChatUseCase],
 ) -> ChatSessionResponse:
-    result = await use_case(RenameChatDTO(user_id=current_user.id, chat_id=chat_id, title=body.title))
-    return ChatSessionResponse.from_dto(result)
+    result = await use_case(to_rename_chat_dto(chat_id, body, current_user.id))
+    return to_chat_session_response(result)
 
 
 @router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from src.application.ports.ingestion.content_extractor import ExtractedContent, IContentExtractor
+from src.domain.exceptions import DocumentValidationException
 from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ class ProcessDocumentIngestionUseCase:
             )
             await self._mark_processing(document)
             await self._task_dispatcher.dispatch_process_audio_document(document_id)
-            return ProcessDocumentIngestionResult(document_id=document_id, status="HF_QUEUED")
+            return ProcessDocumentIngestionResult(document_id=document_id, status="MEDIA_QUEUED")
 
         if document.type == DocumentType.IMAGE:
             await self._status_cache.set_status(
@@ -69,7 +70,7 @@ class ProcessDocumentIngestionUseCase:
             )
             await self._mark_processing(document)
             await self._task_dispatcher.dispatch_process_image_document(document_id)
-            return ProcessDocumentIngestionResult(document_id=document_id, status="HF_QUEUED")
+            return ProcessDocumentIngestionResult(document_id=document_id, status="MEDIA_QUEUED")
 
         await self._status_cache.set_status(
             document.id,
@@ -121,21 +122,23 @@ class ProcessDocumentIngestionUseCase:
         if document.type in (DocumentType.TEXT, DocumentType.MARKDOWN):
             if document.raw_content:
                 return ExtractedContent(text=document.raw_content, word_count=len(document.raw_content.split()))
-            raise ValueError(f"Document {document.id} has type {document.type.value} but no raw_content stored")
+            raise DocumentValidationException(
+                f"Document {document.id} has type {document.type.value} but no raw_content stored"
+            )
 
         if document.type == DocumentType.URL:
             if not document.source_url:
-                raise ValueError(f"Document {document.id} is type URL but has no source_url")
+                raise DocumentValidationException(f"Document {document.id} is type URL but has no source_url")
             return await self._url_extractor.extract_from_url(document.source_url)
 
         if document.type == DocumentType.YOUTUBE:
             if not document.source_url:
-                raise ValueError(f"Document {document.id} is type YOUTUBE but has no source_url")
+                raise DocumentValidationException(f"Document {document.id} is type YOUTUBE but has no source_url")
             return await self._youtube_extractor.extract_from_url(document.source_url)
 
         if document.type == DocumentType.PDF:
             if not document.file_path:
-                raise ValueError(f"Document {document.id} is type PDF but has no file_path")
+                raise DocumentValidationException(f"Document {document.id} is type PDF but has no file_path")
             pdf_bytes = await self._file_storage.read_document_file(document.file_path)
             return await self._pdf_extractor.extract_from_bytes(pdf_bytes, filename=document.file_path)
 
@@ -146,7 +149,7 @@ class ProcessDocumentIngestionUseCase:
     def _build_chunks_data(self, extracted: ExtractedContent) -> list[dict[str, int | str | None]]:
         text_chunks = self._text_chunker.chunk_text(extracted.text)
         if not text_chunks:
-            raise ValueError("Text produced no chunks after splitting")
+            raise DocumentValidationException("Text produced no chunks after splitting")
 
         page_ranges = _build_page_ranges(extracted.pages)
         return [

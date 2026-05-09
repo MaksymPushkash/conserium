@@ -42,9 +42,21 @@ htmlcov/
 *.out
 
 # Environment and local secrets
+.env.prod
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+credentials*.json
+service-account*.json
+*_credentials.json
 
 # IDE/editor
 .vscode/
@@ -71,6 +83,7 @@ Desktop.ini
 # Docker overrides and local compose files
 docker-compose.override.yaml
 docker-compose.local.yaml
+docker-compose.dev.yaml
 
 # Misc
 .notes.txt

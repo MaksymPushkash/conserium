@@ -134,7 +134,7 @@ Worker topology:
 
 - `worker-default`: `document_processing`, `notifications`, `cleanup`
 - `worker-embeddings`: `embeddings`
-- `worker-hf`: `hf_processing`
+- `worker-media`: `media_processing`
 
 Useful commands:
 
@@ -143,7 +143,7 @@ docker compose ps
 docker compose logs -f app
 docker compose logs -f worker-default
 docker compose logs -f worker-embeddings
-docker compose logs -f worker-hf
+docker compose logs -f worker-media
 docker compose down
 ```
 
@@ -186,10 +186,10 @@ uv run celery -A src.infrastructure.celery worker --loglevel=INFO --queues=embed
 ```
 
 ```bash
-uv run celery -A src.infrastructure.celery worker --loglevel=INFO --queues=hf_processing --concurrency=2
+uv run celery -A src.infrastructure.celery worker --loglevel=INFO --queues=media_processing --concurrency=2
 ```
 
-For local HF/audio/image work, install the heavier dependencies in the same environment:
+For local media/audio/image work, install the heavier dependencies in the same environment:
 
 ```bash
 uv pip install torch transformers

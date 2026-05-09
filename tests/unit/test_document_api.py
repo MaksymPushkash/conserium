@@ -474,6 +474,29 @@ def test_ingest_pdf_document_route_stores_upload_and_queues_document() -> None:
     assert use_case.received_dto is not None
 
 
+def test_ingest_pdf_document_route_rejects_large_upload(monkeypatch) -> None:
+    user = _make_user()
+    document = _make_document_dto(user_id=user.id)
+    use_case = _ReturningUseCase(document)
+    storage = _FakeFileStorage()
+    client = _make_client(user, {IngestDocumentUseCase: use_case, IFileStorage: storage})
+    monkeypatch.setattr("src.presentation.api.v1.ingestion.settings.MAX_UPLOAD_BYTES", 4)
+
+    try:
+        response = client.post(
+            "/api/v1/documents/ingest/pdf",
+            headers={"Authorization": "Bearer access-token"},
+            data={"title": "Uploaded report", "language": "en"},
+            files={"file": ("report.pdf", b"too-large", "application/pdf")},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 413
+    assert storage.saved_content is None
+    assert use_case.received_dto is None
+
+
 def test_ingest_audio_document_route_stores_upload_and_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)

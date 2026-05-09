@@ -5,7 +5,7 @@ services:
       dockerfile: docker/Dockerfile
     container_name: cortex_app
     env_file:
-      - .env
+      - .env.prod
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
@@ -31,7 +31,7 @@ services:
       dockerfile: docker/Dockerfile.celery
     container_name: cortex_worker_default
     env_file:
-      - .env
+      - .env.prod
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
@@ -40,7 +40,7 @@ services:
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["uv", "run", "celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=document_processing,notifications,cleanup", "--concurrency=4"]
+    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=document_processing,notifications,cleanup", "--concurrency=4"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,14 +56,14 @@ services:
       dockerfile: docker/Dockerfile.celery
     container_name: cortex_worker_embeddings
     env_file:
-      - .env
+      - .env.prod
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
-    command: ["uv", "run", "celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=embeddings", "--concurrency=4"]
+    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=embeddings", "--concurrency=4"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,13 +73,13 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  worker-hf:
+  worker-media:
     build:
       context: .
-      dockerfile: docker/Dockerfile.celery-hf
-    container_name: cortex_worker_hf
+      dockerfile: docker/Dockerfile.celery-media
+    container_name: cortex_worker_media
     env_file:
-      - .env
+      - .env.prod
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
@@ -88,7 +88,7 @@ services:
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["uv", "run", "celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=hf_processing", "--concurrency=2"]
+    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=media_processing", "--concurrency=2"]
     depends_on:
       postgres:
         condition: service_healthy

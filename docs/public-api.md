@@ -18,9 +18,13 @@ Authorization: Bearer <access_token>
 
 ## Health
 
-`GET /`
+`GET /health`
 
 Returns a small service health payload.
+
+`GET /`
+
+Legacy alias for the same health payload.
 
 `GET /metrics`
 
@@ -185,7 +189,7 @@ Multipart form fields:
 - `collection_id`: optional
 - `language`: optional
 
-Audio transcription runs through the `hf_processing` worker.
+Audio transcription runs through the `media_processing` worker.
 
 `POST /api/v1/ingest/image`
 
@@ -196,7 +200,7 @@ Multipart form fields:
 - `collection_id`: optional
 - `language`: optional
 
-Image ingestion runs OCR and structural diagram extraction through the `hf_processing` worker.
+Image ingestion runs OCR and structural diagram extraction through the `media_processing` worker.
 
 `GET /api/v1/documents/{document_id}/status`
 

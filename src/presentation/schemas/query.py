@@ -2,8 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from src.application.dtos.query_dtos import QueryResultDTO, QuerySourceDTO
-from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage, RefragRepresentation
+from src.application.dtos.refrag_dtos import RefragRepresentation
 from src.domain.value_objects.document_type import DocumentType
 
 
@@ -25,19 +24,6 @@ class QuerySourceResponse(BaseModel):
     score: float | None
     citation: str
 
-    @classmethod
-    def from_dto(cls, dto: QuerySourceDTO, index: int) -> "QuerySourceResponse":
-        return cls(
-            chunk_id=dto.chunk_id,
-            document_id=dto.document_id,
-            document_title=dto.document_title,
-            content=dto.content,
-            page_number=dto.page_number,
-            chunk_index=dto.chunk_index,
-            score=dto.score,
-            citation=f"[{index}]",
-        )
-
 
 class RefragChunkResponse(BaseModel):
     chunk_id: UUID
@@ -52,22 +38,6 @@ class RefragChunkResponse(BaseModel):
     context_token_count: int
     citation: str | None
 
-    @classmethod
-    def from_dto(cls, dto: RefragChunk, citation: str | None) -> "RefragChunkResponse":
-        return cls(
-            chunk_id=dto.chunk_id,
-            document_id=dto.document_id,
-            document_title=dto.document_title,
-            representation=dto.representation,
-            page_number=dto.page_number,
-            chunk_index=dto.chunk_index,
-            score=dto.score,
-            context_text=dto.context_text,
-            original_token_count=dto.original_token_count,
-            context_token_count=dto.context_token_count,
-            citation=citation,
-        )
-
 
 class RefragContextResponse(BaseModel):
     full_text_chunks: list[RefragChunkResponse]
@@ -77,27 +47,6 @@ class RefragContextResponse(BaseModel):
     total_context_tokens: int
     compression_strategy: str
 
-    @classmethod
-    def from_dto(cls, dto: RefragContextPackage) -> "RefragContextResponse":
-        full_text_chunks = [
-            RefragChunkResponse.from_dto(chunk, f"[{index}]")
-            for index, chunk in enumerate(dto.full_text_chunks, start=1)
-        ]
-        compressed_start = len(dto.full_text_chunks) + 1
-        compressed_chunks = [
-            RefragChunkResponse.from_dto(chunk, f"[{index}]")
-            for index, chunk in enumerate(dto.compressed_chunks, start=compressed_start)
-        ]
-        discarded_chunks = [RefragChunkResponse.from_dto(chunk, None) for chunk in dto.discarded_chunks]
-        return cls(
-            full_text_chunks=full_text_chunks,
-            compressed_chunks=compressed_chunks,
-            discarded_chunks=discarded_chunks,
-            total_original_tokens=dto.total_original_tokens,
-            total_context_tokens=dto.total_context_tokens,
-            compression_strategy=dto.compression_strategy,
-        )
-
 
 class QueryResponse(BaseModel):
     conversation_id: UUID
@@ -105,13 +54,3 @@ class QueryResponse(BaseModel):
     answer: str
     sources: list[QuerySourceResponse]
     refrag_context: RefragContextResponse
-
-    @classmethod
-    def from_dto(cls, dto: QueryResultDTO) -> "QueryResponse":
-        return cls(
-            conversation_id=dto.conversation_id,
-            query=dto.query,
-            answer=dto.answer,
-            sources=[QuerySourceResponse.from_dto(source, index) for index, source in enumerate(dto.sources, start=1)],
-            refrag_context=RefragContextResponse.from_dto(dto.refrag_context),
-        )

@@ -1,7 +1,9 @@
 FROM python:3.12.10-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PATH="/opt/venv/bin:${PATH}"
 
 WORKDIR /app
 
@@ -19,8 +21,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python .venv/bin/python torch transformers
+    uv pip install --python /opt/venv/bin/python torch transformers
 
 COPY src ./src
 
-CMD ["uv", "run", "celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=hf_processing", "--concurrency=2"]
+CMD ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=media_processing", "--concurrency=2"]

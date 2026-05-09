@@ -54,6 +54,11 @@ class CachedEmbeddingProvider(IEmbeddingProvider):
 
         return [cached_by_index[index] for index in range(len(texts))]
 
+    async def aclose(self) -> None:
+        close = getattr(self._inner, "aclose", None)
+        if callable(close):
+            await close()
+
 
 def _embedding_cache_key(text: str) -> str:
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
