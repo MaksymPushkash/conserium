@@ -153,10 +153,34 @@ docker compose up -d --build
 docker compose exec -T app uv run alembic upgrade head
 ```
 
+### GitHub Actions Deploy
+
+Production deploy runs after `Eval Regression` succeeds on `main`.
+
+Required repository secrets:
+
+- `VPS_HOST`
+- `VPS_USER`
+- `VPS_SSH_PRIVATE_KEY`
+- `VPS_PORT` optional, defaults to `22`
+
+Required repository variable:
+
+- `VPS_APP_DIR` optional, defaults to `/opt/cortex`
+
+The VPS user must be able to run:
+
+```bash
+cd "$VPS_APP_DIR"
+git fetch origin main
+docker compose up -d --build --remove-orphans
+docker compose exec -T app uv run alembic upgrade head
+```
+
 ### Configuration
 
 - **Nginx:** `/etc/nginx/sites-available/api.cortexx.me` (HTTPS + SSE + streaming)
-- **Environment:** `.env.production` in `/opt/cortex/`
+- **Environment:** `.env.prod` in the deployment directory
 - **Observability:** Prometheus `:9090`, Grafana `:3000` (SSH tunnel only)
 
 ### VPS Requirements
@@ -240,4 +264,3 @@ Status: **220 tests passing**, mypy clean, ruff clean.
 - [Local Development](docs/local-development.md)
 
 ---
-

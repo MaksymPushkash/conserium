@@ -32,11 +32,7 @@ from src.presentation.schemas.auth import LoginRequest, RefreshRequest, Register
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post(
-    "/register",
-    response_model=TokenResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @inject
 async def register(
     body: RegisterRequest,
@@ -46,11 +42,7 @@ async def register(
     return to_token_response(result)
 
 
-@router.post(
-    "/login",
-    response_model=TokenResponse,
-    status_code=status.HTTP_200_OK,
-)
+@router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 @inject
 async def login(
     body: LoginRequest,
@@ -60,11 +52,7 @@ async def login(
     return to_token_response(result)
 
 
-@router.post(
-    "/refresh",
-    response_model=TokenResponse,
-    status_code=status.HTTP_200_OK,
-)
+@router.post("/refresh", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 @inject
 async def refresh(
     request: Request,
