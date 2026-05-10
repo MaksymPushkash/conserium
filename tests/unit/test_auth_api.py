@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 
 from src.application.dtos.auth_dtos import TokenResponseDTO
 from src.application.ports.auth.jwt_service import IJWTService
@@ -306,6 +307,33 @@ def test_google_callback_redirects_access_token_in_fragment_and_refresh_token_co
     assert "oauth_refresh_token=oauth-refresh-token" in set_cookie
     assert "HttpOnly" in set_cookie
     assert "oauth_state=" in set_cookie
+
+
+def test_google_callback_can_include_refresh_token_in_fragment_for_legacy_frontend(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.presentation.oauth_redirects.settings.OAUTH_INCLUDE_REFRESH_TOKEN_IN_FRAGMENT",
+        True,
+    )
+    client = _make_client(
+        {
+            GoogleOAuthClient: GoogleOAuthClient(client_id="google-client", client_secret="google-secret"),
+            CompleteOAuthLoginUseCase: _SuccessfulOAuthUseCase(),
+        }
+    )
+
+    try:
+        response = client.get(
+            "/api/v1/auth/google/callback?code=oauth-code&state=state-token",
+            cookies={"oauth_state": "state-token"},
+            follow_redirects=False,
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 302
+    assert "refresh_token=oauth-refresh-token" in response.headers["location"]
 
 
 def test_google_callback_redirects_invalid_state_error() -> None:

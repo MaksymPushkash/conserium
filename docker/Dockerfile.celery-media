@@ -21,7 +21,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /opt/venv/bin/python torch transformers
+    uv pip install --python /opt/venv/bin/python \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python transformers
 
 COPY src ./src
 

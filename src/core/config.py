@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_SECRET: str = ""
 
     FRONTEND_URL: str
+    OAUTH_INCLUDE_REFRESH_TOKEN_IN_FRAGMENT: bool = False
 
     # OCR / Image preprocessing tuning
     OCR_TESSERACT_PSM: str = "3"
