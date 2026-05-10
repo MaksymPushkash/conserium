@@ -23,12 +23,13 @@ def build_frontend_error_redirect(error: str) -> str:
 
 
 def build_frontend_token_redirect(tokens: TokenResponseDTO) -> str:
-    fragment = urlencode(
-        {
-            "access_token": tokens.access_token,
-            "token_type": "bearer",
-        }
-    )
+    fragment_data = {
+        "access_token": tokens.access_token,
+        "token_type": "bearer",
+    }
+    if settings.OAUTH_INCLUDE_REFRESH_TOKEN_IN_FRAGMENT:
+        fragment_data["refresh_token"] = tokens.refresh_token
+    fragment = urlencode(fragment_data)
     return f"{settings.FRONTEND_URL}/auth/callback#{fragment}"
 
 
