@@ -25,9 +25,12 @@ jobs:
       - name: Offline RAGAS-compatible eval
         run: >
           uv run python scripts/run_eval_harness.py
-          --min-faithfulness 0.8
-          --min-answer-relevancy 0.6
-          --min-context-recall 0.6
+          --min-answer-faithfulness 0.8
+          --min-answer-relevance 0.75
+          --min-answer-context-recall 0.75
+          --min-retrieval-hit-rate 0.9
+          --min-retrieval-source-recall 0.75
+          --min-retrieval-mrr 0.75
           --output artifacts/eval-regression-report.json
       - name: Upload eval regression report
         if: always()

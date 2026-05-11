@@ -1,4 +1,5 @@
 """Unit tests for content extractors."""
+
 from __future__ import annotations
 
 import textwrap
@@ -14,8 +15,8 @@ from src.application.ports.ingestion.content_extractor import ExtractedContent
 # ExtractedContent dataclass validation
 # ---------------------------------------------------------------------------
 
-class TestExtractedContent:
 
+class TestExtractedContent:
     def test_valid_content(self) -> None:
         ec = ExtractedContent(text="Hello world", title="Test", word_count=2)
         assert ec.text == "Hello world"
@@ -41,8 +42,8 @@ class TestExtractedContent:
 # PdfExtractor
 # ---------------------------------------------------------------------------
 
-class TestPdfExtractor:
 
+class TestPdfExtractor:
     def _make_fake_pdf_bytes(self) -> bytes:
         """Return minimal valid-looking bytes — we mock pdfplumber, not parse real PDF."""
         return b"%PDF-1.4 fake"
@@ -64,6 +65,7 @@ class TestPdfExtractor:
     @pytest.mark.asyncio
     async def test_extract_single_page(self) -> None:
         from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+
         extractor = PdfExtractor()
         fake_pdf = self._mock_pdf(["Hello world this is page one content here."])
 
@@ -79,6 +81,7 @@ class TestPdfExtractor:
     @pytest.mark.asyncio
     async def test_extract_multi_page(self) -> None:
         from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+
         extractor = PdfExtractor()
         pages = [
             "First page content with enough text here.",
@@ -99,6 +102,7 @@ class TestPdfExtractor:
     @pytest.mark.asyncio
     async def test_blank_pages_skipped(self) -> None:
         from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+
         extractor = PdfExtractor()
         pages = [
             "Real content page with enough characters.",
@@ -116,6 +120,7 @@ class TestPdfExtractor:
     @pytest.mark.asyncio
     async def test_no_text_raises(self) -> None:
         from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+
         extractor = PdfExtractor()
         fake_pdf = self._mock_pdf(["   ", "  \n"])  # all blank
 
@@ -125,6 +130,7 @@ class TestPdfExtractor:
     @pytest.mark.asyncio
     async def test_title_falls_back_to_filename(self) -> None:
         from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+
         extractor = PdfExtractor()
         fake_pdf = self._mock_pdf(["Some real content that is long enough."])
         fake_pdf.metadata = {}  # no Title in metadata
@@ -137,6 +143,7 @@ class TestPdfExtractor:
     @pytest.mark.asyncio
     async def test_extract_from_url_raises(self) -> None:
         from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+
         extractor = PdfExtractor()
         with pytest.raises(NotImplementedError):
             await extractor.extract_from_url("https://example.com/doc.pdf")
@@ -146,8 +153,8 @@ class TestPdfExtractor:
 # UrlExtractor
 # ---------------------------------------------------------------------------
 
-class TestUrlExtractor:
 
+class TestUrlExtractor:
     _SAMPLE_HTML = textwrap.dedent("""\
         <html>
         <head><title>Test Article</title></head>
@@ -166,6 +173,7 @@ class TestUrlExtractor:
     @pytest.mark.asyncio
     async def test_extract_from_bytes_success(self) -> None:
         from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+
         extractor = UrlExtractor()
 
         # Patch trafilatura to return controlled output
@@ -184,6 +192,7 @@ class TestUrlExtractor:
     @pytest.mark.asyncio
     async def test_extract_from_bytes_empty_result_raises(self) -> None:
         from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+
         extractor = UrlExtractor()
 
         with patch("trafilatura.extract", return_value=None), pytest.raises(ValueError, match="could not extract"):
@@ -192,10 +201,14 @@ class TestUrlExtractor:
     @pytest.mark.asyncio
     async def test_extract_from_url_success(self) -> None:
         from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+
         extractor = UrlExtractor()
 
         with (
-            patch("src.infrastructure.ai.extractors.url_extractor._fetch_url_safely", return_value=b"<html><body>Real content here for testing purposes.</body></html>"),
+            patch(
+                "src.infrastructure.ai.extractors.url_extractor._fetch_url_safely",
+                return_value=b"<html><body>Real content here for testing purposes.</body></html>",
+            ),
             patch("trafilatura.extract", return_value="Real content here for testing purposes."),
             patch("trafilatura.extract_metadata") as mock_meta,
         ):
@@ -208,14 +221,22 @@ class TestUrlExtractor:
     @pytest.mark.asyncio
     async def test_fetch_url_failure_raises(self) -> None:
         from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+
         extractor = UrlExtractor()
 
-        with patch("src.infrastructure.ai.extractors.url_extractor._fetch_url_safely", side_effect=ValueError("Failed to download")), pytest.raises(ValueError, match="Failed to download"):
+        with (
+            patch(
+                "src.infrastructure.ai.extractors.url_extractor._fetch_url_safely",
+                side_effect=ValueError("Failed to download"),
+            ),
+            pytest.raises(ValueError, match="Failed to download"),
+        ):
             await extractor.extract_from_url("https://example.com/missing")
 
     @pytest.mark.asyncio
     async def test_extract_from_url_blocks_non_http_scheme(self) -> None:
         from src.infrastructure.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
+
         extractor = UrlExtractor()
 
         with pytest.raises(UnsafeUrlError, match="scheme"):
@@ -224,6 +245,7 @@ class TestUrlExtractor:
     @pytest.mark.asyncio
     async def test_extract_from_url_blocks_private_hosts(self) -> None:
         from src.infrastructure.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
+
         extractor = UrlExtractor()
 
         with (
@@ -268,6 +290,7 @@ class TestUrlExtractor:
     @pytest.mark.asyncio
     async def test_language_truncated_to_10_chars(self) -> None:
         from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+
         extractor = UrlExtractor()
 
         with (
@@ -286,7 +309,6 @@ class TestUrlExtractor:
 
 
 class TestYoutubeExtractor:
-
     @pytest.mark.asyncio
     async def test_extract_from_url_success(self) -> None:
         from src.infrastructure.ai.extractors.youtube_extractor import YoutubeExtractor
@@ -341,35 +363,3 @@ class TestYoutubeExtractor:
         assert _transcript_to_raw_items([_Snippet("Snippet line", 2.0, 3.5)]) == [
             {"text": "Snippet line", "start": 2.0, "duration": 3.5}
         ]
-
-
-# ---------------------------------------------------------------------------
-# AudioExtractor
-# ---------------------------------------------------------------------------
-
-
-class TestAudioExtractor:
-
-    @pytest.mark.asyncio
-    async def test_extract_from_bytes_success(self) -> None:
-        from src.infrastructure.ai.extractors.audio_extractor import AudioExtractor
-
-        extractor = AudioExtractor()
-
-        with patch(
-            "src.infrastructure.ai.extractors.audio_extractor._transcribe_audio_bytes",
-            return_value="transcribed speech from whisper",
-        ):
-            result = await extractor.extract_from_bytes(b"audio-bytes", filename="voice-note.m4a")
-
-        assert result.text == "transcribed speech from whisper"
-        assert result.title == "voice-note"
-        assert result.word_count == 4
-
-    @pytest.mark.asyncio
-    async def test_extract_from_url_raises(self) -> None:
-        from src.infrastructure.ai.extractors.audio_extractor import AudioExtractor
-
-        extractor = AudioExtractor()
-        with pytest.raises(NotImplementedError):
-            await extractor.extract_from_url("https://example.com/audio.mp3")

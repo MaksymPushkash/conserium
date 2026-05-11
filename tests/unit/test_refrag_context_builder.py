@@ -3,6 +3,7 @@ import uuid
 from src.application.dtos.query_dtos import QuerySourceDTO
 from src.application.dtos.refrag_dtos import RefragRepresentation
 from src.application.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
+from src.application.services.retrieval.chunk_quality_filter import ChunkQualityFilter
 
 
 def _source(index: int, *, score: float | None, content: str | None = None) -> QuerySourceDTO:
@@ -10,7 +11,8 @@ def _source(index: int, *, score: float | None, content: str | None = None) -> Q
         chunk_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         document_title=f"Document {index}",
-        content=content or f"Sentence one for chunk {index}. Sentence two for chunk {index}. Sentence three for chunk {index}.",
+        content=content
+        or f"Sentence one for chunk {index}. Sentence two for chunk {index}. Sentence three for chunk {index}.",
         page_number=index,
         chunk_index=index,
         score=score,
@@ -49,10 +51,23 @@ def test_refrag_builder_compresses_to_bounded_sentence_summary() -> None:
         content="First important sentence. Second useful sentence. Third lower priority sentence.",
     )
 
-    package = builder.build_context(query="architecture", sources=[_source(1, score=0.1), _source(2, score=0.1), _source(3, score=0.1), source])
+    package = builder.build_context(
+        query="architecture", sources=[_source(1, score=0.1), _source(2, score=0.1), _source(3, score=0.1), source]
+    )
 
     compressed = package.compressed_chunks[0]
     assert compressed.context_text == "First important sentence. Second useful sentence."
     assert compressed.chunk_id == source.chunk_id
     assert compressed.document_id == source.document_id
     assert compressed.page_number == source.page_number
+
+
+def test_chunk_quality_filter_drops_placeholder_chunks() -> None:
+    sources = [
+        _source(1, score=0.9, content="hello text"),
+        _source(2, score=0.8, content="Clean Architecture keeps dependencies inward across the application layers."),
+    ]
+
+    filtered = ChunkQualityFilter().filter_sources(sources)
+
+    assert [source.chunk_id for source in filtered] == [sources[1].chunk_id]

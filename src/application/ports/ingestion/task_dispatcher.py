@@ -8,10 +8,6 @@ class ITaskDispatcher(ABC):
         """Enqueue the document processing pipeline for the given document ID."""
 
     @abstractmethod
-    async def dispatch_process_audio_document(self, document_id: str) -> None:
-        """Enqueue audio transcription/chunking work on the media worker."""
-
-    @abstractmethod
     async def dispatch_process_image_document(self, document_id: str) -> None:
         """Enqueue image OCR/chunking work on the media worker."""
 

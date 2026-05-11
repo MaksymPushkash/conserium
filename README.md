@@ -1,6 +1,6 @@
 # Cortex
 
-Cortex is a personal knowledge base for indexing and searching your content. Upload PDFs, articles, links, voice. The system chunks content, generates embeddings, indexes them, and answers natural language questions with sources and citations.
+Cortex is a personal knowledge base for indexing and searching your content. Upload PDFs, articles, links. The system chunks content, generates embeddings, indexes them, and answers natural language questions with sources and citations.
 
 **TL;DR:** Personal knowledge base + AI chat with citations.
 
@@ -12,10 +12,10 @@ Cortex is a personal knowledge base for indexing and searching your content. Upl
 ## How It Works
 
 ```
-User → Uploads content (text, PDF, URL, YouTube video URL, audio, image)
+User → Uploads content (text, PDF, URL, YouTube video URL, image)
        ↓
      Asynchronous pipeline (Celery workers)
-       → Extract text (pdfplumber, trafilatura, whisper, tesseract)
+       → Extract text (pdfplumber, trafilatura, tesseract)
        → Split into chunks
        → Generate embeddings (OpenAI)
        → Auto-tagging (HF NER)
@@ -81,7 +81,7 @@ Four separate Celery workers for parallel processing:
 
 1. `POST /ingest` → 202 Accepted with `document_id`
 2. Celery task processes:
-   - Extract text (format-aware: PDF, URL, audio, image)
+   - Extract text (format-aware: PDF, URL, image)
    - Split into chunks (semantic-aware)
    - Batch embed via OpenAI
    - Auto-tag with HF NER
@@ -92,7 +92,6 @@ Four separate Celery workers for parallel processing:
 **Content types:**
 - PDF → pdfplumber
 - URL → trafilatura
-- Audio/voice → OpenAI whisper
 - Images → Tesseract (OCR) or LLaVA (vision)
 - YouTube → transcript API
 

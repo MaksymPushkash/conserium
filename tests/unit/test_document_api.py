@@ -166,7 +166,9 @@ def _make_user() -> UserEntity:
 
 
 def _make_document_dto(*, user_id: uuid.UUID) -> DocumentDTO:
-    return DocumentDTO(entities=None, categories=None, 
+    return DocumentDTO(
+        entities=None,
+        categories=None,
         id=uuid.uuid4(),
         user_id=user_id,
         collection_id=None,
@@ -270,7 +272,9 @@ def test_list_documents_route_returns_document_list() -> None:
 def test_ingest_document_route_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    document = DocumentDTO(entities=None, categories=None, 
+    document = DocumentDTO(
+        entities=None,
+        categories=None,
         id=document.id,
         user_id=document.user_id,
         collection_id=document.collection_id,
@@ -310,7 +314,9 @@ def test_ingest_document_route_queues_document() -> None:
 def test_ingest_youtube_document_route_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    document = DocumentDTO(entities=None, categories=None, 
+    document = DocumentDTO(
+        entities=None,
+        categories=None,
         id=document.id,
         user_id=document.user_id,
         collection_id=document.collection_id,
@@ -351,7 +357,9 @@ def test_metrics_endpoint_returns_prometheus_text() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
     use_case = _ReturningUseCase(
-        DocumentDTO(entities=None, categories=None, 
+        DocumentDTO(
+            entities=None,
+            categories=None,
             id=document.id,
             user_id=document.user_id,
             collection_id=document.collection_id,
@@ -395,7 +403,9 @@ def test_metrics_endpoint_returns_prometheus_text() -> None:
 def test_ingest_text_document_route_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    document = DocumentDTO(entities=None, categories=None, 
+    document = DocumentDTO(
+        entities=None,
+        categories=None,
         id=document.id,
         user_id=document.user_id,
         collection_id=document.collection_id,
@@ -435,7 +445,9 @@ def test_ingest_text_document_route_queues_document() -> None:
 def test_ingest_pdf_document_route_stores_upload_and_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    document = DocumentDTO(entities=None, categories=None, 
+    document = DocumentDTO(
+        entities=None,
+        categories=None,
         id=document.id,
         user_id=document.user_id,
         collection_id=document.collection_id,
@@ -498,54 +510,12 @@ def test_ingest_pdf_document_route_rejects_large_upload(monkeypatch: MonkeyPatch
     assert use_case.received_dto is None
 
 
-def test_ingest_audio_document_route_stores_upload_and_queues_document() -> None:
-    user = _make_user()
-    document = _make_document_dto(user_id=user.id)
-    document = DocumentDTO(entities=None, categories=None, 
-        id=document.id,
-        user_id=document.user_id,
-        collection_id=document.collection_id,
-        title="Uploaded audio",
-        type=DocumentType.AUDIO,
-        status=DocumentStatus.QUEUED,
-        source_url=None,
-        file_path=f"/tmp/{user.id}/voice.m4a",
-        file_size_bytes=9,
-        raw_content=None,
-        summary=None,
-        word_count=None,
-        language="uk",
-        is_duplicate=False,
-        duplicate_of_id=None,
-        created_at=document.created_at,
-        updated_at=document.updated_at,
-    )
-    use_case = _ReturningUseCase(document)
-    storage = _FakeFileStorage()
-    client = _make_client(user, {IngestDocumentUseCase: use_case, IFileStorage: storage})
-
-    try:
-        response = client.post(
-            "/api/v1/ingest/audio",
-            headers={"Authorization": "Bearer access-token"},
-            data={"title": "Uploaded audio", "language": "uk"},
-            files={"file": ("voice.m4a", b"audiofake", "audio/mp4")},
-        )
-    finally:
-        client.close()
-
-    assert response.status_code == 202
-    assert response.json()["status"] == "QUEUED"
-    assert response.json()["type"] == "AUDIO"
-    assert storage.saved_filename == "voice.m4a"
-    assert storage.saved_content == b"audiofake"
-    assert use_case.received_dto is not None
-
-
 def test_ingest_image_document_route_stores_upload_and_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    document = DocumentDTO(entities=None, categories=None, 
+    document = DocumentDTO(
+        entities=None,
+        categories=None,
         id=document.id,
         user_id=document.user_id,
         collection_id=document.collection_id,
@@ -620,12 +590,12 @@ def test_get_document_status_route_returns_cached_status() -> None:
         client.close()
 
     assert response.status_code == 200
-    assert response.json() == {
-        "document_id": str(document.id),
-        "status": "PROCESSING",
-        "progress": 40,
-        "message": "Splitting into chunks.",
-    }
+    assert response.json()["document_id"] == str(document.id)
+    assert response.json()["status"] == "PROCESSING"
+    assert response.json()["progress"] == 40
+    assert response.json()["message"] == "Splitting into chunks."
+    assert response.json()["failure_reason"] is None
+    assert response.json()["timeline"] == []
 
 
 def test_get_document_route_maps_not_found() -> None:

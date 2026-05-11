@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from src.application.use_cases.documents.base import document_to_dto
+from src.application.use_cases.documents.queue_document_processing import queue_document_processing
 from src.domain.entities.document_entity import DocumentEntity
 from src.domain.exceptions import DocumentValidationException
 from src.domain.value_objects.document_type import DocumentType
@@ -33,7 +33,7 @@ class IngestDocumentUseCase:
             raise DocumentValidationException("raw_content is required for text ingestion")
         if dto.type in (DocumentType.URL, DocumentType.YOUTUBE) and not dto.source_url:
             raise DocumentValidationException(f"source_url is required for {dto.type.value.lower()} ingestion")
-        if dto.type in (DocumentType.PDF, DocumentType.AUDIO, DocumentType.IMAGE) and not dto.file_path:
+        if dto.type in (DocumentType.PDF, DocumentType.IMAGE) and not dto.file_path:
             raise DocumentValidationException(f"file_path is required for {dto.type.value} ingestion")
 
         document = DocumentEntity.create(
@@ -56,30 +56,12 @@ class IngestDocumentUseCase:
             await self._uow.document_repo.create(document)
             await self._uow.commit()
 
-
-        await self._status_cache.set_status(
-            document.id,
-            status="QUEUED",
-            progress=0,
+        await queue_document_processing(
+            document=document,
+            uow=self._uow,
+            status_cache=self._status_cache,
+            task_dispatcher=self._task_dispatcher,
             message="Queued for processing.",
         )
-
-        try:
-            await self._task_dispatcher.dispatch_process_document(str(document.id))
-        except Exception:
-            document.mark_failed()
-            try:
-                async with self._uow:
-                    await self._uow.document_repo.update(document)
-                    await self._uow.commit()
-            finally:
-                with suppress(Exception):
-                    await self._status_cache.set_status(
-                        document.id,
-                        status="FAILED",
-                        progress=0,
-                        message="Failed to queue document for processing.",
-                    )
-            raise
 
         return document_to_dto(document)

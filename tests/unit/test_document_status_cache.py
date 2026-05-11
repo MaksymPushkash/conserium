@@ -1,4 +1,5 @@
 """Unit tests for RedisDocumentStatusCache."""
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,6 @@ def _make_cache(redis_mock: AsyncMock) -> RedisDocumentStatusCache:
 
 
 class TestRedisDocumentStatusCache:
-
     @pytest.fixture
     def redis(self) -> AsyncMock:
         return AsyncMock()
@@ -37,6 +37,8 @@ class TestRedisDocumentStatusCache:
         assert payload["progress"] == 50
         assert payload["message"] == "Generating embeddings…"
         assert payload["document_id"] == str(doc_id)
+        assert payload["failure_reason"] is None
+        assert payload["timeline"]
 
     async def test_set_status_clamps_progress(self, redis: AsyncMock) -> None:
         cache = _make_cache(redis)
@@ -55,12 +57,14 @@ class TestRedisDocumentStatusCache:
         cache = _make_cache(redis)
         doc_id = uuid4()
 
-        redis.get.return_value = json.dumps({
-            "document_id": str(doc_id),
-            "status": "READY",
-            "progress": 100,
-            "message": "Processing complete.",
-        }).encode()
+        redis.get.return_value = json.dumps(
+            {
+                "document_id": str(doc_id),
+                "status": "READY",
+                "progress": 100,
+                "message": "Processing complete.",
+            }
+        ).encode()
 
         result = await cache.get_status(doc_id)
 
@@ -70,6 +74,9 @@ class TestRedisDocumentStatusCache:
         assert result.status == "READY"
         assert result.progress == 100
         assert result.message == "Processing complete."
+        assert result.failure_reason is None
+        assert result.timeline is not None
+        assert result.timeline[-1].key == "ready"
 
     async def test_get_status_returns_none_when_missing(self, redis: AsyncMock) -> None:
         cache = _make_cache(redis)
@@ -89,6 +96,7 @@ class TestRedisDocumentStatusCache:
 
     async def test_set_uses_configured_ttl(self, redis: AsyncMock) -> None:
         from src.core.config import settings
+
         cache = _make_cache(redis)
 
         await cache.set_status(uuid4(), "QUEUED", 0, "Queued")

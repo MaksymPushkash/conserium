@@ -92,39 +92,6 @@ async def ingest_pdf_document(
 
 
 @router.post(
-    "/documents/ingest/audio",
-    response_model=DocumentResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    deprecated=True,
-)
-@router.post("/ingest/audio", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
-@inject
-async def ingest_audio_document(
-    current_user: CurrentUser,
-    use_case: FromDishka[IngestDocumentUseCase],
-    file_storage: FromDishka[IFileStorage],
-    file: UploadFile = File(...),
-    title: str | None = Form(default=None),
-    collection_id: UUID | None = Form(default=None),
-    language: str | None = Form(default=None),
-) -> DocumentResponse:
-    result = await _ingest_uploaded_file(
-        current_user=current_user,
-        use_case=use_case,
-        file_storage=file_storage,
-        file=file,
-        title=title,
-        collection_id=collection_id,
-        language=language,
-        document_type=DocumentType.AUDIO,
-        fallback_filename="upload.audio",
-        default_title="Uploaded Audio",
-        endpoint="ingest_audio_document",
-    )
-    return to_document_response(result)
-
-
-@router.post(
     "/documents/ingest/image",
     response_model=DocumentResponse,
     status_code=status.HTTP_202_ACCEPTED,

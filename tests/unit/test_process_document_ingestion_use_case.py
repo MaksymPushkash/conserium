@@ -96,14 +96,10 @@ class _FakeStatusCache(IDocumentStatusCache):
 class _FakeTaskDispatcher(ITaskDispatcher):
     def __init__(self) -> None:
         self.embed_calls: list[dict[str, Any]] = []
-        self.audio_calls: list[str] = []
         self.image_calls: list[str] = []
 
     async def dispatch_process_document(self, document_id: str) -> None:
         raise NotImplementedError
-
-    async def dispatch_process_audio_document(self, document_id: str) -> None:
-        self.audio_calls.append(document_id)
 
     async def dispatch_process_image_document(self, document_id: str) -> None:
         self.image_calls.append(document_id)
@@ -284,34 +280,6 @@ async def test_process_document_ingestion_use_case_extracts_youtube_content() ->
     assert result.status == "EMBEDDING_QUEUED"
     assert youtube_extractor.called_url == "https://youtu.be/abc123"
     assert task_dispatcher.embed_calls[0]["raw_text"] == "first transcript line\nsecond transcript line"
-
-
-@pytest.mark.asyncio
-async def test_process_document_ingestion_use_case_dispatches_audio_to_media_worker() -> None:
-    document = _make_document(document_type=DocumentType.AUDIO, file_path="/tmp/audio.m4a")
-    status_cache = _FakeStatusCache()
-    task_dispatcher = _FakeTaskDispatcher()
-
-    use_case = ProcessDocumentIngestionUseCase(
-        uow=_FakeUnitOfWork(_FakeDocumentRepository(document)),
-        status_cache=status_cache,
-        task_dispatcher=task_dispatcher,
-        text_chunker=_FakeTextChunker(),
-        file_storage=_FakeFileStorage(),
-        url_extractor=_UnusedExtractor(),
-        youtube_extractor=_UnusedExtractor(),
-        pdf_extractor=_UnusedExtractor(),
-    )
-
-    result = await use_case(str(document.id))
-
-    assert result.status == "MEDIA_QUEUED"
-    assert document.status == DocumentStatus.PROCESSING
-    assert status_cache.calls == [
-        ("PROCESSING", 10, "Queued for audio transcription..."),
-    ]
-    assert task_dispatcher.audio_calls == [str(document.id)]
-    assert task_dispatcher.embed_calls == []
 
 
 @pytest.mark.asyncio

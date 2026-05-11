@@ -4,7 +4,6 @@ from src.application.ports.ingestion.task_dispatcher import ITaskDispatcher
 from src.infrastructure.celery.app import celery_app
 
 _EMBED_AND_FINALIZE_TASK = "src.infrastructure.celery.tasks.embedding_tasks.embed_and_finalize_document"
-_PROCESS_AUDIO_TASK = "src.infrastructure.celery.tasks.media_processing_tasks.process_audio_document"
 _PROCESS_IMAGE_TASK = "src.infrastructure.celery.tasks.media_processing_tasks.process_image_document"
 _PROCESS_DOCUMENT_TASK = "src.infrastructure.celery.tasks.document_ingestion_task.process_document"
 
@@ -16,14 +15,6 @@ class CeleryTaskDispatcher(ITaskDispatcher):
             args=[document_id],
             queue="document_processing",
             routing_key="document_processing",
-        )
-
-    async def dispatch_process_audio_document(self, document_id: str) -> None:
-        celery_app.send_task(
-            _PROCESS_AUDIO_TASK,
-            args=[document_id],
-            queue="media_processing",
-            routing_key="media_processing",
         )
 
     async def dispatch_process_image_document(self, document_id: str) -> None:

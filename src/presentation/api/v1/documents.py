@@ -7,6 +7,8 @@ from src.application.use_cases.documents.create_document_use_case import CreateD
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
+from src.application.use_cases.documents.reprocess_document_use_case import ReprocessDocumentUseCase
+from src.application.use_cases.documents.retry_document_use_case import RetryDocumentUseCase
 from src.presentation.dependencies.auth import CurrentUser
 from src.presentation.mappers.document_mapper import to_document_list_response, to_document_response
 from src.presentation.mappers.document_request_mapper import (
@@ -14,6 +16,8 @@ from src.presentation.mappers.document_request_mapper import (
     to_delete_document_dto,
     to_get_document_dto,
     to_list_documents_dto,
+    to_reprocess_document_dto,
+    to_retry_document_dto,
 )
 from src.presentation.schemas.document import CreateDocumentRequest, DocumentListResponse, DocumentResponse
 
@@ -63,3 +67,25 @@ async def delete_document(
 ) -> Response:
     await use_case(to_delete_document_dto(document_id, current_user.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{document_id}/retry", response_model=DocumentResponse)
+@inject
+async def retry_document(
+    document_id: UUID,
+    current_user: CurrentUser,
+    use_case: FromDishka[RetryDocumentUseCase],
+) -> DocumentResponse:
+    result = await use_case(to_retry_document_dto(document_id, current_user.id))
+    return to_document_response(result)
+
+
+@router.post("/{document_id}/reprocess", response_model=DocumentResponse)
+@inject
+async def reprocess_document(
+    document_id: UUID,
+    current_user: CurrentUser,
+    use_case: FromDishka[ReprocessDocumentUseCase],
+) -> DocumentResponse:
+    result = await use_case(to_reprocess_document_dto(document_id, current_user.id))
+    return to_document_response(result)

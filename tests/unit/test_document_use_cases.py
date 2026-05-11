@@ -129,9 +129,6 @@ class _FailingTaskDispatcher:
     async def dispatch_process_document(self, document_id: str) -> None:
         raise RuntimeError("broker unavailable")
 
-    async def dispatch_process_audio_document(self, document_id: str) -> None:
-        raise NotImplementedError
-
     async def dispatch_embed_and_finalize_document(
         self,
         *,
@@ -149,9 +146,6 @@ class _SuccessfulTaskDispatcher:
 
     async def dispatch_process_document(self, document_id: str) -> None:
         self.processed_document_ids.append(document_id)
-
-    async def dispatch_process_audio_document(self, document_id: str) -> None:
-        raise NotImplementedError
 
     async def dispatch_embed_and_finalize_document(
         self,

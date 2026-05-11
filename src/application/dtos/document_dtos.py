@@ -49,6 +49,20 @@ class DeleteDocumentDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
+class RetryDocumentDTO:
+    user_id: UUID
+    document_id: UUID
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class ReprocessDocumentDTO:
+    user_id: UUID
+    document_id: UUID
+
+
+@final
+@dataclass(frozen=True, slots=True)
 class DocumentDTO:
     id: UUID
     user_id: UUID
