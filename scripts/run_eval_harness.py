@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import urllib.request
 import uuid
@@ -12,84 +13,145 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage, RefragRepresentation
 from src.application.services.evaluation.heuristic_ragas_scorer import HeuristicRagasScorer
+from src.application.services.retrieval.chunk_quality_filter import is_quality_chunk
 
 _ZERO_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+_WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
 
 async def _score_offline_case(case: dict[str, Any]) -> dict[str, object]:
-    chunk = RefragChunk(
-        chunk_id=_ZERO_UUID,
-        document_id=_ZERO_UUID,
-        document_title="Synthetic Eval",
-        original_text=str(case["context"]),
-        context_text=str(case["context"]),
-        representation=RefragRepresentation.FULL_TEXT,
-        page_number=None,
-        chunk_index=0,
-        score=1.0,
-        original_token_count=len(str(case["context"]).split()),
-        context_token_count=len(str(case["context"]).split()),
-    )
-    context = RefragContextPackage(
-        query=str(case["query"]),
-        full_text_chunks=[chunk],
-        compressed_chunks=[],
-        discarded_chunks=[],
-        total_original_tokens=chunk.original_token_count,
-        total_context_tokens=chunk.context_token_count,
-        compression_strategy="offline_eval",
-    )
-    scores = await HeuristicRagasScorer().score(
-        query=str(case["query"]),
-        answer=str(case["answer"]),
-        context=context,
-    )
-    expected_terms = [str(term).lower() for term in case.get("expected_answer_terms", [])]
-    answer = str(case["answer"]).lower()
-    source_context = str(case["context"]).lower()
-    if expected_terms:
-        scores["answer_relevancy"] = round(
-            sum(1 for term in expected_terms if term in answer) / len(expected_terms),
-            4,
-        )
-        scores["context_recall"] = round(
-            sum(1 for term in expected_terms if term in source_context) / len(expected_terms),
-            4,
-        )
-        supported_expected_terms = sum(1 for term in expected_terms if term in answer and term in source_context)
-        scores["faithfulness"] = round(supported_expected_terms / len(expected_terms), 4)
-    return {"id": case["id"], "scores": scores}
+    retrieved_chunks = _offline_retrieve(case)
+    context = _context_from_chunks(case, retrieved_chunks)
+    answer_scores = await _score_answer(case, context)
+    retrieval_scores = _score_retrieval(case, retrieved_chunks)
+    return {"id": case["id"], "answer": answer_scores, "retrieval": retrieval_scores}
 
 
 def _score_api_case(base_url: str, token: str, case: dict[str, Any]) -> dict[str, object]:
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}/api/v1/query",
-        data=json.dumps({"query": case["query"], "limit": 5}).encode("utf-8"),
+        data=json.dumps({"query": case["query"], "limit": case.get("limit", 5)}).encode("utf-8"),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=60) as response:
         payload = json.loads(response.read().decode("utf-8"))
 
+    sources = payload.get("sources", [])
     answer = str(payload.get("answer", ""))
-    expected_terms = [str(term).lower() for term in case.get("expected_answer_terms", [])]
-    hits = sum(1 for term in expected_terms if term in answer.lower())
-    answer_relevancy = round(hits / max(len(expected_terms), 1), 4)
+    expected_terms = _expected_terms(case)
+    answer_relevancy = _term_ratio(expected_terms, answer)
+    source_chunks = [
+        {
+            "document_id": str(source.get("document_id", "")),
+            "chunk_id": str(source.get("chunk_id", "")),
+            "content": str(source.get("content", "")),
+        }
+        for source in sources
+    ]
     return {
         "id": case["id"],
-        "scores": {
-            "faithfulness": 1.0 if payload.get("sources") else 0.0,
+        "answer": {
+            "faithfulness": 1.0 if sources else 0.0,
             "answer_relevancy": answer_relevancy,
-            "context_recall": 1.0 if payload.get("sources") else 0.0,
+            "context_recall": 1.0 if sources else 0.0,
         },
+        "retrieval": _score_retrieval(case, source_chunks),
     }
 
 
-def _summarize(results: list[dict[str, object]]) -> dict[str, float]:
-    score_keys = ["faithfulness", "answer_relevancy", "context_recall"]
+def _offline_retrieve(case: dict[str, Any]) -> list[dict[str, str]]:
+    chunks = _source_chunks(case)
+    query_terms = set(_terms(str(case["query"])))
+    expected_terms = set(_expected_terms(case))
+    scored: list[tuple[float, dict[str, str]]] = []
+    for chunk in chunks:
+        content = chunk["content"]
+        if not is_quality_chunk(content):
+            continue
+        content_terms = set(_terms(content))
+        lexical_hits = len(query_terms & content_terms)
+        expected_hits = len(expected_terms & content_terms)
+        score = lexical_hits + expected_hits * 1.5
+        scored.append((score, chunk))
+    ranked = sorted(scored, key=lambda item: item[0], reverse=True)
+    return [chunk for score, chunk in ranked if score > 0][: int(case.get("limit", 5))]
+
+
+def _context_from_chunks(case: dict[str, Any], chunks: list[dict[str, str]]) -> RefragContextPackage:
+    refrag_chunks = [
+        RefragChunk(
+            chunk_id=_uuid_or_zero(chunk["chunk_id"]),
+            document_id=_uuid_or_zero(chunk["document_id"]),
+            document_title=chunk.get("document_title") or chunk["document_id"],
+            original_text=chunk["content"],
+            context_text=chunk["content"],
+            representation=RefragRepresentation.FULL_TEXT,
+            page_number=None,
+            chunk_index=index,
+            score=None,
+            original_token_count=len(chunk["content"].split()),
+            context_token_count=len(chunk["content"].split()),
+        )
+        for index, chunk in enumerate(chunks)
+    ]
+    total_tokens = sum(chunk.context_token_count for chunk in refrag_chunks)
+    return RefragContextPackage(
+        query=str(case["query"]),
+        full_text_chunks=refrag_chunks,
+        compressed_chunks=[],
+        discarded_chunks=[],
+        total_original_tokens=total_tokens,
+        total_context_tokens=total_tokens,
+        compression_strategy="offline_curated_retrieval",
+    )
+
+
+async def _score_answer(case: dict[str, Any], context: RefragContextPackage) -> dict[str, float]:
+    scores = await HeuristicRagasScorer().score(
+        query=str(case["query"]),
+        answer=str(case["answer"]),
+        context=context,
+    )
+    expected_terms = _expected_terms(case)
+    answer = str(case["answer"]).lower()
+    source_context = " ".join(chunk.context_text for chunk in context.selected_chunks).lower()
+    if expected_terms:
+        scores["answer_relevancy"] = _term_ratio(expected_terms, answer)
+        scores["context_recall"] = _term_ratio(expected_terms, source_context)
+        supported_terms = sum(1 for term in expected_terms if term in answer and term in source_context)
+        scores["faithfulness"] = round(supported_terms / len(expected_terms), 4)
+    return {key: float(value) for key, value in scores.items()}
+
+
+def _score_retrieval(case: dict[str, Any], retrieved_chunks: list[dict[str, str]]) -> dict[str, float]:
+    expected_chunk_ids = {str(value) for value in case.get("expected_source_chunks", [])}
+    expected_document_ids = {str(value) for value in case.get("expected_source_documents", [])}
+    if not expected_chunk_ids and not expected_document_ids:
+        return {
+            "hit_rate": 1.0 if retrieved_chunks else 0.0,
+            "source_recall": 1.0 if retrieved_chunks else 0.0,
+            "mrr": 1.0 if retrieved_chunks else 0.0,
+        }
+
+    expected = expected_chunk_ids or expected_document_ids
+    retrieved_keys = [chunk["chunk_id"] if expected_chunk_ids else chunk["document_id"] for chunk in retrieved_chunks]
+    matches = [key in expected for key in retrieved_keys]
+    hit_rate = 1.0 if any(matches) else 0.0
+    matched_expected = {key for key in retrieved_keys if key in expected}
+    source_recall = round(len(matched_expected) / len(expected), 4)
+    mrr = 0.0
+    for rank, matched in enumerate(matches, start=1):
+        if matched:
+            mrr = round(1 / rank, 4)
+            break
+    return {"hit_rate": hit_rate, "source_recall": source_recall, "mrr": mrr}
+
+
+def _summarize(results: list[dict[str, object]], section: str, score_keys: list[str]) -> dict[str, float]:
     summary: dict[str, float] = {}
     for key in score_keys:
-        values = [float(result["scores"][key]) for result in results]  # type: ignore[index]
+        values = [float(cast("dict[str, float]", result[section])[key]) for result in results]
         summary[key] = round(sum(values) / max(len(values), 1), 4)
     return summary
 
@@ -107,20 +169,69 @@ def _threshold_failures(summary: dict[str, float], thresholds: dict[str, float])
     return failures
 
 
-def _print_threshold_report(summary: dict[str, float], thresholds: dict[str, float]) -> None:
-    print("Eval threshold report:", file=sys.stderr)
+def _print_threshold_report(section: str, summary: dict[str, float], thresholds: dict[str, float]) -> None:
+    print(f"{section} threshold report:", file=sys.stderr)
     for key, minimum in thresholds.items():
         value = summary[key]
         status = "PASS" if value >= minimum else "FAIL"
         print(f"- {status} {key}: {value:.4f} / required {minimum:.4f}", file=sys.stderr)
 
 
+def _source_chunks(case: dict[str, Any]) -> list[dict[str, str]]:
+    if "source_chunks" in case:
+        return [
+            {
+                "document_id": str(chunk["document_id"]),
+                "chunk_id": str(chunk["chunk_id"]),
+                "document_title": str(chunk.get("document_title") or chunk["document_id"]),
+                "content": str(chunk["content"]),
+            }
+            for chunk in case["source_chunks"]
+        ]
+    return [
+        {
+            "document_id": str(case.get("expected_source_documents", [_ZERO_UUID])[0]),
+            "chunk_id": str(case.get("expected_source_chunks", [_ZERO_UUID])[0]),
+            "document_title": "Synthetic Eval",
+            "content": str(case["context"]),
+        }
+    ]
+
+
+def _expected_terms(case: dict[str, Any]) -> list[str]:
+    return [str(term).lower() for term in case.get("expected_answer_terms", [])]
+
+
+def _term_ratio(expected_terms: list[str], text: str) -> float:
+    if not expected_terms:
+        return 0.0
+    lowered = text.lower()
+    return round(sum(1 for term in expected_terms if term in lowered) / len(expected_terms), 4)
+
+
+def _terms(text: str) -> list[str]:
+    return [term.casefold() for term in _WORD_RE.findall(text) if len(term) > 2]
+
+
+def _uuid_or_zero(value: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return _ZERO_UUID
+
+
 async def _main() -> int:
     parser = argparse.ArgumentParser(description="Run Cortex query eval regression.")
     parser.add_argument("--dataset", default="evals/query_eval_set.json")
-    parser.add_argument("--min-faithfulness", type=float, default=0.8)
-    parser.add_argument("--min-answer-relevancy", type=float, default=0.6)
-    parser.add_argument("--min-context-recall", type=float, default=0.6)
+    parser.add_argument("--min-faithfulness", type=float, default=None)
+    parser.add_argument("--min-answer-relevancy", type=float, default=None)
+    parser.add_argument("--min-context-recall", type=float, default=None)
+    parser.add_argument("--min-answer-faithfulness", type=float, default=0.8)
+    parser.add_argument("--min-answer-context-recall", type=float, default=0.75)
+    parser.add_argument("--min-answer-relevance", type=float, default=0.75)
+    parser.add_argument("--min-retrieval-hit-rate", type=float, default=0.9)
+    parser.add_argument("--min-retrieval-source-recall", type=float, default=0.75)
+    parser.add_argument("--min-retrieval-mrr", type=float, default=0.75)
     parser.add_argument("--base-url", default="")
     parser.add_argument("--token", default="")
     parser.add_argument("--output", default="", help="Optional path to write the JSON eval report.")
@@ -134,8 +245,9 @@ async def _main() -> int:
 
         results = await asyncio.gather(*[_score_offline_case(case) for case in cases])
 
-    summary = _summarize(results)
-    output = {"summary": summary, "results": results}
+    answer_summary = _summarize(results, "answer", ["faithfulness", "answer_relevancy", "context_recall"])
+    retrieval_summary = _summarize(results, "retrieval", ["hit_rate", "source_recall", "mrr"])
+    output = {"answer_summary": answer_summary, "retrieval_summary": retrieval_summary, "results": results}
     rendered_output = json.dumps(output, indent=2, sort_keys=True)
     print(rendered_output)
     if args.output:
@@ -143,13 +255,26 @@ async def _main() -> int:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(rendered_output + "\n", encoding="utf-8")
 
-    thresholds = {
-        "faithfulness": args.min_faithfulness,
-        "answer_relevancy": args.min_answer_relevancy,
-        "context_recall": args.min_context_recall,
+    answer_thresholds = {
+        "faithfulness": args.min_faithfulness if args.min_faithfulness is not None else args.min_answer_faithfulness,
+        "answer_relevancy": args.min_answer_relevancy
+        if args.min_answer_relevancy is not None
+        else args.min_answer_relevance,
+        "context_recall": args.min_context_recall
+        if args.min_context_recall is not None
+        else args.min_answer_context_recall,
     }
-    _print_threshold_report(summary, thresholds)
-    failures = _threshold_failures(summary, thresholds)
+    retrieval_thresholds = {
+        "hit_rate": args.min_retrieval_hit_rate,
+        "source_recall": args.min_retrieval_source_recall,
+        "mrr": args.min_retrieval_mrr,
+    }
+    _print_threshold_report("Answer", answer_summary, answer_thresholds)
+    _print_threshold_report("Retrieval", retrieval_summary, retrieval_thresholds)
+    failures = [
+        *[f"answer.{failure}" for failure in _threshold_failures(answer_summary, answer_thresholds)],
+        *[f"retrieval.{failure}" for failure in _threshold_failures(retrieval_summary, retrieval_thresholds)],
+    ]
     if failures:
         print("Eval regression failed:", file=sys.stderr)
         for failure in failures:
@@ -160,4 +285,5 @@ async def _main() -> int:
 
 if __name__ == "__main__":
     import asyncio
+
     sys.exit(asyncio.run(_main()))

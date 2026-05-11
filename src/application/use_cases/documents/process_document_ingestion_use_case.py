@@ -50,17 +50,6 @@ class ProcessDocumentIngestionUseCase:
         if document is None:
             return ProcessDocumentIngestionResult(document_id=document_id, status="NOT_FOUND")
 
-        if document.type == DocumentType.AUDIO:
-            await self._status_cache.set_status(
-                document.id,
-                status="PROCESSING",
-                progress=10,
-                message="Queued for audio transcription...",
-            )
-            await self._mark_processing(document)
-            await self._task_dispatcher.dispatch_process_audio_document(document_id)
-            return ProcessDocumentIngestionResult(document_id=document_id, status="MEDIA_QUEUED")
-
         if document.type == DocumentType.IMAGE:
             await self._status_cache.set_status(
                 document.id,
@@ -101,9 +90,7 @@ class ProcessDocumentIngestionUseCase:
             raw_text=extracted.text,
             chunks_data=chunks_data,
             expected_content_hash=(
-                _content_hash(extracted.text)
-                if document.type in (DocumentType.TEXT, DocumentType.MARKDOWN)
-                else None
+                _content_hash(extracted.text) if document.type in (DocumentType.TEXT, DocumentType.MARKDOWN) else None
             ),
         )
         return ProcessDocumentIngestionResult(document_id=document_id, status="EMBEDDING_QUEUED")
@@ -142,9 +129,7 @@ class ProcessDocumentIngestionUseCase:
             pdf_bytes = await self._file_storage.read_document_file(document.file_path)
             return await self._pdf_extractor.extract_from_bytes(pdf_bytes, filename=document.file_path)
 
-        raise NotImplementedError(
-            f"Extraction not yet implemented for document type: {document.type.value}."
-        )
+        raise NotImplementedError(f"Extraction not yet implemented for document type: {document.type.value}.")
 
     def _build_chunks_data(self, extracted: ExtractedContent) -> list[dict[str, int | str | None]]:
         text_chunks = self._text_chunker.chunk_text(extracted.text)

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.core.config import settings
 from src.domain.value_objects.document_status import DocumentStatus
+from src.infrastructure.cache.document_status_cache import _build_timeline, _step_payload
 from src.infrastructure.database.models.document import DocumentModel
 
 _sync_engine = create_engine(
@@ -56,6 +57,8 @@ def _set_status_sync(document_id: str, status: str, progress: int, message: str)
                 "status": status,
                 "progress": max(0, min(100, progress)),
                 "message": message,
+                "failure_reason": message.removeprefix("Processing failed: ").strip() if status == "FAILED" else None,
+                "timeline": [_step_payload(step) for step in _build_timeline(status, progress, message)],
             }
         )
         client.set(f"doc:status:{document_id}", payload, ex=settings.REDIS_DOC_STATUS_TTL)

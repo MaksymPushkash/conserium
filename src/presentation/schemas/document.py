@@ -63,7 +63,7 @@ class IngestDocumentRequest(BaseModel):
             raise ValueError("raw_content is required for text ingestion")
         if self.type in (DocumentType.URL, DocumentType.YOUTUBE) and self.source_url is None:
             raise ValueError(f"source_url is required for {self.type.value.lower()} ingestion")
-        if self.type in (DocumentType.PDF, DocumentType.AUDIO, DocumentType.IMAGE) and self.file_path is None:
+        if self.type in (DocumentType.PDF, DocumentType.IMAGE) and self.file_path is None:
             raise ValueError(f"file_path is required for {self.type.value} ingestion")
         return self
 
@@ -124,3 +124,13 @@ class DocumentStatusResponse(BaseModel):
     status: str
     progress: int
     message: str
+    failure_reason: str | None = None
+    timeline: list["DocumentProcessingStepResponse"] = Field(default_factory=list)
+
+
+class DocumentProcessingStepResponse(BaseModel):
+    key: str
+    label: str
+    state: str
+    progress: int
+    message: str | None = None

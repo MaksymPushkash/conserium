@@ -19,6 +19,8 @@ from src.application.use_cases.documents.note_use_cases import (
     ListNotesUseCase,
     UpdateNoteUseCase,
 )
+from src.application.use_cases.documents.reprocess_document_use_case import ReprocessDocumentUseCase
+from src.application.use_cases.documents.retry_document_use_case import RetryDocumentUseCase
 
 
 class DocumentsProvider(Provider):
@@ -37,6 +39,24 @@ class DocumentsProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_delete_document_use_case(self, uow: IUnitOfWork, file_storage: IFileStorage) -> DeleteDocumentUseCase:
         return DeleteDocumentUseCase(uow, file_storage)
+
+    @provide(scope=Scope.REQUEST)
+    def get_retry_document_use_case(
+        self,
+        uow: IUnitOfWork,
+        status_cache: IDocumentStatusCache,
+        task_dispatcher: ITaskDispatcher,
+    ) -> RetryDocumentUseCase:
+        return RetryDocumentUseCase(uow, status_cache, task_dispatcher)
+
+    @provide(scope=Scope.REQUEST)
+    def get_reprocess_document_use_case(
+        self,
+        uow: IUnitOfWork,
+        status_cache: IDocumentStatusCache,
+        task_dispatcher: ITaskDispatcher,
+    ) -> ReprocessDocumentUseCase:
+        return ReprocessDocumentUseCase(uow, status_cache, task_dispatcher)
 
     @provide(scope=Scope.REQUEST)
     def get_ingest_document_use_case(

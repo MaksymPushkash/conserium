@@ -5,7 +5,6 @@ from uuid import UUID
 
 from src.application.services.enrichment.enrichment_service import EnrichmentService
 from src.application.use_cases.documents.enrich_document_use_case import EnrichDocumentUseCase
-from src.application.use_cases.documents.process_audio_document_use_case import ProcessAudioDocumentUseCase
 from src.application.use_cases.documents.process_document_embeddings_use_case import (
     ProcessDocumentEmbeddingsUseCase,
 )
@@ -13,7 +12,6 @@ from src.application.use_cases.documents.process_document_ingestion_use_case imp
     ProcessDocumentIngestionUseCase,
 )
 from src.application.use_cases.documents.process_image_document_use_case import ProcessImageDocumentUseCase
-from src.infrastructure.ai.extractors.audio_extractor import AudioExtractor
 from src.infrastructure.ai.extractors.image_extractor import ImageExtractor
 from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
 from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
@@ -93,6 +91,13 @@ async def enrich_document(document_id: str) -> dict[str, object]:
     embedding_provider = CachedEmbeddingProvider(OpenAIEmbeddingProvider(), RedisCache(redis))
 
     try:
+        status_cache = RedisDocumentStatusCache(redis)
+        await status_cache.set_status(
+            UUID(document_id),
+            status="PROCESSING",
+            progress=95,
+            message="Enriching metadata...",
+        )
         async with factory() as session:
             enrichment_service = EnrichmentService(
                 uow=SQLAlchemyUnitOfWork(session),
@@ -102,29 +107,16 @@ async def enrich_document(document_id: str) -> dict[str, object]:
                 tag_sync=SQLAlchemyDocumentTagSync(session),
             )
             use_case = EnrichDocumentUseCase(enrichment_service)
-            return await use_case.execute(UUID(document_id))
+            result = await use_case.execute(UUID(document_id))
+        await status_cache.set_status(
+            UUID(document_id),
+            status="READY",
+            progress=100,
+            message="Processing complete.",
+        )
+        return result
     finally:
         await embedding_provider.aclose()
-        await redis.aclose()
-
-
-async def process_audio_document(document_id: str) -> dict[str, str]:
-    factory = get_worker_session_factory()
-    redis = get_worker_redis(decode_responses=True)
-
-    try:
-        async with factory() as session:
-            use_case = ProcessAudioDocumentUseCase(
-                uow=SQLAlchemyUnitOfWork(session),
-                status_cache=RedisDocumentStatusCache(redis),
-                task_dispatcher=CeleryTaskDispatcher(),
-                text_chunker=SimpleTextChunker(),
-                file_storage=build_file_storage(),
-                audio_extractor=AudioExtractor(),
-            )
-            result = await use_case(document_id)
-            return {"document_id": result.document_id, "status": result.status}
-    finally:
         await redis.aclose()
 
 

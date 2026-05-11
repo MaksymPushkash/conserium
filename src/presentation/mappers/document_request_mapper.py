@@ -1,6 +1,13 @@
 from uuid import UUID
 
-from src.application.dtos.document_dtos import CreateDocumentDTO, DeleteDocumentDTO, GetDocumentDTO, ListDocumentsDTO
+from src.application.dtos.document_dtos import (
+    CreateDocumentDTO,
+    DeleteDocumentDTO,
+    GetDocumentDTO,
+    ListDocumentsDTO,
+    ReprocessDocumentDTO,
+    RetryDocumentDTO,
+)
 from src.application.dtos.ingestion_dtos import IngestDocumentDTO
 from src.domain.value_objects.document_type import DocumentType
 from src.presentation.schemas.document import CreateDocumentRequest, IngestDocumentRequest, IngestTextDocumentRequest
@@ -32,6 +39,14 @@ def to_get_document_dto(document_id: UUID, user_id: UUID) -> GetDocumentDTO:
 
 def to_delete_document_dto(document_id: UUID, user_id: UUID) -> DeleteDocumentDTO:
     return DeleteDocumentDTO(user_id=user_id, document_id=document_id)
+
+
+def to_retry_document_dto(document_id: UUID, user_id: UUID) -> RetryDocumentDTO:
+    return RetryDocumentDTO(user_id=user_id, document_id=document_id)
+
+
+def to_reprocess_document_dto(document_id: UUID, user_id: UUID) -> ReprocessDocumentDTO:
+    return ReprocessDocumentDTO(user_id=user_id, document_id=document_id)
 
 
 def to_ingest_document_dto(body: IngestDocumentRequest, user_id: UUID) -> IngestDocumentDTO:

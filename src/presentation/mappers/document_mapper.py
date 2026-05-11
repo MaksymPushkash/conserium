@@ -3,6 +3,7 @@ from src.application.ports.cache.document_status_cache import DocumentStatusDTO
 from src.presentation.schemas.document import (
     DocumentListItemResponse,
     DocumentListResponse,
+    DocumentProcessingStepResponse,
     DocumentResponse,
     DocumentStatusResponse,
 )
@@ -71,4 +72,15 @@ def to_document_status_response(dto: DocumentStatusDTO) -> DocumentStatusRespons
         status=dto.status,
         progress=dto.progress,
         message=dto.message,
+        failure_reason=dto.failure_reason,
+        timeline=[
+            DocumentProcessingStepResponse(
+                key=step.key,
+                label=step.label,
+                state=step.state,
+                progress=step.progress,
+                message=step.message,
+            )
+            for step in dto.timeline or []
+        ],
     )
