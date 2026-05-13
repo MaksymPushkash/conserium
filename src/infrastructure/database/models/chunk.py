@@ -7,6 +7,7 @@ from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from src.domain.constants import EMBEDDING_DIMENSIONS
 from src.infrastructure.database.models.base import Base, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -30,7 +31,7 @@ class ChunkModel(UUIDPrimaryKeyMixin, Base):
     document_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS), nullable=False)
     
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     start_char: Mapped[int | None] = mapped_column(Integer)

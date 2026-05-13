@@ -30,6 +30,8 @@ from src.application.use_cases.documents.note_use_cases import (
     DeleteNoteUseCase,
     GetNoteUseCase,
     ListNotesUseCase,
+    ListNoteVersionsUseCase,
+    RestoreNoteVersionUseCase,
     UpdateNoteUseCase,
 )
 from src.application.use_cases.documents.reprocess_document_use_case import ReprocessDocumentUseCase
@@ -155,6 +157,10 @@ class DocumentsProvider(Provider):
         return GetNoteUseCase(uow)
 
     @provide(scope=Scope.REQUEST)
+    def get_list_note_versions_use_case(self, uow: IUnitOfWork) -> ListNoteVersionsUseCase:
+        return ListNoteVersionsUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
     def get_update_note_use_case(
         self,
         uow: IUnitOfWork,
@@ -166,3 +172,12 @@ class DocumentsProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_delete_note_use_case(self, uow: IUnitOfWork) -> DeleteNoteUseCase:
         return DeleteNoteUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_restore_note_version_use_case(
+        self,
+        uow: IUnitOfWork,
+        status_cache: IDocumentStatusCache,
+        task_dispatcher: ITaskDispatcher,
+    ) -> RestoreNoteVersionUseCase:
+        return RestoreNoteVersionUseCase(uow, status_cache, task_dispatcher)

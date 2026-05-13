@@ -30,13 +30,18 @@ class RetrievalAgent:
             user_id=state.user_id,
             limit=state.limit,
             collection_id=state.collection_id,
+            tag_names=state.tag_names,
             document_types=document_types,
         )
+        state.retrieved_sources = list(state.sources)
 
         if settings.RERANKER_ENABLED and self._reranker is not None and state.sources:
             top_k = min(settings.RERANKER_TOP_K, len(state.sources))
             state.sources = await self._reranker.rerank(state.retrieval_query or state.query, state.sources, top_k)
-        state.sources = self._chunk_quality_filter.filter_sources(state.sources)
+        filtered_sources = self._chunk_quality_filter.filter_sources(state.sources)
+        filtered_keys = {source.chunk_id for source in filtered_sources}
+        state.filtered_sources = [source for source in state.sources if source.chunk_id not in filtered_keys]
+        state.sources = filtered_sources
         if state.promoted_document_ids:
             promoted_ids = set(state.promoted_document_ids)
             state.sources = sorted(

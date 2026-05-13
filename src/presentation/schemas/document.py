@@ -85,6 +85,7 @@ class DocumentResponse(BaseModel):
     entities: list[MetadataItem] | None = None
     categories: list[MetadataItem] | None = None
     visual_metadata: MetadataItem | None = None
+    suggested_questions: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     is_duplicate: bool
     duplicate_of_id: UUID | None
@@ -128,6 +129,7 @@ class DocumentListItemResponse(BaseModel):
     summary: str | None
     word_count: int | None
     language: str | None
+    suggested_questions: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     is_duplicate: bool
     duplicate_of_id: UUID | None

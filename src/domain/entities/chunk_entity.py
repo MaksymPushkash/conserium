@@ -2,9 +2,11 @@ from datetime import UTC, datetime
 from math import isfinite
 from uuid import UUID
 
+from src.domain.constants import EMBEDDING_DIMENSIONS as DEFAULT_EMBEDDING_DIMENSIONS
+
 
 class ChunkEntity:
-    EMBEDDING_DIMENSIONS = 1536
+    EMBEDDING_DIMENSIONS = DEFAULT_EMBEDDING_DIMENSIONS
 
     def __init__(
         self,

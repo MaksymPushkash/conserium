@@ -9,6 +9,7 @@ from src.domain.entities.chunk_entity import ChunkEntity
 from src.domain.value_objects.document_type import DocumentType
 from src.infrastructure.database.models.chunk import ChunkModel
 from src.infrastructure.database.models.document import DocumentModel
+from src.infrastructure.database.models.tag import TagModel
 
 
 class SQLAlchemyChunkRepository(IChunkRepository):
@@ -63,6 +64,7 @@ class SQLAlchemyChunkRepository(IChunkRepository):
         user_id: UUID,
         limit: int = 10,
         collection_id: UUID | None = None,
+        tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
     ) -> list[ChunkSearchResult]:
         self._validate_search_embedding(embedding)
@@ -84,10 +86,13 @@ class SQLAlchemyChunkRepository(IChunkRepository):
             user_id,
             limit=vector_limit,
             collection_id=collection_id,
+            tag_names=tag_names,
             document_types=document_types,
         )
         if collection_id is not None:
             vector_statement = vector_statement.where(DocumentModel.collection_id == collection_id)
+        if tag_names is not None:
+            vector_statement = vector_statement.join(DocumentModel.tags).where(TagModel.name.in_(tag_names))
         if document_types is not None:
             vector_statement = vector_statement.where(DocumentModel.type.in_([document_type.value for document_type in document_types]))
 
@@ -166,6 +171,7 @@ class SQLAlchemyChunkRepository(IChunkRepository):
         *,
         limit: int,
         collection_id: UUID | None,
+        tag_names: tuple[str, ...] | None,
         document_types: tuple[DocumentType, ...] | None,
     ) -> Any:
         ts_query = func.plainto_tsquery("simple", query)
@@ -184,6 +190,8 @@ class SQLAlchemyChunkRepository(IChunkRepository):
         )
         if collection_id is not None:
             statement = statement.where(DocumentModel.collection_id == collection_id)
+        if tag_names is not None:
+            statement = statement.join(DocumentModel.tags).where(TagModel.name.in_(tag_names))
         if document_types is not None:
             statement = statement.where(DocumentModel.type.in_([document_type.value for document_type in document_types]))
         return statement

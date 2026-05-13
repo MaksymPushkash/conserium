@@ -1,6 +1,7 @@
-from src.application.dtos.query_dtos import QueryResultDTO, QuerySourceDTO
+from src.application.dtos.query_dtos import QueryDebugDTO, QueryResultDTO, QuerySourceDTO
 from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage
 from src.presentation.schemas.query import (
+    QueryDebugResponse,
     QueryResponse,
     QuerySourceResponse,
     RefragChunkResponse,
@@ -65,4 +66,23 @@ def to_query_response(dto: QueryResultDTO) -> QueryResponse:
         answer=dto.answer,
         sources=[to_query_source_response(source, index) for index, source in enumerate(dto.sources, start=1)],
         refrag_context=to_refrag_context_response(dto.refrag_context),
+        debug=to_query_debug_response(dto.debug) if dto.debug else None,
+    )
+
+
+def to_query_debug_response(dto: QueryDebugDTO) -> QueryDebugResponse:
+    return QueryDebugResponse(
+        original_query=dto.original_query,
+        retrieval_query=dto.retrieval_query,
+        selected_collection_id=dto.selected_collection_id,
+        selected_tags=dto.selected_tags,
+        promoted_document_ids=dto.promoted_document_ids,
+        retrieved_sources=[
+            to_query_source_response(source, index) for index, source in enumerate(dto.retrieved_sources, start=1)
+        ],
+        final_sources=[to_query_source_response(source, index) for index, source in enumerate(dto.final_sources, start=1)],
+        used_sources=[to_query_source_response(source, index) for index, source in enumerate(dto.used_sources, start=1)],
+        filtered_sources=[
+            to_query_source_response(source, index) for index, source in enumerate(dto.filtered_sources, start=1)
+        ],
     )

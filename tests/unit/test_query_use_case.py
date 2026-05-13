@@ -56,6 +56,7 @@ class _FakeChunkRepository:
         user_id: uuid.UUID,
         limit: int = 10,
         collection_id: uuid.UUID | None = None,
+        tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
     ) -> list[ChunkSearchResult]:
         self.received_embedding = embedding
@@ -78,6 +79,7 @@ class _FakeLLMService:
 class _FakeUnitOfWork:
     def __init__(self, chunk_repo: _FakeChunkRepository) -> None:
         self.chunk_repo = chunk_repo
+        self.chat_repo = _FakeChatRepository()
         self.search_query_repo = _FakeSearchQueryRepository()
         self.commit_count = 0
 
@@ -100,6 +102,34 @@ class _FakeSearchQueryRepository:
 
     async def record_query(self, record: object) -> None:
         self.records.append(record)
+
+
+class _FakeChatRepository:
+    def __init__(self) -> None:
+        self.messages: list[tuple[str, str]] = []
+
+    async def get_session(self, *, user_id: uuid.UUID, chat_id: uuid.UUID) -> object | None:
+        return None
+
+    async def create_session(self, *, user_id: uuid.UUID, title: str, chat_id: uuid.UUID | None = None) -> object:
+        return object()
+
+    async def get_recent_turns(self, *, user_id: uuid.UUID, chat_id: uuid.UUID, limit: int) -> list[ConversationTurnDTO]:
+        return []
+
+    async def append_message(
+        self,
+        *,
+        chat_id: uuid.UUID,
+        role: str,
+        content: str,
+        sources: object | None = None,
+        refrag_context: object | None = None,
+        eval_scores: object | None = None,
+        trace_id: str | None = None,
+    ) -> object:
+        self.messages.append((role, content))
+        return object()
 
 
 class _FakeConversationStore:

@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from math import isfinite
 from uuid import UUID
 
+from src.domain.constants import EMBEDDING_DIMENSIONS as DEFAULT_EMBEDDING_DIMENSIONS
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 
@@ -9,7 +10,7 @@ MetadataItem = dict[str, object]
 
 
 class DocumentEntity:
-    EMBEDDING_DIMENSIONS = 1536
+    EMBEDDING_DIMENSIONS = DEFAULT_EMBEDDING_DIMENSIONS
 
     def __init__(
         self,

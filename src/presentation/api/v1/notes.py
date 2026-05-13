@@ -8,17 +8,25 @@ from src.application.use_cases.documents.note_use_cases import (
     DeleteNoteUseCase,
     GetNoteUseCase,
     ListNotesUseCase,
+    ListNoteVersionsUseCase,
+    RestoreNoteVersionUseCase,
     UpdateNoteUseCase,
 )
 from src.presentation.dependencies.auth import CurrentUser
-from src.presentation.mappers.note_mapper import to_note_list_response, to_note_response
+from src.presentation.mappers.note_mapper import to_note_list_response, to_note_response, to_note_version_response
 from src.presentation.mappers.note_request_mapper import (
     to_create_note_dto,
     to_get_note_dto,
     to_list_notes_dto,
     to_update_note_dto,
 )
-from src.presentation.schemas.note import CreateNoteRequest, NoteListResponse, NoteResponse, UpdateNoteRequest
+from src.presentation.schemas.note import (
+    CreateNoteRequest,
+    NoteListResponse,
+    NoteResponse,
+    NoteVersionResponse,
+    UpdateNoteRequest,
+)
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
@@ -58,6 +66,17 @@ async def get_note(
     return to_note_response(result)
 
 
+@router.get("/{note_id}/versions", response_model=list[NoteVersionResponse])
+@inject
+async def list_note_versions(
+    note_id: UUID,
+    current_user: CurrentUser,
+    use_case: FromDishka[ListNoteVersionsUseCase],
+) -> list[NoteVersionResponse]:
+    result = await use_case(user_id=current_user.id, note_id=note_id)
+    return [to_note_version_response(version) for version in result]
+
+
 @router.patch("/{note_id}", response_model=NoteResponse)
 @inject
 async def update_note(
@@ -67,6 +86,18 @@ async def update_note(
     use_case: FromDishka[UpdateNoteUseCase],
 ) -> NoteResponse:
     result = await use_case(to_update_note_dto(note_id, body, current_user.id))
+    return to_note_response(result)
+
+
+@router.post("/{note_id}/versions/{version_id}/restore", response_model=NoteResponse)
+@inject
+async def restore_note_version(
+    note_id: UUID,
+    version_id: UUID,
+    current_user: CurrentUser,
+    use_case: FromDishka[RestoreNoteVersionUseCase],
+) -> NoteResponse:
+    result = await use_case(user_id=current_user.id, note_id=note_id, version_id=version_id)
     return to_note_response(result)
 
 

@@ -3,6 +3,7 @@ from src.infrastructure.database.models.chat import ChatMessageModel, ChatSessio
 from src.infrastructure.database.models.chunk import ChunkModel
 from src.infrastructure.database.models.collection import CollectionModel
 from src.infrastructure.database.models.document import DocumentModel
+from src.infrastructure.database.models.note_version import NoteVersionModel
 from src.infrastructure.database.models.search_query import SearchQueryModel
 from src.infrastructure.database.models.tag import TagModel
 from src.infrastructure.database.models.user import UserModel
@@ -14,6 +15,7 @@ __all__ = [
     "ChunkModel",
     "CollectionModel",
     "DocumentModel",
+    "NoteVersionModel",
     "SearchQueryModel",
     "TagModel",
     "UserModel",

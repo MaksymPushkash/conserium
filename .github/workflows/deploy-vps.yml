@@ -95,6 +95,9 @@ jobs:
             --password "$LIVE_EVAL_PASSWORD" \
             --dataset evals/live/seed.json \
             --output artifacts/live-retrieval-eval-report.json \
+            --min-collection-scope 1.0 \
+            --min-noise-rejection 1.0 \
+            --min-abstention-rate 1.0 \
             $create_user_flag
 
       - name: Upload live retrieval validation report

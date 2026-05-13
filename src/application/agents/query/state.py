@@ -24,12 +24,15 @@ class CortexQueryState:
     limit: int
     conversation_id: UUID
     collection_id: UUID | None = None
+    tag_names: tuple[str, ...] | None = None
     document_types: tuple[DocumentType, ...] | None = None
     conversation_turns: list[ConversationTurnDTO] = field(default_factory=list)
     retrieval_query: str | None = None
     promoted_document_ids: list[UUID] = field(default_factory=list)
     query_type: QueryType = QueryType.SEARCH
     sources: list[QuerySourceDTO] = field(default_factory=list)
+    retrieved_sources: list[QuerySourceDTO] = field(default_factory=list)
+    filtered_sources: list[QuerySourceDTO] = field(default_factory=list)
     refrag_context: RefragContextPackage | None = None
     answer: str = ""
     eval_scores: dict[str, float] = field(default_factory=dict)
@@ -47,12 +50,15 @@ def coerce_cortex_query_state(value: CortexQueryState | Mapping[str, Any]) -> Co
         limit=cast("int", value["limit"]),
         conversation_id=cast("UUID", value["conversation_id"]),
         collection_id=cast("UUID | None", value.get("collection_id")),
+        tag_names=cast("tuple[str, ...] | None", value.get("tag_names")),
         document_types=cast("tuple[DocumentType, ...] | None", value.get("document_types")),
         conversation_turns=cast("list[ConversationTurnDTO]", value.get("conversation_turns", [])),
         retrieval_query=cast("str | None", value.get("retrieval_query")),
         promoted_document_ids=cast("list[UUID]", value.get("promoted_document_ids", [])),
         query_type=query_type if isinstance(query_type, QueryType) else QueryType(query_type),
         sources=cast("list[QuerySourceDTO]", value.get("sources", [])),
+        retrieved_sources=cast("list[QuerySourceDTO]", value.get("retrieved_sources", [])),
+        filtered_sources=cast("list[QuerySourceDTO]", value.get("filtered_sources", [])),
         refrag_context=cast("RefragContextPackage | None", value.get("refrag_context")),
         answer=cast("str", value.get("answer", "")),
         eval_scores=cast("dict[str, float]", value.get("eval_scores", {})),

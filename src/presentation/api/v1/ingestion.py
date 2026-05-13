@@ -8,8 +8,8 @@ from src.application.ports.ingestion.file_storage import IFileStorage
 from src.application.use_cases.documents.get_document_status_use_case import GetDocumentStatusUseCase
 from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
 from src.core.config import settings
-from src.core.metrics import metrics_registry
 from src.domain.value_objects.document_type import DocumentType
+from src.presentation.api.metrics import ingestion_latency_timer, record_http_request
 from src.presentation.dependencies.auth import CurrentUser
 from src.presentation.mappers.document_mapper import to_document_response, to_document_status_response
 from src.presentation.mappers.document_request_mapper import (
@@ -44,17 +44,9 @@ async def ingest_document(
     current_user: CurrentUser,
     use_case: FromDishka[IngestDocumentUseCase],
 ) -> DocumentResponse:
-    with metrics_registry.timer(
-        "cortex_ingestion_latency_seconds",
-        "Latency of ingestion HTTP requests in seconds.",
-        labels={"endpoint": "ingest_document"},
-    ):
+    with ingestion_latency_timer("ingest_document"):
         result = await use_case(to_ingest_document_dto(body, current_user.id))
-    metrics_registry.inc_counter(
-        "cortex_http_requests_total",
-        "HTTP requests handled by selected endpoints.",
-        labels={"endpoint": "ingest_document", "method": "POST", "status": "202"},
-    )
+    record_http_request("ingest_document", status="202")
     return to_document_response(result)
 
 
@@ -136,17 +128,9 @@ async def ingest_text_document(
     current_user: CurrentUser,
     use_case: FromDishka[IngestDocumentUseCase],
 ) -> DocumentResponse:
-    with metrics_registry.timer(
-        "cortex_ingestion_latency_seconds",
-        "Latency of ingestion HTTP requests in seconds.",
-        labels={"endpoint": "ingest_text_document"},
-    ):
+    with ingestion_latency_timer("ingest_text_document"):
         result = await use_case(to_ingest_text_document_dto(body, current_user.id))
-    metrics_registry.inc_counter(
-        "cortex_http_requests_total",
-        "HTTP requests handled by selected endpoints.",
-        labels={"endpoint": "ingest_text_document", "method": "POST", "status": "202"},
-    )
+    record_http_request("ingest_text_document", status="202")
     return to_document_response(result)
 
 
@@ -181,11 +165,7 @@ async def _ingest_uploaded_file(
         filename=file.filename or fallback_filename,
         content=content,
     )
-    with metrics_registry.timer(
-        "cortex_ingestion_latency_seconds",
-        "Latency of ingestion HTTP requests in seconds.",
-        labels={"endpoint": endpoint},
-    ):
+    with ingestion_latency_timer(endpoint):
         result = await use_case(
             to_uploaded_ingest_document_dto(
                 user_id=current_user.id,
@@ -197,11 +177,7 @@ async def _ingest_uploaded_file(
                 language=language,
             )
         )
-    metrics_registry.inc_counter(
-        "cortex_http_requests_total",
-        "HTTP requests handled by selected endpoints.",
-        labels={"endpoint": endpoint, "method": "POST", "status": "202"},
-    )
+    record_http_request(endpoint, status="202")
     return result
 
 

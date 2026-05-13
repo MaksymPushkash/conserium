@@ -14,6 +14,12 @@
       "vector",
       "search"
     ],
+    "forbidden_source_documents": [
+      "00000000-0000-0000-0000-000000000902"
+    ],
+    "forbidden_source_chunks": [
+      "10000000-0000-0000-0000-000000000902"
+    ],
     "answer": "The PostgreSQL note mentions pgvector for storing embeddings and running vector search beside relational metadata. [1]",
     "source_chunks": [
       {
@@ -28,6 +34,47 @@
         "chunk_id": "10000000-0000-0000-0000-000000000902",
         "document_title": "Noise",
         "content": "sample text",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000002"
+  },
+  {
+    "id": "suggested-question-vector-storage-summary",
+    "kind": "suggested_question",
+    "query": "Summarize Vector Storage.",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000002"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000002"
+    ],
+    "expected_answer_terms": [
+      "postgresql",
+      "pgvector",
+      "embeddings",
+      "metadata"
+    ],
+    "forbidden_source_documents": [
+      "00000000-0000-0000-0000-000000000912"
+    ],
+    "forbidden_source_chunks": [
+      "10000000-0000-0000-0000-000000000912"
+    ],
+    "answer": "Vector Storage explains that PostgreSQL with pgvector stores embeddings and keeps vector search close to relational metadata. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000002",
+        "chunk_id": "10000000-0000-0000-0000-000000000002",
+        "document_title": "Vector Storage",
+        "content": "PostgreSQL with pgvector stores embeddings and supports vector search alongside relational metadata.",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      },
+      {
+        "document_id": "00000000-0000-0000-0000-000000000912",
+        "chunk_id": "10000000-0000-0000-0000-000000000912",
+        "document_title": "Hello Noise",
+        "content": "hello text",
         "collection_id": "20000000-0000-0000-0000-000000000002"
       }
     ],
@@ -82,6 +129,55 @@
         "chunk_id": "10000000-0000-0000-0000-000000000010",
         "document_title": "Retrieval Config",
         "content": "Use the embedding reranker by default unless optional CrossEncoder dependencies are installed and configured.",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000002"
+  },
+  {
+    "id": "synthetic-noise-rejection",
+    "query": "What should chunk quality filters reject before answer generation?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000020"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000020"
+    ],
+    "expected_answer_terms": [
+      "quality filters",
+      "hello text",
+      "lorem ipsum",
+      "final context"
+    ],
+    "forbidden_source_documents": [
+      "00000000-0000-0000-0000-000000000920",
+      "00000000-0000-0000-0000-000000000921"
+    ],
+    "forbidden_source_chunks": [
+      "10000000-0000-0000-0000-000000000920",
+      "10000000-0000-0000-0000-000000000921"
+    ],
+    "answer": "Chunk quality filters reject low-value chunks such as hello text and lorem ipsum before they enter the final context. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000020",
+        "chunk_id": "10000000-0000-0000-0000-000000000020",
+        "document_title": "Chunk Quality Filters",
+        "content": "Chunk quality filters reject low-value chunks before answer generation. Empty text, hello text, lorem ipsum, tiny samples, duplicate placeholders, and very short chunks should not enter the final context.",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      },
+      {
+        "document_id": "00000000-0000-0000-0000-000000000920",
+        "chunk_id": "10000000-0000-0000-0000-000000000920",
+        "document_title": "Synthetic Hello Noise",
+        "content": "hello text",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      },
+      {
+        "document_id": "00000000-0000-0000-0000-000000000921",
+        "chunk_id": "10000000-0000-0000-0000-000000000921",
+        "document_title": "Synthetic Lorem Noise",
+        "content": "lorem ipsum",
         "collection_id": "20000000-0000-0000-0000-000000000002"
       }
     ],

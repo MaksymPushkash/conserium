@@ -29,6 +29,9 @@ async def _score_offline_case(case: dict[str, Any]) -> dict[str, object]:
         "collection_id": case.get("collection_id"),
         "answer": answer_scores,
         "retrieval": retrieval_scores,
+        "expected_sources": _expected_sources(case),
+        "forbidden_sources": _forbidden_sources(case),
+        "top_k_retrieved": _retrieved_artifact(retrieved_chunks),
     }
     return _apply_negative_case_scores(case, result, str(case["answer"]), retrieved_chunks)
 
@@ -61,7 +64,10 @@ def _score_api_case(base_url: str, token: str, case: dict[str, Any]) -> dict[str
         {
             "document_id": str(source.get("document_id", "")),
             "chunk_id": str(source.get("chunk_id", "")),
+            "document_title": str(source.get("document_title", "")),
             "content": str(source.get("content", "")),
+            "score": source.get("score"),
+            "used_in_answer": source.get("used_in_answer"),
         }
         for source in sources
     ]
@@ -74,6 +80,9 @@ def _score_api_case(base_url: str, token: str, case: dict[str, Any]) -> dict[str
             "context_recall": 1.0 if sources else 0.0,
         },
         "retrieval": _score_retrieval(case, source_chunks),
+        "expected_sources": _expected_sources(case),
+        "forbidden_sources": _forbidden_sources(case),
+        "top_k_retrieved": _retrieved_artifact(source_chunks),
     }
     return _apply_negative_case_scores(case, result, answer, source_chunks, require_abstention=True)
 
@@ -172,7 +181,7 @@ async def _score_answer(case: dict[str, Any], context: RefragContextPackage) -> 
 
 def _score_retrieval(case: dict[str, Any], retrieved_chunks: list[dict[str, str]]) -> dict[str, float]:
     if case.get("expected_no_answer"):
-        return {"hit_rate": 1.0, "source_recall": 1.0, "mrr": 1.0}
+        return {"hit_rate": 1.0, "source_recall": 1.0, "mrr": 1.0, "noise_rejection": _noise_rejection(case, retrieved_chunks)}
 
     expected_chunk_ids = {str(value) for value in case.get("expected_source_chunks", [])}
     expected_document_ids = {str(value) for value in case.get("expected_source_documents", [])}
@@ -181,6 +190,7 @@ def _score_retrieval(case: dict[str, Any], retrieved_chunks: list[dict[str, str]
             "hit_rate": 1.0 if retrieved_chunks else 0.0,
             "source_recall": 1.0 if retrieved_chunks else 0.0,
             "mrr": 1.0 if retrieved_chunks else 0.0,
+            "noise_rejection": _noise_rejection(case, retrieved_chunks),
         }
 
     expected = expected_chunk_ids or expected_document_ids
@@ -194,7 +204,48 @@ def _score_retrieval(case: dict[str, Any], retrieved_chunks: list[dict[str, str]
         if matched:
             mrr = round(1 / rank, 4)
             break
-    return {"hit_rate": hit_rate, "source_recall": source_recall, "mrr": mrr}
+    return {"hit_rate": hit_rate, "source_recall": source_recall, "mrr": mrr, "noise_rejection": _noise_rejection(case, retrieved_chunks)}
+
+
+def _expected_sources(case: dict[str, Any]) -> dict[str, list[str]]:
+    return {
+        "documents": [str(value) for value in case.get("expected_source_documents", [])],
+        "chunks": [str(value) for value in case.get("expected_source_chunks", [])],
+    }
+
+
+def _forbidden_sources(case: dict[str, Any]) -> dict[str, list[str]]:
+    return {
+        "documents": [str(value) for value in case.get("forbidden_source_documents", [])],
+        "chunks": [str(value) for value in case.get("forbidden_source_chunks", [])],
+    }
+
+
+def _noise_rejection(case: dict[str, Any], retrieved_chunks: list[dict[str, str]]) -> float:
+    forbidden = _forbidden_sources(case)
+    forbidden_documents = set(forbidden["documents"])
+    forbidden_chunks = set(forbidden["chunks"])
+    if not forbidden_documents and not forbidden_chunks:
+        return 1.0
+    for chunk in retrieved_chunks:
+        if chunk["document_id"] in forbidden_documents or chunk["chunk_id"] in forbidden_chunks:
+            return 0.0
+    return 1.0
+
+
+def _retrieved_artifact(retrieved_chunks: list[dict[str, Any]]) -> list[dict[str, object]]:
+    return [
+        {
+            "rank": index,
+            "document_id": chunk.get("document_id"),
+            "chunk_id": chunk.get("chunk_id"),
+            "document_title": chunk.get("document_title"),
+            "score": chunk.get("score"),
+            "used_in_answer": chunk.get("used_in_answer"),
+            "content_preview": str(chunk.get("content", ""))[:240],
+        }
+        for index, chunk in enumerate(retrieved_chunks, start=1)
+    ]
 
 
 def _summarize(results: list[dict[str, object]], section: str, score_keys: list[str]) -> dict[str, float]:
@@ -356,6 +407,7 @@ async def _main() -> int:
     parser.add_argument("--min-retrieval-hit-rate", type=float, default=0.9)
     parser.add_argument("--min-retrieval-source-recall", type=float, default=0.75)
     parser.add_argument("--min-retrieval-mrr", type=float, default=0.75)
+    parser.add_argument("--min-noise-rejection", type=float, default=1.0)
     parser.add_argument("--base-url", default="")
     parser.add_argument("--token", default="")
     parser.add_argument("--output", default="", help="Optional path to write the JSON eval report.")
@@ -370,13 +422,13 @@ async def _main() -> int:
         results = await asyncio.gather(*[_score_offline_case(case) for case in cases])
 
     answer_summary = _summarize(results, "answer", ["faithfulness", "answer_relevancy", "context_recall"])
-    retrieval_summary = _summarize(results, "retrieval", ["hit_rate", "source_recall", "mrr"])
+    retrieval_summary = _summarize(results, "retrieval", ["hit_rate", "source_recall", "mrr", "noise_rejection"])
     output = {
         "answer_summary": answer_summary,
         "retrieval_summary": retrieval_summary,
         "collections": {
             "answer": _summarize_by_collection(results, "answer", ["faithfulness", "answer_relevancy", "context_recall"]),
-            "retrieval": _summarize_by_collection(results, "retrieval", ["hit_rate", "source_recall", "mrr"]),
+            "retrieval": _summarize_by_collection(results, "retrieval", ["hit_rate", "source_recall", "mrr", "noise_rejection"]),
         },
         "results": results,
     }
@@ -400,6 +452,7 @@ async def _main() -> int:
         "hit_rate": args.min_retrieval_hit_rate,
         "source_recall": args.min_retrieval_source_recall,
         "mrr": args.min_retrieval_mrr,
+        "noise_rejection": args.min_noise_rejection,
     }
     _print_threshold_report("Answer", answer_summary, answer_thresholds)
     _print_threshold_report("Retrieval", retrieval_summary, retrieval_thresholds)

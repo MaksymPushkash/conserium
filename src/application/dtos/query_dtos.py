@@ -13,6 +13,7 @@ class QueryDTO:
     query: str
     conversation_id: UUID | None = None
     collection_id: UUID | None = None
+    tag_names: tuple[str, ...] | None = None
     document_types: tuple[DocumentType, ...] | None = None
     limit: int = 5
 
@@ -32,9 +33,24 @@ class QuerySourceDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
+class QueryDebugDTO:
+    original_query: str
+    retrieval_query: str
+    selected_collection_id: UUID | None
+    selected_tags: list[str]
+    promoted_document_ids: list[UUID]
+    retrieved_sources: list[QuerySourceDTO]
+    final_sources: list[QuerySourceDTO]
+    used_sources: list[QuerySourceDTO]
+    filtered_sources: list[QuerySourceDTO]
+
+
+@final
+@dataclass(frozen=True, slots=True)
 class QueryResultDTO:
     conversation_id: UUID
     query: str
     answer: str
     sources: list[QuerySourceDTO]
     refrag_context: RefragContextPackage
+    debug: QueryDebugDTO | None = None

@@ -1,5 +1,6 @@
 from src.application.dtos.note_dtos import NoteDTO, NoteListDTO, NoteListItemDTO
-from src.presentation.schemas.note import NoteListItemResponse, NoteListResponse, NoteResponse
+from src.application.dtos.note_version_dtos import NoteVersionDTO
+from src.presentation.schemas.note import NoteListItemResponse, NoteListResponse, NoteResponse, NoteVersionResponse
 
 
 def to_note_response(dto: NoteDTO) -> NoteResponse:
@@ -35,4 +36,15 @@ def to_note_list_response(dto: NoteListDTO) -> NoteListResponse:
         total=dto.total,
         limit=dto.limit,
         offset=dto.offset,
+    )
+
+
+def to_note_version_response(dto: NoteVersionDTO) -> NoteVersionResponse:
+    return NoteVersionResponse(
+        id=dto.id,
+        note_id=dto.note_id,
+        version_number=dto.version_number,
+        title=dto.title,
+        content=dto.content,
+        created_at=dto.created_at,
     )

@@ -11,7 +11,7 @@ import structlog
 from src.application.agents.query.state import CortexQueryState
 from src.application.dtos.conversation_dtos import ConversationSourceDTO, ConversationTurnDTO
 from src.application.dtos.evaluation_dtos import QueryEvaluationRecordDTO
-from src.application.dtos.query_dtos import QueryResultDTO, QuerySourceDTO
+from src.application.dtos.query_dtos import QueryDebugDTO, QueryResultDTO, QuerySourceDTO
 from src.application.use_cases.documents.base import ensure_collection_owner
 from src.core.config import settings
 from src.domain.exceptions import QueryProcessingException, QueryValidationException
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from src.application.dtos.query_dtos import QueryDTO
     from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage
     from src.application.ports.conversations.conversation_store import IConversationStore
-    from src.application.ports.persistence.chat_repository import IChatRepository
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
 
 logger = structlog.get_logger(__name__)
@@ -69,6 +68,7 @@ class QueryUseCase:
                 limit=dto.limit,
                 conversation_id=conversation_id,
                 collection_id=dto.collection_id,
+                tag_names=dto.tag_names,
                 document_types=dto.document_types,
                 conversation_turns=conversation_turns,
             )
@@ -77,6 +77,7 @@ class QueryUseCase:
         if state.refrag_context is None:
             raise QueryProcessingException("query graph did not produce refrag_context")
         state.sources = _mark_sources_used_in_answer(state.sources, state.answer)
+        debug = _query_debug(query, state)
         await self._conversation_store.append_turn(
             user_id=dto.user_id,
             conversation_id=conversation_id,
@@ -108,6 +109,7 @@ class QueryUseCase:
                 answer=state.answer,
                 sources=state.sources,
                 refrag_context=state.refrag_context,
+                debug=debug,
             ),
             eval_scores=state.eval_scores,
             trace_id=state.trace_id,
@@ -128,6 +130,7 @@ class QueryUseCase:
             answer=state.answer,
             sources=state.sources,
             refrag_context=state.refrag_context,
+            debug=debug,
         )
 
     async def _record_query(
@@ -156,14 +159,10 @@ class QueryUseCase:
             await self._uow.commit()
 
     async def _ensure_chat_session(self, *, user_id: UUID, conversation_id: UUID, title: str) -> None:
-        chat_repo = getattr(self._uow, "chat_repo", None)
-        if chat_repo is None:
-            return
-        repository = chat_repo
         async with self._uow:
-            session = await repository.get_session(user_id=user_id, chat_id=conversation_id)
+            session = await self._uow.chat_repo.get_session(user_id=user_id, chat_id=conversation_id)
             if session is None:
-                await repository.create_session(
+                await self._uow.chat_repo.create_session(
                     user_id=user_id,
                     chat_id=conversation_id,
                     title=_title_from_query(title),
@@ -171,12 +170,8 @@ class QueryUseCase:
                 await self._uow.commit()
 
     async def _get_persisted_recent_turns(self, *, user_id: UUID, conversation_id: UUID) -> list[ConversationTurnDTO]:
-        chat_repo = getattr(self._uow, "chat_repo", None)
-        if chat_repo is None:
-            return []
-        repository: IChatRepository = chat_repo
         async with self._uow:
-            return await repository.get_recent_turns(
+            return await self._uow.chat_repo.get_recent_turns(
                 user_id=user_id,
                 chat_id=conversation_id,
                 limit=self.RECENT_TURN_LIMIT,
@@ -191,13 +186,9 @@ class QueryUseCase:
         eval_scores: Mapping[str, object],
         trace_id: str | None,
     ) -> None:
-        chat_repo = getattr(self._uow, "chat_repo", None)
-        if chat_repo is None:
-            return
-        repository: IChatRepository = chat_repo
         async with self._uow:
-            await repository.append_message(chat_id=conversation_id, role="user", content=query)
-            await repository.append_message(
+            await self._uow.chat_repo.append_message(chat_id=conversation_id, role="user", content=query)
+            await self._uow.chat_repo.append_message(
                 chat_id=conversation_id,
                 role="assistant",
                 content=result.answer,
@@ -226,6 +217,40 @@ def _source_payload(source: QuerySourceDTO) -> dict[str, object]:
         "score": source.score,
         "used_in_answer": source.used_in_answer,
     }
+
+
+def _sources_payload(sources: list[QuerySourceDTO]) -> list[dict[str, object]]:
+    return [_source_payload(source) for source in sources]
+
+
+def _query_debug(original_query: str, state: CortexQueryState) -> QueryDebugDTO:
+    return QueryDebugDTO(
+        original_query=original_query,
+        retrieval_query=state.retrieval_query or original_query,
+        selected_collection_id=state.collection_id,
+        selected_tags=list(state.tag_names or ()),
+        promoted_document_ids=list(state.promoted_document_ids),
+        retrieved_sources=list(state.retrieved_sources),
+        final_sources=list(state.sources),
+        used_sources=[source for source in state.sources if source.used_in_answer],
+        filtered_sources=list(state.filtered_sources),
+    )
+
+
+def _query_debug_payload(original_query: str, state: CortexQueryState) -> dict[str, object]:
+    debug = _query_debug(original_query, state)
+    return {
+        "original_query": debug.original_query,
+        "retrieval_query": debug.retrieval_query,
+        "selected_collection_id": str(debug.selected_collection_id) if debug.selected_collection_id else None,
+        "selected_tags": debug.selected_tags,
+        "promoted_document_ids": [str(document_id) for document_id in debug.promoted_document_ids],
+        "retrieved_sources": _sources_payload(debug.retrieved_sources),
+        "final_sources": _sources_payload(debug.final_sources),
+        "used_sources": _sources_payload(debug.used_sources),
+        "filtered_sources": _sources_payload(debug.filtered_sources),
+    }
+
 
 
 def _refrag_context_payload(context: RefragContextPackage) -> dict[str, object]:

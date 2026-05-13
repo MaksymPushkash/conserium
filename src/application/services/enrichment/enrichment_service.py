@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, TypedDict, cast
 
 from src.application.services.enrichment.document_embedding_service import DocumentEmbeddingService
 from src.application.services.enrichment.duplicate_detector import DuplicateDetector
+from src.application.services.enrichment.suggested_questions import build_suggested_questions
 from src.application.services.enrichment.tag_builder import build_auto_tags
 from src.domain.exceptions import DocumentNotFoundException
 
@@ -22,6 +23,7 @@ class EnrichmentResult(TypedDict):
     entities: list[EntityDTO]
     categories: list[CategoryDTO]
     tags: list[str]
+    suggested_questions: list[str]
     is_duplicate: bool
     duplicate_of_id: UUID | None
 
@@ -52,6 +54,7 @@ class EnrichmentService:
             "entities": [],
             "categories": [],
             "tags": [],
+            "suggested_questions": [],
             "is_duplicate": False,
             "duplicate_of_id": None,
         }
@@ -83,6 +86,16 @@ class EnrichmentService:
             )
         else:
             result["tags"] = tag_names
+
+        result["suggested_questions"] = build_suggested_questions(
+            title=doc.title,
+            text=text,
+            tags=result["tags"],
+            categories=result["categories"],
+        )
+        visual_metadata = doc.visual_metadata or {}
+        visual_metadata["suggested_questions"] = result["suggested_questions"]
+        doc.update_visual_metadata(visual_metadata)
 
         doc.update_enrichment(
             entities=cast("list[dict[str, object]]", result["entities"]),
