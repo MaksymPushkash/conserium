@@ -86,11 +86,18 @@ class ApiClient:
             detail = exc.read().decode("utf-8", errors="replace")
             if _looks_like_html(detail):
                 raise RuntimeError(
-                    f"{method} {path} failed with HTTP {exc.code}: received HTML instead of JSON. "
+                    f"{method} {path} failed with HTTP {exc.code} from {self._base_url}: "
+                    "received HTML instead of JSON. "
                     "PRODUCTION_API_BASE_URL must point to the backend API origin, "
-                    "for example https://api.cortexx.me, not the frontend app URL."
+                    "for example https://api.cortexx.me, not the frontend app URL. "
+                    "If it already points to the API origin, the public nginx/backend route is unhealthy."
                 ) from exc
             raise RuntimeError(f"{method} {path} failed with HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"{method} {path} failed against {self._base_url}: {exc.reason}. "
+                "Check PRODUCTION_API_BASE_URL DNS, TLS, and nginx routing."
+            ) from exc
 
 
 def _normalize_base_url(base_url: str) -> str:

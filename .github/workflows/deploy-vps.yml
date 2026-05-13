@@ -77,6 +77,44 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
           REMOTE_DEPLOY
 
+      - name: Wait for public production API
+        if: ${{ env.PRODUCTION_API_BASE_URL != '' }}
+        run: |
+          api_base="${PRODUCTION_API_BASE_URL%/}"
+          api_base="${api_base%/api/v1}"
+          api_host="$(python3 -c 'import os; from urllib.parse import urlparse; print(urlparse(os.environ["PRODUCTION_API_BASE_URL"]).hostname or "")')"
+          echo "Checking public API health at ${api_base}/health"
+          echo "Public API host resolves to:"
+          getent hosts "$api_host" || true
+
+          for attempt in $(seq 1 30); do
+            status="$(curl --silent --show-error --location --output /tmp/cortex-health-body --write-out '%{http_code}' "${api_base}/health" || true)"
+            body="$(head -c 300 /tmp/cortex-health-body 2>/dev/null || true)"
+            if [ "$status" = "200" ] && printf '%s' "$body" | grep -q '"status"'; then
+              echo "Public API is healthy."
+              exit 0
+            fi
+            echo "Public API not ready yet: attempt=${attempt} status=${status} body=${body}"
+            sleep 5
+          done
+
+          echo "Public API did not become healthy. Collecting VPS diagnostics."
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "VPS_APP_DIR='$VPS_APP_DIR' API_HOST='$api_host' bash -s" <<'REMOTE_DIAGNOSTICS'
+          set -euo pipefail
+          cd "$VPS_APP_DIR"
+          docker compose --env-file .env.prod ps
+          docker compose --env-file .env.prod port app 8000 || true
+          docker compose --env-file .env.prod logs --tail=120 app
+          ss -ltnp | grep ':8000' || true
+          curl --fail --silent --show-error http://127.0.0.1:8000/health || true
+          if [ -n "${API_HOST:-}" ]; then
+            curl --verbose --resolve "${API_HOST}:443:127.0.0.1" "https://${API_HOST}/health" || true
+          fi
+          sudo -n tail -n 120 /var/log/nginx/error.log || true
+          REMOTE_DIAGNOSTICS
+          exit 1
+
       - name: Run live production retrieval validation
         run: |
           if [ -z "${PRODUCTION_API_BASE_URL:-}" ] || [ -z "${LIVE_EVAL_EMAIL:-}" ] || [ -z "${LIVE_EVAL_PASSWORD:-}" ]; then
