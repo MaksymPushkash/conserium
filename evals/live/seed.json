@@ -165,7 +165,7 @@
         {
           "key": "auth_noise_storage",
           "title": "Live Eval Noise - Auth Storage Engine",
-          "content": "Columnar compression parquet lakehouse partition pruning statistics are unrelated to refresh token revocation and logout everywhere."
+          "content": "Columnar compression parquet lakehouse partition pruning statistics describe analytical storage internals and warehouse optimization."
         }
       ],
       "cases": [
