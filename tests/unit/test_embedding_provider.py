@@ -34,6 +34,25 @@ async def test_openai_embedding_provider_closes_client() -> None:
     assert provider._client is None
 
 
+async def test_openai_embedding_provider_configures_client_timeout_and_retries() -> None:
+    with (
+        patch("src.infrastructure.ai.providers.openai_embedding_provider.settings.OPENAI_API_KEY", "test-key"),
+        patch("src.infrastructure.ai.providers.openai_embedding_provider.AsyncOpenAI") as client_cls,
+    ):
+        client = AsyncMock()
+        client.embeddings.create.return_value.data = [
+            type("Embedding", (), {"embedding": [0.1] * ChunkEntity.EMBEDDING_DIMENSIONS})()
+        ]
+        client_cls.return_value = client
+        provider = OpenAIEmbeddingProvider()
+
+        await provider.embed_texts(["hello"])
+
+        client_cls.assert_called_once()
+        assert client_cls.call_args.kwargs["timeout"] == 30.0
+        assert client_cls.call_args.kwargs["max_retries"] == 2
+
+
 def test_startup_validation_rejects_mismatched_embedding_dimensions() -> None:
     with patch(
         "src.core.startup_checks.settings.OPENAI_EMBEDDING_DIMENSIONS",

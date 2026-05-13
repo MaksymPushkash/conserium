@@ -24,7 +24,11 @@ class OpenAIEmbeddingProvider(IEmbeddingProvider):
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY is required to generate embeddings")
         if self._client is None:
-            self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            self._client = AsyncOpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                timeout=settings.OPENAI_REQUEST_TIMEOUT_SECONDS,
+                max_retries=settings.OPENAI_MAX_RETRIES,
+            )
         try:
             response = await self._client.embeddings.create(
                 model=self._model,

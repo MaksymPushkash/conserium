@@ -22,6 +22,8 @@ logger = structlog.get_logger(__name__)
     default_retry_delay=60,
     rate_limit="50/m",
     acks_late=True,
+    soft_time_limit=120,
+    time_limit=150,
 )
 def embed_and_finalize_document(
     self: Any,
