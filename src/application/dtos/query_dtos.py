@@ -27,6 +27,7 @@ class QuerySourceDTO:
     page_number: int | None
     chunk_index: int
     score: float | None = None
+    used_in_answer: bool = False
 
 
 @final

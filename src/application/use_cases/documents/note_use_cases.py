@@ -13,7 +13,7 @@ from src.application.dtos.note_dtos import (
     NoteListItemDTO,
     UpdateNoteDTO,
 )
-from src.application.use_cases.documents.base import ensure_document_owner
+from src.application.use_cases.documents.base import ensure_collection_owner, ensure_document_owner
 from src.domain.entities.document_entity import DocumentEntity
 from src.domain.exceptions import DocumentNotFoundException
 from src.domain.value_objects.document_type import DocumentType
@@ -39,9 +39,12 @@ class CreateNoteUseCase:
         title = _normalize_title(dto.title, dto.content)
         content = _normalize_content(dto.content)
         has_content = bool(content.strip())
+        async with self._uow:
+            await ensure_collection_owner(self._uow, dto.collection_id, dto.user_id)
         document = DocumentEntity.create(
             id=uuid.uuid4(),
             user_id=dto.user_id,
+            collection_id=dto.collection_id,
             title=title,
             type=DocumentType.MARKDOWN,
             raw_content=content if has_content else None,
@@ -78,10 +81,12 @@ class ListNotesUseCase:
                 limit=dto.limit,
                 offset=dto.offset,
                 document_type=DocumentType.MARKDOWN,
+                collection_id=dto.collection_id,
             )
             total = await self._uow.document_repo.count_by_user_id(
                 dto.user_id,
                 document_type=DocumentType.MARKDOWN,
+                collection_id=dto.collection_id,
             )
         return NoteListDTO(
             items=[_note_to_list_item_dto(document) for document in paged_notes],
@@ -115,7 +120,10 @@ class UpdateNoteUseCase:
         document = await _get_note(self._uow, user_id=dto.user_id, note_id=dto.note_id)
         content = _normalize_content(dto.content)
         has_content = bool(content.strip())
+        async with self._uow:
+            await ensure_collection_owner(self._uow, dto.collection_id, dto.user_id)
         document.rename(_normalize_title(dto.title, content))
+        document.assign_collection(dto.collection_id)
         document.update_content(
             raw_content=content if has_content else None,
             word_count=len(content.split()),
@@ -197,6 +205,7 @@ async def _queue_note_processing(
 def _note_to_dto(document: DocumentEntity) -> NoteDTO:
     return NoteDTO(
         id=document.id,
+        collection_id=document.collection_id,
         title=document.title,
         content=document.raw_content or "",
         status=document.status,
@@ -210,6 +219,7 @@ def _note_to_dto(document: DocumentEntity) -> NoteDTO:
 def _note_to_list_item_dto(document: DocumentEntity) -> NoteListItemDTO:
     return NoteListItemDTO(
         id=document.id,
+        collection_id=document.collection_id,
         title=document.title,
         status=document.status,
         word_count=document.word_count or 0,

@@ -18,13 +18,14 @@ jobs:
         run: uv sync --frozen
       - name: Static checks
         run: |
-          uv run ruff check src tests
+          uv run ruff check src tests scripts
           uv run mypy src tests
       - name: Unit tests
         run: uv run pytest
       - name: Offline RAGAS-compatible eval
         run: >
           uv run python scripts/run_eval_harness.py
+          --dataset-dir evals/collections
           --min-answer-faithfulness 0.8
           --min-answer-relevance 0.75
           --min-answer-context-recall 0.75

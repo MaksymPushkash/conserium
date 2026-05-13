@@ -30,8 +30,16 @@ jobs:
       VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
       VPS_APP_DIR: ${{ vars.VPS_APP_DIR || '/opt/cortex' }}
       DEPLOY_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+      PRODUCTION_API_BASE_URL: ${{ vars.PRODUCTION_API_BASE_URL }}
+      LIVE_EVAL_EMAIL: ${{ secrets.LIVE_EVAL_EMAIL }}
+      LIVE_EVAL_PASSWORD: ${{ secrets.LIVE_EVAL_PASSWORD }}
+      LIVE_EVAL_CREATE_USER: ${{ vars.LIVE_EVAL_CREATE_USER || 'false' }}
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
       - name: Validate deployment configuration
         run: |
           test -n "$VPS_HOST"
@@ -68,3 +76,31 @@ jobs:
           docker compose --env-file .env.prod ps
           curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
           REMOTE_DEPLOY
+
+      - name: Run live production retrieval validation
+        run: |
+          if [ -z "${PRODUCTION_API_BASE_URL:-}" ] || [ -z "${LIVE_EVAL_EMAIL:-}" ] || [ -z "${LIVE_EVAL_PASSWORD:-}" ]; then
+            echo "Skipping live retrieval validation because PRODUCTION_API_BASE_URL, LIVE_EVAL_EMAIL, or LIVE_EVAL_PASSWORD is not configured."
+            exit 0
+          fi
+
+          create_user_flag=""
+          if [ "$LIVE_EVAL_CREATE_USER" = "true" ]; then
+            create_user_flag="--create-user"
+          fi
+
+          python3 scripts/run_live_eval.py \
+            --base-url "$PRODUCTION_API_BASE_URL" \
+            --email "$LIVE_EVAL_EMAIL" \
+            --password "$LIVE_EVAL_PASSWORD" \
+            --dataset evals/live/seed.json \
+            --output artifacts/live-retrieval-eval-report.json \
+            $create_user_flag
+
+      - name: Upload live retrieval validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-retrieval-eval-report
+          path: artifacts/live-retrieval-eval-report.json
+          if-no-files-found: warn

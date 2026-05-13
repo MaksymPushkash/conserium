@@ -5,11 +5,19 @@ from time import perf_counter
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import structlog
+
 from src.application.agents.query.state import CortexQueryState
 from src.application.dtos.conversation_dtos import ConversationSourceDTO, ConversationTurnDTO
 from src.application.dtos.evaluation_dtos import QueryEvaluationRecordDTO
 from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStreamEventType
-from src.application.use_cases.query.query_use_case import _refrag_context_payload, _source_payload, _title_from_query
+from src.application.use_cases.documents.base import ensure_collection_owner
+from src.application.use_cases.query.query_use_case import (
+    _mark_sources_used_in_answer,
+    _refrag_context_payload,
+    _source_payload,
+    _title_from_query,
+)
 from src.core.config import settings
 from src.domain.exceptions import QueryProcessingException
 
@@ -22,6 +30,8 @@ if TYPE_CHECKING:
     from src.application.ports.conversations.conversation_store import IConversationStore
     from src.application.ports.persistence.chat_repository import IChatRepository
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
+
+logger = structlog.get_logger(__name__)
 
 
 class StreamQueryUseCase:
@@ -50,6 +60,8 @@ class StreamQueryUseCase:
         conversation_id = dto.conversation_id or uuid4()
         started_at = perf_counter()
         try:
+            async with self._uow:
+                await ensure_collection_owner(self._uow, dto.collection_id, dto.user_id)
             await self._ensure_chat_session(user_id=dto.user_id, conversation_id=conversation_id, title=query)
             conversation_turns = await self._conversation_store.get_recent_turns(
                 user_id=dto.user_id,
@@ -105,6 +117,8 @@ class StreamQueryUseCase:
                         data={"text": token},
                     )
 
+            state.answer = "".join(answer_parts)
+            state.sources = _mark_sources_used_in_answer(state.sources, state.answer)
             yield QueryStreamEventDTO(
                 event=QueryStreamEventType.SOURCES,
                 data={
@@ -118,6 +132,7 @@ class StreamQueryUseCase:
                             "page_number": source.page_number,
                             "chunk_index": source.chunk_index,
                             "score": source.score,
+                            "used_in_answer": source.used_in_answer,
                         }
                         for index, source in enumerate(state.sources, start=1)
                     ]
@@ -150,7 +165,7 @@ class StreamQueryUseCase:
                 conversation_id=conversation_id,
                 turn=ConversationTurnDTO(
                     query=query,
-                    answer="".join(answer_parts),
+                    answer=state.answer,
                     sources=[
                         ConversationSourceDTO(
                             chunk_id=source.chunk_id,
@@ -166,7 +181,6 @@ class StreamQueryUseCase:
                 ),
                 ttl_seconds=settings.REDIS_CONVERSATION_TTL,
             )
-            state.answer = "".join(answer_parts)
             state = await self._graph_runner.evaluate(state)
             latency_ms = int((perf_counter() - started_at) * 1000)
             await self._record_query(dto, query, state, latency_ms)
@@ -180,6 +194,16 @@ class StreamQueryUseCase:
                 refrag_context=_refrag_context_payload(state.refrag_context),
                 eval_scores=state.eval_scores,
                 trace_id=state.trace_id,
+            )
+            logger.info(
+                "query_completed",
+                mode="stream",
+                trace_id=state.trace_id,
+                conversation_id=str(conversation_id),
+                collection_id=str(dto.collection_id) if dto.collection_id else None,
+                sources=len(state.sources),
+                used_sources=sum(1 for source in state.sources if source.used_in_answer),
+                latency_ms=latency_ms,
             )
             yield QueryStreamEventDTO(
                 event=QueryStreamEventType.DONE,

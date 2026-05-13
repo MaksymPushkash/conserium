@@ -5,6 +5,7 @@ from src.application.ports.ai.reranker import IReranker
 from src.application.services.retrieval.chunk_quality_filter import ChunkQualityFilter
 from src.application.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
 from src.core.config import settings
+from src.core.metrics import metrics_registry
 from src.domain.value_objects.document_type import DocumentType
 
 
@@ -41,6 +42,17 @@ class RetrievalAgent:
             state.sources = sorted(
                 state.sources,
                 key=lambda source: source.document_id not in promoted_ids,
+            )
+        metrics_registry.inc_counter(
+            "cortex_retrieval_requests_total",
+            "Retrieval requests grouped by outcome.",
+            labels={"scoped": str(state.collection_id is not None).lower()},
+        )
+        if state.sources:
+            metrics_registry.inc_counter(
+                "cortex_retrieval_hits_total",
+                "Retrieval requests with at least one usable source.",
+                labels={"scoped": str(state.collection_id is not None).lower()},
             )
         return state
 

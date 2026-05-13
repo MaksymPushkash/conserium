@@ -41,8 +41,9 @@ async def list_notes(
     use_case: FromDishka[ListNotesUseCase],
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    collection_id: UUID | None = Query(default=None),
 ) -> NoteListResponse:
-    result = await use_case(to_list_notes_dto(current_user.id, limit, offset))
+    result = await use_case(to_list_notes_dto(current_user.id, limit, offset, collection_id))
     return to_note_list_response(result)
 
 

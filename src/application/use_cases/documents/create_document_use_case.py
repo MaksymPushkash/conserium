@@ -2,7 +2,7 @@ import uuid
 
 from src.application.dtos.document_dtos import CreateDocumentDTO, DocumentDTO
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.documents.base import document_to_dto
+from src.application.use_cases.documents.base import document_to_dto, ensure_collection_owner
 from src.domain.entities.document_entity import DocumentEntity
 
 
@@ -11,6 +11,9 @@ class CreateDocumentUseCase:
         self._uow = uow
 
     async def __call__(self, dto: CreateDocumentDTO) -> DocumentDTO:
+        async with self._uow:
+            await ensure_collection_owner(self._uow, dto.collection_id, dto.user_id)
+
         document = DocumentEntity.create(
             id=uuid.uuid4(),
             user_id=dto.user_id,

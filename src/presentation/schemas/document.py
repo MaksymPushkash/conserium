@@ -92,6 +92,29 @@ class DocumentResponse(BaseModel):
     updated_at: datetime | None
 
 
+class DocumentChunkResponse(BaseModel):
+    id: UUID
+    document_id: UUID
+    content: str
+    chunk_index: int
+    start_char: int | None
+    end_char: int | None
+    page_number: int | None
+    token_count: int | None
+
+
+class RenameDocumentRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+
+
+class MoveDocumentRequest(BaseModel):
+    collection_id: UUID | None = None
+
+
+class BulkDocumentOperationRequest(BaseModel):
+    document_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
 class DocumentListItemResponse(BaseModel):
     id: UUID
     user_id: UUID

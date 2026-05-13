@@ -23,6 +23,7 @@ class QuerySourceResponse(BaseModel):
     chunk_index: int
     score: float | None
     citation: str
+    used_in_answer: bool = False
 
 
 class RefragChunkResponse(BaseModel):

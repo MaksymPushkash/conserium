@@ -38,6 +38,11 @@ class OpenAILLMService(ILLMService, IStreamingLLMService):
             "OpenAI API requests grouped by operation and outcome.",
             labels={"operation": "chat", "status": "success"},
         )
+        metrics_registry.inc_counter(
+            "cortex_openai_estimated_cost_usd",
+            "Approximate OpenAI API cost estimate in USD.",
+            value=_estimate_chat_cost(query=query, context=context),
+        )
         return response.choices[0].message.content or _fallback_answer(context)
 
     async def stream_answer(self, *, query: str, context: RefragContextPackage) -> AsyncIterator[str]:
@@ -68,6 +73,11 @@ class OpenAILLMService(ILLMService, IStreamingLLMService):
             "cortex_openai_requests_total",
             "OpenAI API requests grouped by operation and outcome.",
             labels={"operation": "chat_stream", "status": "success"},
+        )
+        metrics_registry.inc_counter(
+            "cortex_openai_estimated_cost_usd",
+            "Approximate OpenAI API cost estimate in USD.",
+            value=_estimate_chat_cost(query=query, context=context),
         )
         async for chunk in stream:
             token = chunk.choices[0].delta.content
@@ -123,3 +133,9 @@ def _fallback_answer(context: RefragContextPackage) -> str:
         f"Found relevant saved context in sources {citations}. "
         "LLM synthesis is disabled until OPENAI_API_KEY is set."
     )
+
+
+def _estimate_chat_cost(*, query: str, context: RefragContextPackage) -> float:
+    estimated_input_tokens = len(query.split()) + context.total_context_tokens
+    estimated_output_tokens = 500
+    return (estimated_input_tokens / 1_000_000 * 0.15) + (estimated_output_tokens / 1_000_000 * 0.60)

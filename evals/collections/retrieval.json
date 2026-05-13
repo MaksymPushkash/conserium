@@ -1,0 +1,90 @@
+[
+  {
+    "id": "pgvector-search",
+    "query": "Which note mentions PostgreSQL pgvector search?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000002"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000002"
+    ],
+    "expected_answer_terms": [
+      "postgresql",
+      "pgvector",
+      "vector",
+      "search"
+    ],
+    "answer": "The PostgreSQL note mentions pgvector for storing embeddings and running vector search beside relational metadata. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000002",
+        "chunk_id": "10000000-0000-0000-0000-000000000002",
+        "document_title": "Vector Storage",
+        "content": "PostgreSQL with pgvector stores embeddings and supports vector search alongside relational metadata.",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      },
+      {
+        "document_id": "00000000-0000-0000-0000-000000000902",
+        "chunk_id": "10000000-0000-0000-0000-000000000902",
+        "document_title": "Noise",
+        "content": "sample text",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000002"
+  },
+  {
+    "id": "refrag-compression",
+    "query": "Why does Cortex use REFRAG?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000003"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000003"
+    ],
+    "expected_answer_terms": [
+      "context",
+      "compressed",
+      "tokens",
+      "retrieval"
+    ],
+    "answer": "Cortex uses REFRAG so retrieval context can be compressed before synthesis, reducing tokens while preserving citations. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000003",
+        "chunk_id": "10000000-0000-0000-0000-000000000003",
+        "document_title": "REFRAG Design",
+        "content": "REFRAG compresses retrieval context before synthesis to reduce tokens while keeping source references.",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000002"
+  },
+  {
+    "id": "reranker-default",
+    "query": "Which reranker backend should run without optional dependencies?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000010"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000010"
+    ],
+    "expected_answer_terms": [
+      "embedding",
+      "reranker",
+      "optional",
+      "dependencies"
+    ],
+    "answer": "The embedding reranker should be the default when optional CrossEncoder dependencies are not installed. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000010",
+        "chunk_id": "10000000-0000-0000-0000-000000000010",
+        "document_title": "Retrieval Config",
+        "content": "Use the embedding reranker by default unless optional CrossEncoder dependencies are installed and configured.",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000002"
+  }
+]
