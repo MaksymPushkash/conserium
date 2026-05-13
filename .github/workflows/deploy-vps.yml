@@ -116,6 +116,7 @@ jobs:
           exit 1
 
       - name: Run live production retrieval validation
+        timeout-minutes: 12
         run: |
           if [ -z "${PRODUCTION_API_BASE_URL:-}" ] || [ -z "${LIVE_EVAL_EMAIL:-}" ] || [ -z "${LIVE_EVAL_PASSWORD:-}" ]; then
             echo "Skipping live retrieval validation because PRODUCTION_API_BASE_URL, LIVE_EVAL_EMAIL, or LIVE_EVAL_PASSWORD is not configured."
@@ -136,7 +137,35 @@ jobs:
             --min-collection-scope 1.0 \
             --min-noise-rejection 1.0 \
             --min-abstention-rate 1.0 \
+            --wait-timeout-seconds 120 \
             $create_user_flag
+
+      - name: Collect live eval failure diagnostics
+        if: ${{ failure() && env.PRODUCTION_API_BASE_URL != '' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "VPS_APP_DIR='$VPS_APP_DIR' bash -s" <<'REMOTE_LIVE_EVAL_DIAGNOSTICS'
+          set -euo pipefail
+          cd "$VPS_APP_DIR"
+
+          echo "=== docker compose ps ==="
+          docker compose --env-file .env.prod ps || true
+
+          echo "=== rabbitmq queues ==="
+          docker compose --env-file .env.prod exec -T rabbitmq rabbitmqctl list_queues name messages messages_ready messages_unacknowledged || true
+
+          echo "=== app logs ==="
+          docker compose --env-file .env.prod logs --tail=160 app || true
+
+          echo "=== worker-default logs ==="
+          docker compose --env-file .env.prod logs --tail=220 worker-default || true
+
+          echo "=== worker-embeddings logs ==="
+          docker compose --env-file .env.prod logs --tail=220 worker-embeddings || true
+
+          echo "=== worker-media logs ==="
+          docker compose --env-file .env.prod logs --tail=220 worker-media || true
+          REMOTE_LIVE_EVAL_DIAGNOSTICS
 
       - name: Upload live retrieval validation report
         if: always()

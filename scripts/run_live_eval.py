@@ -78,6 +78,7 @@ class ApiClient:
             headers=headers,
             method=method,
         )
+        print(f"[live-eval] {method} {path}", file=sys.stderr, flush=True)
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 body = response.read().decode("utf-8")
@@ -116,6 +117,7 @@ def _authenticate(base_url: str, email: str, password: str, create_user: bool) -
     client = ApiClient(base_url)
     if create_user:
         try:
+            print("[live-eval] registering live eval user", file=sys.stderr, flush=True)
             token_payload = client.request(
                 "POST",
                 "/auth/register",
@@ -125,6 +127,7 @@ def _authenticate(base_url: str, email: str, password: str, create_user: bool) -
         except RuntimeError as exc:
             print(f"Registration skipped: {exc}", file=sys.stderr)
 
+    print("[live-eval] logging in live eval user", file=sys.stderr, flush=True)
     token_payload = client.request("POST", "/auth/login", payload={"email": email, "password": password})
     return client.with_token(str(token_payload["access_token"]))
 
@@ -138,6 +141,7 @@ def _seed_dataset(
 ) -> None:
     for collection_spec in dataset["collections"]:
         collection_key = str(collection_spec["key"])
+        print(f"[live-eval] seeding collection {collection_key}", file=sys.stderr, flush=True)
         collection = client.request(
             "POST",
             "/collections",
@@ -177,6 +181,11 @@ def _ingest_text_document(
     noise: bool,
     wait_timeout_seconds: int,
 ) -> SeededDocument:
+    print(
+        f"[live-eval] ingesting {'noise ' if noise else ''}document {document_spec['key']}",
+        file=sys.stderr,
+        flush=True,
+    )
     document = client.request(
         "POST",
         "/ingest",
@@ -189,15 +198,35 @@ def _ingest_text_document(
         },
     )
     document_id = str(document["id"])
-    _wait_document_ready(client, document_id, wait_timeout_seconds)
+    try:
+        _wait_document_ready(client, document_id, wait_timeout_seconds)
+    except Exception:
+        print(
+            f"[live-eval] deleting timed-out/failed seed document {document_id}",
+            file=sys.stderr,
+            flush=True,
+        )
+        try:
+            client.request("DELETE", f"/documents/{document_id}", timeout=30)
+        except RuntimeError as cleanup_error:
+            print(f"[live-eval] failed to delete seed document {document_id}: {cleanup_error}", file=sys.stderr)
+        raise
     return SeededDocument(key=str(document_spec["key"]), id=document_id, collection_id=collection_id, noise=noise)
 
 
 def _wait_document_ready(client: ApiClient, document_id: str, wait_timeout_seconds: int) -> None:
     deadline = time.monotonic() + wait_timeout_seconds
+    last_status = ""
     while time.monotonic() < deadline:
         status_payload = client.request("GET", f"/documents/{document_id}/status", timeout=30)
         status = str(status_payload.get("status", "")).upper()
+        if status != last_status:
+            print(
+                f"[live-eval] document {document_id} status={status} progress={status_payload.get('progress')}",
+                file=sys.stderr,
+                flush=True,
+            )
+            last_status = status
         if status == "READY":
             return
         if status == "FAILED":
@@ -292,6 +321,7 @@ def _query_api(
     conversation_id: str | None,
     limit: int,
 ) -> JsonObject:
+    print(f"[live-eval] query collection={collection_id} text={query!r}", file=sys.stderr, flush=True)
     payload: JsonObject = {"query": query, "collection_id": collection_id, "limit": limit}
     if conversation_id:
         payload["conversation_id"] = conversation_id
@@ -377,11 +407,13 @@ def _cleanup(client: ApiClient, context: LiveEvalContext) -> None:
     document_ids = [document.id for document in context.documents.values()]
     if document_ids:
         try:
+            print(f"[live-eval] cleaning up {len(document_ids)} seeded documents", file=sys.stderr, flush=True)
             client.request("POST", "/documents/bulk/delete", payload={"document_ids": document_ids})
         except RuntimeError as exc:
             print(f"Live eval cleanup failed for documents: {exc}", file=sys.stderr)
     for collection in context.collections.values():
         try:
+            print(f"[live-eval] cleaning up collection {collection.key}", file=sys.stderr, flush=True)
             client.request("DELETE", f"/collections/{collection.id}")
         except RuntimeError as exc:
             print(f"Live eval cleanup failed for collection {collection.id}: {exc}", file=sys.stderr)
