@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
     name="src.infrastructure.celery.tasks.enrichment_tasks.enrich_document_task",
     queue="media_processing",
     bind=True,
+    soft_time_limit=180,
+    time_limit=240,
 )
 def enrich_document_task(self: Any, document_id: str) -> dict[str, object]:
     try:

@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     OPENAI_EMBEDDING_DIMENSIONS: int = EMBEDDING_DIMENSIONS
     OPENAI_LLM_MODEL: str = "gpt-4o-mini"
+    OPENAI_REQUEST_TIMEOUT_SECONDS: float = 30.0
+    OPENAI_MAX_RETRIES: int = 2
 
     FILE_STORAGE_TYPE: str = "local"
     LOCAL_STORAGE_PATH: str = "./storage"

@@ -19,6 +19,8 @@ logger = structlog.get_logger(__name__)
     max_retries=3,
     default_retry_delay=60,
     acks_late=True,
+    soft_time_limit=180,
+    time_limit=240,
 )
 def process_image_document(self: Any, document_id: str) -> dict[str, str]:
     log = logger.bind(document_id=document_id, task_id=self.request.id)

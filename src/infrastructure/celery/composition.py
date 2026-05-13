@@ -91,13 +91,6 @@ async def enrich_document(document_id: str) -> dict[str, object]:
     embedding_provider = CachedEmbeddingProvider(OpenAIEmbeddingProvider(), RedisCache(redis))
 
     try:
-        status_cache = RedisDocumentStatusCache(redis)
-        await status_cache.set_status(
-            UUID(document_id),
-            status="PROCESSING",
-            progress=95,
-            message="Enriching metadata...",
-        )
         async with factory() as session:
             enrichment_service = EnrichmentService(
                 uow=SQLAlchemyUnitOfWork(session),
@@ -108,6 +101,7 @@ async def enrich_document(document_id: str) -> dict[str, object]:
             )
             use_case = EnrichDocumentUseCase(enrichment_service)
             result = await use_case.execute(UUID(document_id))
+        status_cache = RedisDocumentStatusCache(redis)
         await status_cache.set_status(
             UUID(document_id),
             status="READY",
