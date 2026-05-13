@@ -1,0 +1,360 @@
+[
+  {
+    "id": "upload-size-limit",
+    "query": "What protects uploads from consuming too much memory?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000006"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000006"
+    ],
+    "expected_answer_terms": [
+      "upload",
+      "max",
+      "size",
+      "memory"
+    ],
+    "answer": "Upload memory risk is controlled by reading files in chunks and rejecting bodies above the configured max upload size. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000006",
+        "chunk_id": "10000000-0000-0000-0000-000000000006",
+        "document_title": "Ingestion Hardening",
+        "content": "The upload flow reads bounded chunks and rejects files above the maximum upload size before they consume application memory.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "document-processing-timeline",
+    "query": "Which stages should document processing show?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000007"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000007"
+    ],
+    "expected_answer_terms": [
+      "uploaded",
+      "extracted",
+      "embedded",
+      "ready"
+    ],
+    "answer": "The document timeline should show uploaded, extracted, embedded, enriched, and ready states. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000007",
+        "chunk_id": "10000000-0000-0000-0000-000000000007",
+        "document_title": "Document UX",
+        "content": "Processing timeline stages are uploaded, extracted, embedded, enriched, and ready.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "failed-document-retry",
+    "query": "What action is needed for failed documents?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000008"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000008"
+    ],
+    "expected_answer_terms": [
+      "retry",
+      "failed",
+      "document",
+      "processing"
+    ],
+    "answer": "Failed documents need a retry action that queues document processing again and exposes the failure reason. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000008",
+        "chunk_id": "10000000-0000-0000-0000-000000000008",
+        "document_title": "Document UX",
+        "content": "Failed document processing should expose a failure reason and allow the user to retry the document.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "s3-production-storage",
+    "query": "Which production storage backend is configured?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000009"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000009"
+    ],
+    "expected_answer_terms": [
+      "production",
+      "s3",
+      "storage",
+      "uploads"
+    ],
+    "answer": "Production uses S3 storage for document uploads with an uploads prefix. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000009",
+        "chunk_id": "10000000-0000-0000-0000-000000000009",
+        "document_title": "Production Env",
+        "content": "The production environment uses S3 storage for uploaded documents under the uploads prefix.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "vps-deploy-flow",
+    "query": "How does production deploy run on the VPS?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000012"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000012"
+    ],
+    "expected_answer_terms": [
+      "github",
+      "actions",
+      "vps",
+      "deploy"
+    ],
+    "answer": "GitHub Actions connects to the VPS, updates main, rebuilds docker compose services, runs migrations, and checks health. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000012",
+        "chunk_id": "10000000-0000-0000-0000-000000000012",
+        "document_title": "CI Deploy",
+        "content": "The GitHub Actions deploy job SSHes into the VPS, fetches main, rebuilds Docker Compose services, runs Alembic migrations, and verifies health.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "cpu-media-worker",
+    "query": "Why should media worker avoid CUDA torch?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000013"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000013"
+    ],
+    "expected_answer_terms": [
+      "media",
+      "worker",
+      "cpu",
+      "cuda"
+    ],
+    "answer": "The media worker should install CPU torch because the VPS has no GPU and CUDA packages make deploys too heavy. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000013",
+        "chunk_id": "10000000-0000-0000-0000-000000000013",
+        "document_title": "Deploy Optimization",
+        "content": "The media worker runs on CPU-only infrastructure, so CUDA torch packages are unnecessary and slow down deploy builds.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "query-debug-panel",
+    "query": "What should the query debug panel show?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000014"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000014"
+    ],
+    "expected_answer_terms": [
+      "chunks",
+      "scores",
+      "compression",
+      "context"
+    ],
+    "answer": "The debug panel should show context chunks, retrieval scores, and compression decisions for full, compressed, and discarded sources. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000014",
+        "chunk_id": "10000000-0000-0000-0000-000000000014",
+        "document_title": "RAG Debugging",
+        "content": "Query debug needs context chunks, scores, compression decisions, token counts, and discarded source visibility.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "chunk-quality-filter",
+    "query": "Which chunks should be filtered out of retrieval context?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000015"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000015"
+    ],
+    "expected_answer_terms": [
+      "garbage",
+      "chunks",
+      "hello",
+      "context"
+    ],
+    "answer": "Garbage chunks such as hello text should be filtered out before they reach top context. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000015",
+        "chunk_id": "10000000-0000-0000-0000-000000000015",
+        "document_title": "RAG Quality",
+        "content": "Garbage chunks like hello text, sample text, and tiny placeholders should not enter the retrieval context.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      },
+      {
+        "document_id": "00000000-0000-0000-0000-000000000903",
+        "chunk_id": "10000000-0000-0000-0000-000000000903",
+        "document_title": "Placeholder",
+        "content": "hello text",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "document-reprocess",
+    "query": "What does reprocess do for a document?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000016"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000016"
+    ],
+    "expected_answer_terms": [
+      "reprocess",
+      "document",
+      "queue",
+      "chunks"
+    ],
+    "answer": "Reprocess queues the document again so extraction and chunk embedding can be rebuilt from the stored source. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000016",
+        "chunk_id": "10000000-0000-0000-0000-000000000016",
+        "document_title": "Document Actions",
+        "content": "A document reprocess action queues the document again and rebuilds extraction, chunks, and embeddings from the stored source.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "image-ocr-queue",
+    "query": "How are image documents processed?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000017"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000017"
+    ],
+    "expected_answer_terms": [
+      "image",
+      "ocr",
+      "queue",
+      "embedding"
+    ],
+    "answer": "Image documents are queued for OCR, split into chunks, then queued for embedding. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000017",
+        "chunk_id": "10000000-0000-0000-0000-000000000017",
+        "document_title": "Image Processing",
+        "content": "Image processing queues OCR work, splits extracted OCR text into chunks, and sends those chunks to embedding.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "pdf-extraction",
+    "query": "What happens to PDF documents during ingestion?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000018"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000018"
+    ],
+    "expected_answer_terms": [
+      "pdf",
+      "extracted",
+      "chunks",
+      "embedding"
+    ],
+    "answer": "PDF text is extracted, split into chunks with page metadata, and queued for embedding. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000018",
+        "chunk_id": "10000000-0000-0000-0000-000000000018",
+        "document_title": "PDF Processing",
+        "content": "PDF ingestion extracts page text, creates chunks with page numbers, and queues the chunks for embedding.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "deduplication-threshold",
+    "query": "How does Cortex decide duplicate documents?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000019"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000019"
+    ],
+    "expected_answer_terms": [
+      "duplicate",
+      "embedding",
+      "similarity",
+      "threshold"
+    ],
+    "answer": "Cortex compares document embeddings and marks a duplicate when similarity crosses the configured threshold. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000019",
+        "chunk_id": "10000000-0000-0000-0000-000000000019",
+        "document_title": "Enrichment",
+        "content": "Duplicate detection compares document embeddings and uses a similarity threshold to mark duplicate documents.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "langfuse-tracing",
+    "query": "What tracing metadata is stored for queries?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000020"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000020"
+    ],
+    "expected_answer_terms": [
+      "trace",
+      "eval",
+      "scores",
+      "query"
+    ],
+    "answer": "Query records store eval scores and a trace id so answer quality can be inspected later. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000020",
+        "chunk_id": "10000000-0000-0000-0000-000000000020",
+        "document_title": "Observability",
+        "content": "Query observability stores eval scores, answer text, result count, latency, and trace identifiers for later inspection.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  }
+]

@@ -192,6 +192,7 @@ def _make_document_dto(*, user_id: uuid.UUID) -> DocumentDTO:
 def _make_note_dto(*, user_id: uuid.UUID) -> NoteDTO:
     return NoteDTO(
         id=uuid.uuid4(),
+        collection_id=None,
         title="Asyncio",
         content="Asyncio runs cooperative tasks on one event loop.",
         status=DocumentStatus.READY,
@@ -205,6 +206,7 @@ def _make_note_dto(*, user_id: uuid.UUID) -> NoteDTO:
 def _make_note_list_item_dto(note: NoteDTO) -> NoteListItemDTO:
     return NoteListItemDTO(
         id=note.id,
+        collection_id=note.collection_id,
         title=note.title,
         status=note.status,
         word_count=note.word_count,

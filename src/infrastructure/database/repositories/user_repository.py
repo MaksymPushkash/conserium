@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import exists, select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.ports.persistence.user_repository import IUserRepository
@@ -50,6 +50,9 @@ class SQLAlchemyUserRepository(IUserRepository):
         model.display_name = user.display_name
         model.is_active = user.is_active
         model.updated_at = user.updated_at
+
+    async def delete(self, user_id: UUID) -> None:
+        await self._session.execute(delete(UserModel).where(UserModel.id == user_id))
 
 
 

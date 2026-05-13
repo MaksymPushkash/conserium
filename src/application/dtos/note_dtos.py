@@ -10,6 +10,7 @@ from src.domain.value_objects.document_status import DocumentStatus
 @dataclass(frozen=True, slots=True)
 class NoteDTO:
     id: UUID
+    collection_id: UUID | None
     title: str
     content: str
     status: DocumentStatus
@@ -23,6 +24,7 @@ class NoteDTO:
 @dataclass(frozen=True, slots=True)
 class NoteListItemDTO:
     id: UUID
+    collection_id: UUID | None
     title: str
     status: DocumentStatus
     word_count: int
@@ -46,6 +48,7 @@ class CreateNoteDTO:
     user_id: UUID
     title: str | None = None
     content: str | None = None
+    collection_id: UUID | None = None
     language: str | None = None
 
 
@@ -56,6 +59,7 @@ class UpdateNoteDTO:
     note_id: UUID
     title: str
     content: str
+    collection_id: UUID | None = None
     language: str | None = None
 
 
@@ -72,3 +76,4 @@ class ListNotesDTO:
     user_id: UUID
     limit: int = 100
     offset: int = 0
+    collection_id: UUID | None = None

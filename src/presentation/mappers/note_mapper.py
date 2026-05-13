@@ -5,6 +5,7 @@ from src.presentation.schemas.note import NoteListItemResponse, NoteListResponse
 def to_note_response(dto: NoteDTO) -> NoteResponse:
     return NoteResponse(
         id=dto.id,
+        collection_id=dto.collection_id,
         title=dto.title,
         content=dto.content,
         status=dto.status,
@@ -18,6 +19,7 @@ def to_note_response(dto: NoteDTO) -> NoteResponse:
 def to_note_list_item_response(dto: NoteListItemDTO) -> NoteListItemResponse:
     return NoteListItemResponse(
         id=dto.id,
+        collection_id=dto.collection_id,
         title=dto.title,
         status=dto.status,
         word_count=dto.word_count,

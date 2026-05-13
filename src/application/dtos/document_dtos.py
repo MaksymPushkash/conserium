@@ -31,6 +31,8 @@ class ListDocumentsDTO:
     user_id: UUID
     limit: int = 50
     offset: int = 0
+    collection_id: UUID | None = None
+    status: DocumentStatus | None = None
 
 
 @final
@@ -42,9 +44,40 @@ class GetDocumentDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
+class GetDocumentChunkDTO:
+    user_id: UUID
+    document_id: UUID
+    chunk_id: UUID
+
+
+@final
+@dataclass(frozen=True, slots=True)
 class DeleteDocumentDTO:
     user_id: UUID
     document_id: UUID
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class RenameDocumentDTO:
+    user_id: UUID
+    document_id: UUID
+    title: str
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class MoveDocumentDTO:
+    user_id: UUID
+    document_id: UUID
+    collection_id: UUID | None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class BulkDocumentOperationDTO:
+    user_id: UUID
+    document_ids: list[UUID]
 
 
 @final
@@ -85,6 +118,19 @@ class DocumentDTO:
     updated_at: datetime | None
     visual_metadata: MetadataItem | None = None
     tags: list[str] | None = None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class DocumentChunkDTO:
+    id: UUID
+    document_id: UUID
+    content: str
+    chunk_index: int
+    start_char: int | None
+    end_char: int | None
+    page_number: int | None
+    token_count: int | None
 
 
 @final

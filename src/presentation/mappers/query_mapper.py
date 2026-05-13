@@ -18,6 +18,7 @@ def to_query_source_response(dto: QuerySourceDTO, index: int) -> QuerySourceResp
         chunk_index=dto.chunk_index,
         score=dto.score,
         citation=f"[{index}]",
+        used_in_answer=dto.used_in_answer,
     )
 
 

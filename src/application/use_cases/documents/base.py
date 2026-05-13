@@ -1,6 +1,13 @@
+from typing import TYPE_CHECKING, cast
+
 from src.application.dtos.document_dtos import DocumentDTO
 from src.domain.entities.document_entity import DocumentEntity
-from src.domain.exceptions import DocumentAccessDeniedException
+from src.domain.exceptions import DocumentAccessDeniedException, ResourceNotFoundException
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from src.application.ports.persistence.unit_of_work import IUnitOfWork
 
 
 def document_to_dto(document: DocumentEntity) -> DocumentDTO:
@@ -32,3 +39,12 @@ def document_to_dto(document: DocumentEntity) -> DocumentDTO:
 def ensure_document_owner(document: DocumentEntity, user_id: object) -> None:
     if document.user_id != user_id:
         raise DocumentAccessDeniedException("document access denied")
+
+
+async def ensure_collection_owner(uow: "IUnitOfWork", collection_id: object, user_id: object) -> None:
+    if collection_id is None:
+        return
+    collection_repo = uow.collection_repo
+    collection = await collection_repo.get_by_id(cast("UUID", collection_id))
+    if collection is None or collection.user_id != user_id:
+        raise ResourceNotFoundException("collection not found")

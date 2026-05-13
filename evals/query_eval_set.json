@@ -2,224 +2,600 @@
   {
     "id": "clean-architecture-layers",
     "query": "What did I save about Clean Architecture dependencies?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000001"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000001"],
-    "expected_answer_terms": ["clean", "architecture", "dependencies", "layers"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000001"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000001"
+    ],
+    "expected_answer_terms": [
+      "clean",
+      "architecture",
+      "dependencies",
+      "layers"
+    ],
     "answer": "Clean Architecture keeps dependencies pointing inward across presentation, application, domain, and infrastructure layers. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000001", "chunk_id": "10000000-0000-0000-0000-000000000001", "document_title": "Architecture Notes", "content": "Clean Architecture keeps dependencies pointing inward across presentation, application, domain, and infrastructure layers."},
-      {"document_id": "00000000-0000-0000-0000-000000000901", "chunk_id": "10000000-0000-0000-0000-000000000901", "document_title": "Scratch", "content": "hello text"}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000001",
+        "chunk_id": "10000000-0000-0000-0000-000000000001",
+        "document_title": "Architecture Notes",
+        "content": "Clean Architecture keeps dependencies pointing inward across presentation, application, domain, and infrastructure layers.",
+        "collection_id": "20000000-0000-0000-0000-000000000001"
+      },
+      {
+        "document_id": "00000000-0000-0000-0000-000000000901",
+        "chunk_id": "10000000-0000-0000-0000-000000000901",
+        "document_title": "Scratch",
+        "content": "hello text",
+        "collection_id": "20000000-0000-0000-0000-000000000001"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000001"
   },
   {
     "id": "pgvector-search",
     "query": "Which note mentions PostgreSQL pgvector search?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000002"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000002"],
-    "expected_answer_terms": ["postgresql", "pgvector", "vector", "search"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000002"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000002"
+    ],
+    "expected_answer_terms": [
+      "postgresql",
+      "pgvector",
+      "vector",
+      "search"
+    ],
     "answer": "The PostgreSQL note mentions pgvector for storing embeddings and running vector search beside relational metadata. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000002", "chunk_id": "10000000-0000-0000-0000-000000000002", "document_title": "Vector Storage", "content": "PostgreSQL with pgvector stores embeddings and supports vector search alongside relational metadata."},
-      {"document_id": "00000000-0000-0000-0000-000000000902", "chunk_id": "10000000-0000-0000-0000-000000000902", "document_title": "Noise", "content": "sample text"}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000002",
+        "chunk_id": "10000000-0000-0000-0000-000000000002",
+        "document_title": "Vector Storage",
+        "content": "PostgreSQL with pgvector stores embeddings and supports vector search alongside relational metadata.",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      },
+      {
+        "document_id": "00000000-0000-0000-0000-000000000902",
+        "chunk_id": "10000000-0000-0000-0000-000000000902",
+        "document_title": "Noise",
+        "content": "sample text",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000002"
   },
   {
     "id": "refrag-compression",
     "query": "Why does Cortex use REFRAG?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000003"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000003"],
-    "expected_answer_terms": ["context", "compressed", "tokens", "retrieval"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000003"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000003"
+    ],
+    "expected_answer_terms": [
+      "context",
+      "compressed",
+      "tokens",
+      "retrieval"
+    ],
     "answer": "Cortex uses REFRAG so retrieval context can be compressed before synthesis, reducing tokens while preserving citations. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000003", "chunk_id": "10000000-0000-0000-0000-000000000003", "document_title": "REFRAG Design", "content": "REFRAG compresses retrieval context before synthesis to reduce tokens while keeping source references."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000003",
+        "chunk_id": "10000000-0000-0000-0000-000000000003",
+        "document_title": "REFRAG Design",
+        "content": "REFRAG compresses retrieval context before synthesis to reduce tokens while keeping source references.",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000002"
   },
   {
     "id": "oauth-cookie-refresh",
     "query": "How should OAuth refresh tokens be handled?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000004"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000004"],
-    "expected_answer_terms": ["oauth", "refresh", "httponly", "cookie"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000004"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000004"
+    ],
+    "expected_answer_terms": [
+      "oauth",
+      "refresh",
+      "httponly",
+      "cookie"
+    ],
     "answer": "OAuth refresh tokens should be kept in an HttpOnly secure cookie while the frontend receives only the access token handoff. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000004", "chunk_id": "10000000-0000-0000-0000-000000000004", "document_title": "Auth Hardening", "content": "OAuth refresh tokens belong in an HttpOnly Secure SameSite cookie instead of a frontend URL fragment."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000004",
+        "chunk_id": "10000000-0000-0000-0000-000000000004",
+        "document_title": "Auth Hardening",
+        "content": "OAuth refresh tokens belong in an HttpOnly Secure SameSite cookie instead of a frontend URL fragment.",
+        "collection_id": "20000000-0000-0000-0000-000000000004"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000004"
   },
   {
     "id": "celery-composition-root",
     "query": "Where should Celery worker dependencies be composed?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000005"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000005"],
-    "expected_answer_terms": ["celery", "composition", "worker", "tasks"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000005"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000005"
+    ],
+    "expected_answer_terms": [
+      "celery",
+      "composition",
+      "worker",
+      "tasks"
+    ],
     "answer": "Celery worker dependencies should be composed in a dedicated composition module, leaving tasks as thin adapters. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000005", "chunk_id": "10000000-0000-0000-0000-000000000005", "document_title": "Backend Architecture Review", "content": "Celery is a second composition root; worker use cases should be assembled in composition while tasks stay thin adapters."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000005",
+        "chunk_id": "10000000-0000-0000-0000-000000000005",
+        "document_title": "Backend Architecture Review",
+        "content": "Celery is a second composition root; worker use cases should be assembled in composition while tasks stay thin adapters.",
+        "collection_id": "20000000-0000-0000-0000-000000000001"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000001"
   },
   {
     "id": "upload-size-limit",
     "query": "What protects uploads from consuming too much memory?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000006"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000006"],
-    "expected_answer_terms": ["upload", "max", "size", "memory"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000006"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000006"
+    ],
+    "expected_answer_terms": [
+      "upload",
+      "max",
+      "size",
+      "memory"
+    ],
     "answer": "Upload memory risk is controlled by reading files in chunks and rejecting bodies above the configured max upload size. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000006", "chunk_id": "10000000-0000-0000-0000-000000000006", "document_title": "Ingestion Hardening", "content": "The upload flow reads bounded chunks and rejects files above the maximum upload size before they consume application memory."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000006",
+        "chunk_id": "10000000-0000-0000-0000-000000000006",
+        "document_title": "Ingestion Hardening",
+        "content": "The upload flow reads bounded chunks and rejects files above the maximum upload size before they consume application memory.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "document-processing-timeline",
     "query": "Which stages should document processing show?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000007"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000007"],
-    "expected_answer_terms": ["uploaded", "extracted", "embedded", "ready"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000007"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000007"
+    ],
+    "expected_answer_terms": [
+      "uploaded",
+      "extracted",
+      "embedded",
+      "ready"
+    ],
     "answer": "The document timeline should show uploaded, extracted, embedded, enriched, and ready states. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000007", "chunk_id": "10000000-0000-0000-0000-000000000007", "document_title": "Document UX", "content": "Processing timeline stages are uploaded, extracted, embedded, enriched, and ready."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000007",
+        "chunk_id": "10000000-0000-0000-0000-000000000007",
+        "document_title": "Document UX",
+        "content": "Processing timeline stages are uploaded, extracted, embedded, enriched, and ready.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "failed-document-retry",
     "query": "What action is needed for failed documents?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000008"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000008"],
-    "expected_answer_terms": ["retry", "failed", "document", "processing"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000008"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000008"
+    ],
+    "expected_answer_terms": [
+      "retry",
+      "failed",
+      "document",
+      "processing"
+    ],
     "answer": "Failed documents need a retry action that queues document processing again and exposes the failure reason. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000008", "chunk_id": "10000000-0000-0000-0000-000000000008", "document_title": "Document UX", "content": "Failed document processing should expose a failure reason and allow the user to retry the document."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000008",
+        "chunk_id": "10000000-0000-0000-0000-000000000008",
+        "document_title": "Document UX",
+        "content": "Failed document processing should expose a failure reason and allow the user to retry the document.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "s3-production-storage",
     "query": "Which production storage backend is configured?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000009"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000009"],
-    "expected_answer_terms": ["production", "s3", "storage", "uploads"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000009"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000009"
+    ],
+    "expected_answer_terms": [
+      "production",
+      "s3",
+      "storage",
+      "uploads"
+    ],
     "answer": "Production uses S3 storage for document uploads with an uploads prefix. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000009", "chunk_id": "10000000-0000-0000-0000-000000000009", "document_title": "Production Env", "content": "The production environment uses S3 storage for uploaded documents under the uploads prefix."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000009",
+        "chunk_id": "10000000-0000-0000-0000-000000000009",
+        "document_title": "Production Env",
+        "content": "The production environment uses S3 storage for uploaded documents under the uploads prefix.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "reranker-default",
     "query": "Which reranker backend should run without optional dependencies?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000010"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000010"],
-    "expected_answer_terms": ["embedding", "reranker", "optional", "dependencies"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000010"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000010"
+    ],
+    "expected_answer_terms": [
+      "embedding",
+      "reranker",
+      "optional",
+      "dependencies"
+    ],
     "answer": "The embedding reranker should be the default when optional CrossEncoder dependencies are not installed. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000010", "chunk_id": "10000000-0000-0000-0000-000000000010", "document_title": "Retrieval Config", "content": "Use the embedding reranker by default unless optional CrossEncoder dependencies are installed and configured."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000010",
+        "chunk_id": "10000000-0000-0000-0000-000000000010",
+        "document_title": "Retrieval Config",
+        "content": "Use the embedding reranker by default unless optional CrossEncoder dependencies are installed and configured.",
+        "collection_id": "20000000-0000-0000-0000-000000000002"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000002"
   },
   {
     "id": "openai-client-lifecycle",
     "query": "What lifecycle issue affected async OpenAI clients?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000011"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000011"],
-    "expected_answer_terms": ["async", "openai", "client", "close"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000011"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000011"
+    ],
+    "expected_answer_terms": [
+      "async",
+      "openai",
+      "client",
+      "close"
+    ],
     "answer": "The async OpenAI client needs an explicit close path so Celery loops do not close while httpx cleanup is pending. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000011", "chunk_id": "10000000-0000-0000-0000-000000000011", "document_title": "Celery Loop Fix", "content": "Async OpenAI clients must be closed explicitly inside the Celery coroutine before the event loop shuts down."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000011",
+        "chunk_id": "10000000-0000-0000-0000-000000000011",
+        "document_title": "Celery Loop Fix",
+        "content": "Async OpenAI clients must be closed explicitly inside the Celery coroutine before the event loop shuts down.",
+        "collection_id": "20000000-0000-0000-0000-000000000004"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000004"
   },
   {
     "id": "vps-deploy-flow",
     "query": "How does production deploy run on the VPS?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000012"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000012"],
-    "expected_answer_terms": ["github", "actions", "vps", "deploy"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000012"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000012"
+    ],
+    "expected_answer_terms": [
+      "github",
+      "actions",
+      "vps",
+      "deploy"
+    ],
     "answer": "GitHub Actions connects to the VPS, updates main, rebuilds docker compose services, runs migrations, and checks health. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000012", "chunk_id": "10000000-0000-0000-0000-000000000012", "document_title": "CI Deploy", "content": "The GitHub Actions deploy job SSHes into the VPS, fetches main, rebuilds Docker Compose services, runs Alembic migrations, and verifies health."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000012",
+        "chunk_id": "10000000-0000-0000-0000-000000000012",
+        "document_title": "CI Deploy",
+        "content": "The GitHub Actions deploy job SSHes into the VPS, fetches main, rebuilds Docker Compose services, runs Alembic migrations, and verifies health.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "cpu-media-worker",
     "query": "Why should media worker avoid CUDA torch?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000013"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000013"],
-    "expected_answer_terms": ["media", "worker", "cpu", "cuda"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000013"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000013"
+    ],
+    "expected_answer_terms": [
+      "media",
+      "worker",
+      "cpu",
+      "cuda"
+    ],
     "answer": "The media worker should install CPU torch because the VPS has no GPU and CUDA packages make deploys too heavy. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000013", "chunk_id": "10000000-0000-0000-0000-000000000013", "document_title": "Deploy Optimization", "content": "The media worker runs on CPU-only infrastructure, so CUDA torch packages are unnecessary and slow down deploy builds."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000013",
+        "chunk_id": "10000000-0000-0000-0000-000000000013",
+        "document_title": "Deploy Optimization",
+        "content": "The media worker runs on CPU-only infrastructure, so CUDA torch packages are unnecessary and slow down deploy builds.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "query-debug-panel",
     "query": "What should the query debug panel show?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000014"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000014"],
-    "expected_answer_terms": ["chunks", "scores", "compression", "context"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000014"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000014"
+    ],
+    "expected_answer_terms": [
+      "chunks",
+      "scores",
+      "compression",
+      "context"
+    ],
     "answer": "The debug panel should show context chunks, retrieval scores, and compression decisions for full, compressed, and discarded sources. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000014", "chunk_id": "10000000-0000-0000-0000-000000000014", "document_title": "RAG Debugging", "content": "Query debug needs context chunks, scores, compression decisions, token counts, and discarded source visibility."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000014",
+        "chunk_id": "10000000-0000-0000-0000-000000000014",
+        "document_title": "RAG Debugging",
+        "content": "Query debug needs context chunks, scores, compression decisions, token counts, and discarded source visibility.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "chunk-quality-filter",
     "query": "Which chunks should be filtered out of retrieval context?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000015"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000015"],
-    "expected_answer_terms": ["garbage", "chunks", "hello", "context"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000015"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000015"
+    ],
+    "expected_answer_terms": [
+      "garbage",
+      "chunks",
+      "hello",
+      "context"
+    ],
     "answer": "Garbage chunks such as hello text should be filtered out before they reach top context. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000015", "chunk_id": "10000000-0000-0000-0000-000000000015", "document_title": "RAG Quality", "content": "Garbage chunks like hello text, sample text, and tiny placeholders should not enter the retrieval context."},
-      {"document_id": "00000000-0000-0000-0000-000000000903", "chunk_id": "10000000-0000-0000-0000-000000000903", "document_title": "Placeholder", "content": "hello text"}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000015",
+        "chunk_id": "10000000-0000-0000-0000-000000000015",
+        "document_title": "RAG Quality",
+        "content": "Garbage chunks like hello text, sample text, and tiny placeholders should not enter the retrieval context.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      },
+      {
+        "document_id": "00000000-0000-0000-0000-000000000903",
+        "chunk_id": "10000000-0000-0000-0000-000000000903",
+        "document_title": "Placeholder",
+        "content": "hello text",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "document-reprocess",
     "query": "What does reprocess do for a document?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000016"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000016"],
-    "expected_answer_terms": ["reprocess", "document", "queue", "chunks"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000016"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000016"
+    ],
+    "expected_answer_terms": [
+      "reprocess",
+      "document",
+      "queue",
+      "chunks"
+    ],
     "answer": "Reprocess queues the document again so extraction and chunk embedding can be rebuilt from the stored source. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000016", "chunk_id": "10000000-0000-0000-0000-000000000016", "document_title": "Document Actions", "content": "A document reprocess action queues the document again and rebuilds extraction, chunks, and embeddings from the stored source."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000016",
+        "chunk_id": "10000000-0000-0000-0000-000000000016",
+        "document_title": "Document Actions",
+        "content": "A document reprocess action queues the document again and rebuilds extraction, chunks, and embeddings from the stored source.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "image-ocr-queue",
     "query": "How are image documents processed?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000017"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000017"],
-    "expected_answer_terms": ["image", "ocr", "queue", "embedding"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000017"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000017"
+    ],
+    "expected_answer_terms": [
+      "image",
+      "ocr",
+      "queue",
+      "embedding"
+    ],
     "answer": "Image documents are queued for OCR, split into chunks, then queued for embedding. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000017", "chunk_id": "10000000-0000-0000-0000-000000000017", "document_title": "Image Processing", "content": "Image processing queues OCR work, splits extracted OCR text into chunks, and sends those chunks to embedding."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000017",
+        "chunk_id": "10000000-0000-0000-0000-000000000017",
+        "document_title": "Image Processing",
+        "content": "Image processing queues OCR work, splits extracted OCR text into chunks, and sends those chunks to embedding.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "pdf-extraction",
     "query": "What happens to PDF documents during ingestion?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000018"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000018"],
-    "expected_answer_terms": ["pdf", "extracted", "chunks", "embedding"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000018"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000018"
+    ],
+    "expected_answer_terms": [
+      "pdf",
+      "extracted",
+      "chunks",
+      "embedding"
+    ],
     "answer": "PDF text is extracted, split into chunks with page metadata, and queued for embedding. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000018", "chunk_id": "10000000-0000-0000-0000-000000000018", "document_title": "PDF Processing", "content": "PDF ingestion extracts page text, creates chunks with page numbers, and queues the chunks for embedding."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000018",
+        "chunk_id": "10000000-0000-0000-0000-000000000018",
+        "document_title": "PDF Processing",
+        "content": "PDF ingestion extracts page text, creates chunks with page numbers, and queues the chunks for embedding.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "deduplication-threshold",
     "query": "How does Cortex decide duplicate documents?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000019"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000019"],
-    "expected_answer_terms": ["duplicate", "embedding", "similarity", "threshold"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000019"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000019"
+    ],
+    "expected_answer_terms": [
+      "duplicate",
+      "embedding",
+      "similarity",
+      "threshold"
+    ],
     "answer": "Cortex compares document embeddings and marks a duplicate when similarity crosses the configured threshold. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000019", "chunk_id": "10000000-0000-0000-0000-000000000019", "document_title": "Enrichment", "content": "Duplicate detection compares document embeddings and uses a similarity threshold to mark duplicate documents."}
-    ]
+      {
+        "document_id": "00000000-0000-0000-0000-000000000019",
+        "chunk_id": "10000000-0000-0000-0000-000000000019",
+        "document_title": "Enrichment",
+        "content": "Duplicate detection compares document embeddings and uses a similarity threshold to mark duplicate documents.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
   },
   {
     "id": "langfuse-tracing",
     "query": "What tracing metadata is stored for queries?",
-    "expected_source_documents": ["00000000-0000-0000-0000-000000000020"],
-    "expected_source_chunks": ["10000000-0000-0000-0000-000000000020"],
-    "expected_answer_terms": ["trace", "eval", "scores", "query"],
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000020"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000020"
+    ],
+    "expected_answer_terms": [
+      "trace",
+      "eval",
+      "scores",
+      "query"
+    ],
     "answer": "Query records store eval scores and a trace id so answer quality can be inspected later. [1]",
     "source_chunks": [
-      {"document_id": "00000000-0000-0000-0000-000000000020", "chunk_id": "10000000-0000-0000-0000-000000000020", "document_title": "Observability", "content": "Query observability stores eval scores, answer text, result count, latency, and trace identifiers for later inspection."}
+      {
+        "document_id": "00000000-0000-0000-0000-000000000020",
+        "chunk_id": "10000000-0000-0000-0000-000000000020",
+        "document_title": "Observability",
+        "content": "Query observability stores eval scores, answer text, result count, latency, and trace identifiers for later inspection.",
+        "collection_id": "20000000-0000-0000-0000-000000000003"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000003"
+  },
+  {
+    "id": "negative-architecture-payroll",
+    "collection_id": "20000000-0000-0000-0000-000000000001",
+    "query": "What payroll system did I save in architecture notes?",
+    "expected_no_answer": true,
+    "expected_answer_terms": [
+      "insufficient"
+    ],
+    "answer": "I could not find relevant saved context about a payroll system in the architecture notes.",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000001",
+        "chunk_id": "10000000-0000-0000-0000-000000000001",
+        "document_title": "Architecture Notes",
+        "collection_id": "20000000-0000-0000-0000-000000000001",
+        "content": "Clean Architecture keeps dependencies pointing inward across presentation, application, domain, and infrastructure layers."
+      }
+    ]
+  },
+  {
+    "id": "negative-auth-storage-engine",
+    "collection_id": "20000000-0000-0000-0000-000000000004",
+    "query": "Which storage engine did the OAuth note recommend?",
+    "expected_no_answer": true,
+    "expected_answer_terms": [
+      "insufficient"
+    ],
+    "answer": "I could not find relevant saved context about a storage engine in the OAuth note.",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000004",
+        "chunk_id": "10000000-0000-0000-0000-000000000004",
+        "document_title": "Auth Hardening",
+        "collection_id": "20000000-0000-0000-0000-000000000004",
+        "content": "OAuth refresh tokens belong in an HttpOnly Secure SameSite cookie instead of a frontend URL fragment."
+      }
     ]
   }
 ]

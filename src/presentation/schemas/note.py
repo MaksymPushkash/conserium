@@ -9,17 +9,20 @@ from src.domain.value_objects.document_status import DocumentStatus
 class CreateNoteRequest(BaseModel):
     title: str | None = Field(default=None, max_length=120)
     content: str | None = None
+    collection_id: UUID | None = None
     language: str | None = Field(default=None, max_length=10)
 
 
 class UpdateNoteRequest(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     content: str = ""
+    collection_id: UUID | None = None
     language: str | None = Field(default=None, max_length=10)
 
 
 class NoteResponse(BaseModel):
     id: UUID
+    collection_id: UUID | None
     title: str
     content: str
     status: DocumentStatus
@@ -31,6 +34,7 @@ class NoteResponse(BaseModel):
 
 class NoteListItemResponse(BaseModel):
     id: UUID
+    collection_id: UUID | None
     title: str
     status: DocumentStatus
     word_count: int

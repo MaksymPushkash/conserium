@@ -4,6 +4,7 @@ from uuid import UUID
 
 if TYPE_CHECKING:
     from src.domain.entities.document_entity import DocumentEntity
+    from src.domain.value_objects.document_status import DocumentStatus
     from src.domain.value_objects.document_type import DocumentType
 
 
@@ -19,6 +20,8 @@ class IDocumentRepository(ABC):
         limit: int = 50,
         offset: int = 0,
         document_type: "DocumentType | None" = None,
+        collection_id: UUID | None = None,
+        status: "DocumentStatus | None" = None,
     ) -> "list[DocumentEntity]": ...
 
     @abstractmethod
@@ -34,4 +37,11 @@ class IDocumentRepository(ABC):
     async def exists(self, document_id: UUID) -> bool: ...
 
     @abstractmethod
-    async def count_by_user_id(self, user_id: UUID, *, document_type: "DocumentType | None" = None) -> int: ...
+    async def count_by_user_id(
+        self,
+        user_id: UUID,
+        *,
+        document_type: "DocumentType | None" = None,
+        collection_id: UUID | None = None,
+        status: "DocumentStatus | None" = None,
+    ) -> int: ...

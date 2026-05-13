@@ -1,0 +1,82 @@
+[
+  {
+    "id": "clean-architecture-layers",
+    "query": "What did I save about Clean Architecture dependencies?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000001"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000001"
+    ],
+    "expected_answer_terms": [
+      "clean",
+      "architecture",
+      "dependencies",
+      "layers"
+    ],
+    "answer": "Clean Architecture keeps dependencies pointing inward across presentation, application, domain, and infrastructure layers. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000001",
+        "chunk_id": "10000000-0000-0000-0000-000000000001",
+        "document_title": "Architecture Notes",
+        "content": "Clean Architecture keeps dependencies pointing inward across presentation, application, domain, and infrastructure layers.",
+        "collection_id": "20000000-0000-0000-0000-000000000001"
+      },
+      {
+        "document_id": "00000000-0000-0000-0000-000000000901",
+        "chunk_id": "10000000-0000-0000-0000-000000000901",
+        "document_title": "Scratch",
+        "content": "hello text",
+        "collection_id": "20000000-0000-0000-0000-000000000001"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000001"
+  },
+  {
+    "id": "celery-composition-root",
+    "query": "Where should Celery worker dependencies be composed?",
+    "expected_source_documents": [
+      "00000000-0000-0000-0000-000000000005"
+    ],
+    "expected_source_chunks": [
+      "10000000-0000-0000-0000-000000000005"
+    ],
+    "expected_answer_terms": [
+      "celery",
+      "composition",
+      "worker",
+      "tasks"
+    ],
+    "answer": "Celery worker dependencies should be composed in a dedicated composition module, leaving tasks as thin adapters. [1]",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000005",
+        "chunk_id": "10000000-0000-0000-0000-000000000005",
+        "document_title": "Backend Architecture Review",
+        "content": "Celery is a second composition root; worker use cases should be assembled in composition while tasks stay thin adapters.",
+        "collection_id": "20000000-0000-0000-0000-000000000001"
+      }
+    ],
+    "collection_id": "20000000-0000-0000-0000-000000000001"
+  },
+  {
+    "id": "negative-architecture-payroll",
+    "collection_id": "20000000-0000-0000-0000-000000000001",
+    "query": "What payroll system did I save in architecture notes?",
+    "expected_no_answer": true,
+    "expected_answer_terms": [
+      "insufficient"
+    ],
+    "answer": "I could not find relevant saved context about a payroll system in the architecture notes.",
+    "source_chunks": [
+      {
+        "document_id": "00000000-0000-0000-0000-000000000001",
+        "chunk_id": "10000000-0000-0000-0000-000000000001",
+        "document_title": "Architecture Notes",
+        "collection_id": "20000000-0000-0000-0000-000000000001",
+        "content": "Clean Architecture keeps dependencies pointing inward across presentation, application, domain, and infrastructure layers."
+      }
+    ]
+  }
+]

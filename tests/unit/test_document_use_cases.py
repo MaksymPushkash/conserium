@@ -41,10 +41,16 @@ class _FakeDocumentRepository:
         limit: int = 50,
         offset: int = 0,
         document_type: DocumentType | None = None,
+        collection_id: uuid.UUID | None = None,
+        status: DocumentStatus | None = None,
     ) -> list[DocumentEntity]:
         documents = [document for document in self.documents.values() if document.user_id == user_id]
         if document_type is not None:
             documents = [document for document in documents if document.type == document_type]
+        if collection_id is not None:
+            documents = [document for document in documents if document.collection_id == collection_id]
+        if status is not None:
+            documents = [document for document in documents if document.status == status]
         return documents[offset : offset + limit]
 
     async def create(self, document: DocumentEntity) -> None:
@@ -61,10 +67,21 @@ class _FakeDocumentRepository:
     async def exists(self, document_id: uuid.UUID) -> bool:
         return document_id in self.documents
 
-    async def count_by_user_id(self, user_id: uuid.UUID, *, document_type: DocumentType | None = None) -> int:
+    async def count_by_user_id(
+        self,
+        user_id: uuid.UUID,
+        *,
+        document_type: DocumentType | None = None,
+        collection_id: uuid.UUID | None = None,
+        status: DocumentStatus | None = None,
+    ) -> int:
         documents = [document for document in self.documents.values() if document.user_id == user_id]
         if document_type is not None:
             documents = [document for document in documents if document.type == document_type]
+        if collection_id is not None:
+            documents = [document for document in documents if document.collection_id == collection_id]
+        if status is not None:
+            documents = [document for document in documents if document.status == status]
         return len(documents)
 
 

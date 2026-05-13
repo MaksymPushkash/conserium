@@ -5,7 +5,9 @@ from src.application.ports.auth.password_hasher import IPasswordHasher
 from src.application.ports.cache.cache import ICache
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.auth.complete_oauth_login_use_case import CompleteOAuthLoginUseCase
+from src.application.use_cases.auth.delete_account_use_case import DeleteAccountUseCase
 from src.application.use_cases.auth.login_use_case import LoginUserUseCase
+from src.application.use_cases.auth.logout_use_case import LogoutEverywhereUseCase, LogoutUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.use_cases.auth.register_use_case import RegisterUserUseCase
 from src.core.config import settings
@@ -80,6 +82,18 @@ class AuthProvider(Provider):
             cache,
             refresh_token_ttl_seconds=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
         )
+
+    @provide(scope=Scope.REQUEST)
+    def get_logout_use_case(self, cache: ICache) -> LogoutUseCase:
+        return LogoutUseCase(cache)
+
+    @provide(scope=Scope.REQUEST)
+    def get_logout_everywhere_use_case(self, cache: ICache) -> LogoutEverywhereUseCase:
+        return LogoutEverywhereUseCase(cache)
+
+    @provide(scope=Scope.REQUEST)
+    def get_delete_account_use_case(self, uow: IUnitOfWork) -> DeleteAccountUseCase:
+        return DeleteAccountUseCase(uow)
 
     @provide(scope=Scope.REQUEST)
     def get_complete_oauth_login_use_case(

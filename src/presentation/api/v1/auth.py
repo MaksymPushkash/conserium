@@ -7,10 +7,12 @@ from fastapi.responses import RedirectResponse
 from src.application.ports.auth.oauth_provider import IOAuthProviderClient
 from src.application.use_cases.auth.complete_oauth_login_use_case import CompleteOAuthLoginUseCase
 from src.application.use_cases.auth.login_use_case import LoginUserUseCase
+from src.application.use_cases.auth.logout_use_case import LogoutEverywhereUseCase, LogoutUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.use_cases.auth.register_use_case import RegisterUserUseCase
 from src.domain.exceptions import InvalidTokenException, OAuthAuthenticationException, UserInactiveException
 from src.infrastructure.auth.oauth_clients import GithubOAuthClient, GoogleOAuthClient
+from src.presentation.dependencies.auth import CurrentUser
 from src.presentation.mappers.auth_mapper import to_token_response
 from src.presentation.mappers.auth_request_mapper import (
     to_complete_oauth_login_dto,
@@ -66,6 +68,35 @@ async def refresh(
     result = await use_case(to_refresh_dto(refresh_token))
     set_oauth_refresh_cookie(response, request, result.refresh_token)
     return to_token_response(result)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def logout(
+    request: Request,
+    response: Response,
+    use_case: FromDishka[LogoutUseCase],
+    body: RefreshRequest | None = None,
+) -> Response:
+    refresh_token = (body.refresh_token if body else None) or request.cookies.get(OAUTH_REFRESH_COOKIE)
+    if refresh_token is not None:
+        await use_case(to_refresh_dto(refresh_token))
+    response.delete_cookie(OAUTH_REFRESH_COOKIE)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
+
+
+@router.post("/logout/all", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def logout_everywhere(
+    response: Response,
+    current_user: CurrentUser,
+    use_case: FromDishka[LogoutEverywhereUseCase],
+) -> Response:
+    await use_case(current_user.id)
+    response.delete_cookie(OAUTH_REFRESH_COOKIE)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 @router.get("/google")

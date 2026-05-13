@@ -13,8 +13,14 @@ class ListDocumentsUseCase:
                 dto.user_id,
                 limit=dto.limit,
                 offset=dto.offset,
+                collection_id=dto.collection_id,
+                status=dto.status,
             )
-            total = await self._uow.document_repo.count_by_user_id(dto.user_id)
+            total = await self._uow.document_repo.count_by_user_id(
+                dto.user_id,
+                collection_id=dto.collection_id,
+                status=dto.status,
+            )
 
         return DocumentListDTO(
             items=[document_to_dto(document) for document in documents],

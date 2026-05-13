@@ -43,6 +43,11 @@ class OpenAIEmbeddingProvider(IEmbeddingProvider):
             "OpenAI API requests grouped by operation and outcome.",
             labels={"operation": "embeddings", "status": "success"},
         )
+        metrics_registry.inc_counter(
+            "cortex_openai_estimated_cost_usd",
+            "Approximate OpenAI API cost estimate in USD.",
+            value=_estimate_embedding_cost(texts),
+        )
         return [list(item.embedding) for item in response.data]
 
     async def aclose(self) -> None:
@@ -51,3 +56,8 @@ class OpenAIEmbeddingProvider(IEmbeddingProvider):
         client = self._client
         self._client = None
         await client.close()
+
+
+def _estimate_embedding_cost(texts: list[str]) -> float:
+    estimated_tokens = max(1, sum(len(text.split()) for text in texts))
+    return estimated_tokens / 1000 * 0.00002

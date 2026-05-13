@@ -35,6 +35,8 @@ class _FakeDocumentRepository(IDocumentRepository):
         limit: int = 50,
         offset: int = 0,
         document_type: DocumentType | None = None,
+        collection_id: uuid.UUID | None = None,
+        status: DocumentStatus | None = None,
     ) -> list[DocumentEntity]:
         raise NotImplementedError
 
@@ -50,7 +52,14 @@ class _FakeDocumentRepository(IDocumentRepository):
     async def exists(self, document_id: uuid.UUID) -> bool:
         raise NotImplementedError
 
-    async def count_by_user_id(self, user_id: uuid.UUID, *, document_type: DocumentType | None = None) -> int:
+    async def count_by_user_id(
+        self,
+        user_id: uuid.UUID,
+        *,
+        document_type: DocumentType | None = None,
+        collection_id: uuid.UUID | None = None,
+        status: DocumentStatus | None = None,
+    ) -> int:
         raise NotImplementedError
 
 

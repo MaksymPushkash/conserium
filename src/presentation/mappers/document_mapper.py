@@ -1,6 +1,7 @@
-from src.application.dtos.document_dtos import DocumentDTO, DocumentListDTO
+from src.application.dtos.document_dtos import DocumentChunkDTO, DocumentDTO, DocumentListDTO
 from src.application.ports.cache.document_status_cache import DocumentStatusDTO
 from src.presentation.schemas.document import (
+    DocumentChunkResponse,
     DocumentListItemResponse,
     DocumentListResponse,
     DocumentProcessingStepResponse,
@@ -54,6 +55,19 @@ def to_document_list_item_response(dto: DocumentDTO) -> DocumentListItemResponse
         duplicate_of_id=dto.duplicate_of_id,
         created_at=dto.created_at,
         updated_at=dto.updated_at,
+    )
+
+
+def to_document_chunk_response(dto: DocumentChunkDTO) -> DocumentChunkResponse:
+    return DocumentChunkResponse(
+        id=dto.id,
+        document_id=dto.document_id,
+        content=dto.content,
+        chunk_index=dto.chunk_index,
+        start_char=dto.start_char,
+        end_char=dto.end_char,
+        page_number=dto.page_number,
+        token_count=dto.token_count,
     )
 
 

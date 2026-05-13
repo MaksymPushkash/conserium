@@ -1,0 +1,181 @@
+{
+  "collections": [
+    {
+      "key": "architecture",
+      "name": "Architecture",
+      "documents": [
+        {
+          "key": "clean_architecture_boundaries",
+          "title": "Live Eval - Clean Architecture Boundaries",
+          "content": "Clean Architecture in Cortex separates presentation adapters, application use cases, domain entities, and infrastructure providers. The key rule is that dependencies point inward. Presentation maps HTTP input into DTOs, application use cases orchestrate work, domain objects hold business invariants, and infrastructure implements ports. Tests should verify boundaries without importing framework details into the domain."
+        },
+        {
+          "key": "celery_composition",
+          "title": "Live Eval - Celery Composition Root",
+          "content": "Celery workers act as a second composition root. Worker task files should remain thin adapters. The actual construction of use cases, repositories, cache clients, status cache, task dispatchers, and AI providers belongs in infrastructure celery composition. This keeps task modules small and makes lifecycle cleanup explicit."
+        }
+      ],
+      "noise_documents": [
+        {
+          "key": "architecture_noise_hello",
+          "title": "Live Eval Noise - Architecture Hello",
+          "content": "hello text"
+        },
+        {
+          "key": "architecture_noise_invoice",
+          "title": "Live Eval Noise - Architecture Invoice",
+          "content": "Invoice payment bananas blue calendar placeholder. This synthetic noise chunk is intentionally unrelated to dependency direction, use cases, ports, adapters, or architecture boundaries."
+        }
+      ],
+      "cases": [
+        {
+          "id": "live-architecture-dependency-rule",
+          "query": "In the Architecture collection, what is the Clean Architecture dependency rule?",
+          "expected_document_keys": ["clean_architecture_boundaries"],
+          "expected_answer_terms": ["dependencies", "inward"],
+          "limit": 5
+        },
+        {
+          "id": "live-architecture-query-rewrite",
+          "kind": "query_rewrite",
+          "conversation_seed_queries": ["What does the architecture note say about Clean Architecture boundaries?"],
+          "query": "What about tests?",
+          "expected_document_keys": ["clean_architecture_boundaries"],
+          "expected_answer_terms": ["tests", "boundaries"],
+          "limit": 5
+        },
+        {
+          "id": "live-architecture-abstain-payroll",
+          "query": "What payroll tax rate is documented in this Architecture collection?",
+          "expected_no_answer": true,
+          "must_abstain": true,
+          "limit": 5
+        }
+      ]
+    },
+    {
+      "key": "retrieval",
+      "name": "Retrieval",
+      "documents": [
+        {
+          "key": "scoped_retrieval",
+          "title": "Live Eval - Scoped Retrieval",
+          "content": "Scoped retrieval means chat and search must only retrieve chunks from the selected collection. The query payload carries collection_id into the retrieval service, and the database query filters documents by that collection. This prevents unrelated documents from degrading RAG quality as the database grows."
+        },
+        {
+          "key": "quality_filters",
+          "title": "Live Eval - Chunk Quality Filters",
+          "content": "Chunk quality filters reject low-value chunks before answer generation. Empty text, hello text, lorem ipsum, tiny samples, duplicate placeholders, and very short chunks should not enter the final context. This protects source grounding and makes retrieval scores more stable."
+        }
+      ],
+      "noise_documents": [
+        {
+          "key": "retrieval_noise_lorem",
+          "title": "Live Eval Noise - Retrieval Lorem",
+          "content": "lorem ipsum"
+        },
+        {
+          "key": "retrieval_noise_recipe",
+          "title": "Live Eval Noise - Retrieval Recipe",
+          "content": "Sourdough starter hydration, kitchen scale, oven spring, and crust color are unrelated synthetic noise for retrieval validation."
+        }
+      ],
+      "cases": [
+        {
+          "id": "live-retrieval-scoped-collection",
+          "query": "How does scoped retrieval prevent unrelated documents from degrading RAG quality?",
+          "expected_document_keys": ["scoped_retrieval"],
+          "expected_answer_terms": ["collection", "unrelated documents"],
+          "limit": 5
+        },
+        {
+          "id": "live-retrieval-quality-filter-noise",
+          "query": "Which chunks should quality filters reject?",
+          "expected_document_keys": ["quality_filters"],
+          "expected_answer_terms": ["hello text", "lorem ipsum"],
+          "limit": 5
+        },
+        {
+          "id": "live-retrieval-abstain-weather",
+          "query": "What is the weather forecast documented in this Retrieval collection?",
+          "expected_no_answer": true,
+          "must_abstain": true,
+          "limit": 5
+        }
+      ]
+    },
+    {
+      "key": "operations",
+      "name": "Operations",
+      "documents": [
+        {
+          "key": "deploy_validation",
+          "title": "Live Eval - Production Validation",
+          "content": "Production retrieval validation runs after deploy against the live API. It seeds temporary collections, uploads text documents, waits until documents are ready, runs scoped query cases, measures source recall, verifies noise rejection, checks abstention cases, writes a JSON report, and deletes temporary seed data."
+        },
+        {
+          "key": "observability",
+          "title": "Live Eval - Observability Metrics",
+          "content": "Operational dashboards should show query latency, retrieval hit rate, failed document processing count, estimated OpenAI cost, and queue depth. Query logs include trace_id, collection_id, source count, used source count, and latency."
+        }
+      ],
+      "noise_documents": [
+        {
+          "key": "operations_noise_color",
+          "title": "Live Eval Noise - Operations Color",
+          "content": "Purple triangle orange window scattered token archive. This intentionally irrelevant document should not be selected for deployment or observability questions."
+        }
+      ],
+      "cases": [
+        {
+          "id": "live-operations-production-validation",
+          "query": "What does production retrieval validation do after deploy?",
+          "expected_document_keys": ["deploy_validation"],
+          "expected_answer_terms": ["live API", "source recall", "deletes temporary seed data"],
+          "limit": 5
+        },
+        {
+          "id": "live-operations-observability",
+          "query": "Which metrics should the operational dashboard show?",
+          "expected_document_keys": ["observability"],
+          "expected_answer_terms": ["query latency", "queue depth"],
+          "limit": 5
+        }
+      ]
+    },
+    {
+      "key": "auth",
+      "name": "Auth",
+      "documents": [
+        {
+          "key": "refresh_revoke",
+          "title": "Live Eval - Refresh Token Revocation",
+          "content": "Logout revokes the current refresh token by deleting its Redis refresh key. Logout everywhere revokes all refresh tokens for the current user by deleting refresh keys whose value matches the user id. The browser session is then cleared and the refresh cookie is removed."
+        }
+      ],
+      "noise_documents": [
+        {
+          "key": "auth_noise_storage",
+          "title": "Live Eval Noise - Auth Storage Engine",
+          "content": "Columnar compression parquet lakehouse partition pruning statistics are unrelated to refresh token revocation and logout everywhere."
+        }
+      ],
+      "cases": [
+        {
+          "id": "live-auth-logout-everywhere",
+          "query": "How does logout everywhere revoke refresh tokens?",
+          "expected_document_keys": ["refresh_revoke"],
+          "expected_answer_terms": ["refresh keys", "user id"],
+          "limit": 5
+        },
+        {
+          "id": "live-auth-abstain-storage-engine",
+          "query": "Which database storage engine is recommended in this Auth collection?",
+          "expected_no_answer": true,
+          "must_abstain": true,
+          "limit": 5
+        }
+      ]
+    }
+  ]
+}

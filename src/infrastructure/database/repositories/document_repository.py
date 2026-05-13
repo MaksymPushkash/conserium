@@ -1,11 +1,12 @@
 from uuid import UUID
 
-from sqlalchemy import delete, exists, func, select
+from sqlalchemy import ColumnElement, delete, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.application.ports.persistence.document_repository import IDocumentRepository
 from src.domain.entities.document_entity import DocumentEntity
+from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 from src.infrastructure.database.models.document import DocumentModel
 
@@ -30,10 +31,15 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
         limit: int = 50,
         offset: int = 0,
         document_type: DocumentType | None = None,
+        collection_id: UUID | None = None,
+        status: DocumentStatus | None = None,
     ) -> list[DocumentEntity]:
-        conditions = [DocumentModel.user_id == user_id]
-        if document_type is not None:
-            conditions.append(DocumentModel.type == document_type)
+        conditions = self._document_conditions(
+            user_id,
+            document_type=document_type,
+            collection_id=collection_id,
+            status=status,
+        )
         result = await self._session.execute(
             select(DocumentModel)
             .options(selectinload(DocumentModel.tags))
@@ -59,14 +65,41 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
         result = await self._session.execute(select(exists().where(DocumentModel.id == document_id)))
         return result.scalar_one()
 
-    async def count_by_user_id(self, user_id: UUID, *, document_type: DocumentType | None = None) -> int:
-        conditions = [DocumentModel.user_id == user_id]
-        if document_type is not None:
-            conditions.append(DocumentModel.type == document_type)
+    async def count_by_user_id(
+        self,
+        user_id: UUID,
+        *,
+        document_type: DocumentType | None = None,
+        collection_id: UUID | None = None,
+        status: DocumentStatus | None = None,
+    ) -> int:
+        conditions = self._document_conditions(
+            user_id,
+            document_type=document_type,
+            collection_id=collection_id,
+            status=status,
+        )
         result = await self._session.execute(
             select(func.count()).select_from(DocumentModel).where(*conditions)
         )
         return result.scalar_one()
+
+    @staticmethod
+    def _document_conditions(
+        user_id: UUID,
+        *,
+        document_type: DocumentType | None,
+        collection_id: UUID | None,
+        status: DocumentStatus | None,
+    ) -> list[ColumnElement[bool]]:
+        conditions: list[ColumnElement[bool]] = [DocumentModel.user_id == user_id]
+        if document_type is not None:
+            conditions.append(DocumentModel.type == document_type)
+        if collection_id is not None:
+            conditions.append(DocumentModel.collection_id == collection_id)
+        if status is not None:
+            conditions.append(DocumentModel.status == status)
+        return conditions
 
     def _to_entity(self, model: DocumentModel) -> DocumentEntity:
         return DocumentEntity(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from src.application.use_cases.documents.base import document_to_dto
+from src.application.use_cases.documents.base import document_to_dto, ensure_collection_owner
 from src.application.use_cases.documents.queue_document_processing import queue_document_processing
 from src.domain.entities.document_entity import DocumentEntity
 from src.domain.exceptions import DocumentValidationException
@@ -35,6 +35,9 @@ class IngestDocumentUseCase:
             raise DocumentValidationException(f"source_url is required for {dto.type.value.lower()} ingestion")
         if dto.type in (DocumentType.PDF, DocumentType.IMAGE) and not dto.file_path:
             raise DocumentValidationException(f"file_path is required for {dto.type.value} ingestion")
+
+        async with self._uow:
+            await ensure_collection_owner(self._uow, dto.collection_id, dto.user_id)
 
         document = DocumentEntity.create(
             id=uuid.uuid4(),

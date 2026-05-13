@@ -24,19 +24,35 @@ async def _score_offline_case(case: dict[str, Any]) -> dict[str, object]:
     context = _context_from_chunks(case, retrieved_chunks)
     answer_scores = await _score_answer(case, context)
     retrieval_scores = _score_retrieval(case, retrieved_chunks)
-    return {"id": case["id"], "answer": answer_scores, "retrieval": retrieval_scores}
+    result = {
+        "id": case["id"],
+        "collection_id": case.get("collection_id"),
+        "answer": answer_scores,
+        "retrieval": retrieval_scores,
+    }
+    return _apply_negative_case_scores(case, result, str(case["answer"]), retrieved_chunks)
 
 
 def _score_api_case(base_url: str, token: str, case: dict[str, Any]) -> dict[str, object]:
-    request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/api/v1/query",
-        data=json.dumps({"query": case["query"], "limit": case.get("limit", 5)}).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    conversation_id = str(uuid.uuid4()) if case.get("conversation_seed_queries") else None
+    for seed_query in case.get("conversation_seed_queries", []):
+        _query_api(
+            base_url=base_url,
+            token=token,
+            query=str(seed_query),
+            limit=int(case.get("limit", 5)),
+            collection_id=str(case["collection_id"]) if case.get("collection_id") else None,
+            conversation_id=conversation_id,
+        )
 
+    payload = _query_api(
+        base_url=base_url,
+        token=token,
+        query=str(case["query"]),
+        limit=int(case.get("limit", 5)),
+        collection_id=str(case["collection_id"]) if case.get("collection_id") else None,
+        conversation_id=conversation_id,
+    )
     sources = payload.get("sources", [])
     answer = str(payload.get("answer", ""))
     expected_terms = _expected_terms(case)
@@ -49,8 +65,9 @@ def _score_api_case(base_url: str, token: str, case: dict[str, Any]) -> dict[str
         }
         for source in sources
     ]
-    return {
+    result = {
         "id": case["id"],
+        "collection_id": case.get("collection_id"),
         "answer": {
             "faithfulness": 1.0 if sources else 0.0,
             "answer_relevancy": answer_relevancy,
@@ -58,10 +75,39 @@ def _score_api_case(base_url: str, token: str, case: dict[str, Any]) -> dict[str
         },
         "retrieval": _score_retrieval(case, source_chunks),
     }
+    return _apply_negative_case_scores(case, result, answer, source_chunks, require_abstention=True)
+
+
+def _query_api(
+    *,
+    base_url: str,
+    token: str,
+    query: str,
+    limit: int,
+    collection_id: str | None,
+    conversation_id: str | None,
+) -> dict[str, Any]:
+    request_payload: dict[str, object] = {"query": query, "limit": limit}
+    if collection_id:
+        request_payload["collection_id"] = collection_id
+    if conversation_id:
+        request_payload["conversation_id"] = conversation_id
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/v1/query",
+        data=json.dumps(request_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return cast("dict[str, Any]", json.loads(response.read().decode("utf-8")))
 
 
 def _offline_retrieve(case: dict[str, Any]) -> list[dict[str, str]]:
-    chunks = _source_chunks(case)
+    chunks = [
+        chunk
+        for chunk in _source_chunks(case)
+        if not case.get("collection_id") or chunk.get("collection_id") == str(case["collection_id"])
+    ]
     query_terms = set(_terms(str(case["query"])))
     expected_terms = set(_expected_terms(case))
     scored: list[tuple[float, dict[str, str]]] = []
@@ -125,6 +171,9 @@ async def _score_answer(case: dict[str, Any], context: RefragContextPackage) -> 
 
 
 def _score_retrieval(case: dict[str, Any], retrieved_chunks: list[dict[str, str]]) -> dict[str, float]:
+    if case.get("expected_no_answer"):
+        return {"hit_rate": 1.0, "source_recall": 1.0, "mrr": 1.0}
+
     expected_chunk_ids = {str(value) for value in case.get("expected_source_chunks", [])}
     expected_document_ids = {str(value) for value in case.get("expected_source_documents", [])}
     if not expected_chunk_ids and not expected_document_ids:
@@ -156,8 +205,29 @@ def _summarize(results: list[dict[str, object]], section: str, score_keys: list[
     return summary
 
 
+def _summarize_by_collection(
+    results: list[dict[str, object]],
+    section: str,
+    score_keys: list[str],
+) -> dict[str, dict[str, float]]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for result in results:
+        grouped.setdefault(str(result.get("collection_id") or "unscoped"), []).append(result)
+    return {
+        collection_id: _summarize(collection_results, section, score_keys)
+        for collection_id, collection_results in sorted(grouped.items())
+    }
+
+
 def _load_cases(path: Path) -> list[dict[str, Any]]:
     return cast("list[dict[str, Any]]", json.loads(path.read_text(encoding="utf-8")))
+
+
+def _load_cases_from_dir(path: Path) -> list[dict[str, Any]]:
+    cases: list[dict[str, Any]] = []
+    for dataset_path in sorted(path.glob("*.json")):
+        cases.extend(_load_cases(dataset_path))
+    return cases
 
 
 def _threshold_failures(summary: dict[str, float], thresholds: dict[str, float]) -> list[str]:
@@ -166,6 +236,17 @@ def _threshold_failures(summary: dict[str, float], thresholds: dict[str, float])
         value = summary[key]
         if value < minimum:
             failures.append(f"{key}: {value:.4f} < required {minimum:.4f}")
+    return failures
+
+
+def _collection_threshold_failures(
+    summaries: dict[str, dict[str, float]],
+    thresholds: dict[str, float],
+) -> list[str]:
+    failures: list[str] = []
+    for collection_id, summary in summaries.items():
+        for failure in _threshold_failures(summary, thresholds):
+            failures.append(f"{collection_id}.{failure}")
     return failures
 
 
@@ -184,6 +265,7 @@ def _source_chunks(case: dict[str, Any]) -> list[dict[str, str]]:
                 "document_id": str(chunk["document_id"]),
                 "chunk_id": str(chunk["chunk_id"]),
                 "document_title": str(chunk.get("document_title") or chunk["document_id"]),
+                "collection_id": str(chunk.get("collection_id") or case.get("collection_id") or ""),
                 "content": str(chunk["content"]),
             }
             for chunk in case["source_chunks"]
@@ -193,9 +275,50 @@ def _source_chunks(case: dict[str, Any]) -> list[dict[str, str]]:
             "document_id": str(case.get("expected_source_documents", [_ZERO_UUID])[0]),
             "chunk_id": str(case.get("expected_source_chunks", [_ZERO_UUID])[0]),
             "document_title": "Synthetic Eval",
+            "collection_id": str(case.get("collection_id") or ""),
             "content": str(case["context"]),
         }
     ]
+
+
+def _apply_negative_case_scores(
+    case: dict[str, Any],
+    result: dict[str, object],
+    answer: str,
+    retrieved_chunks: list[dict[str, str]],
+    *,
+    require_abstention: bool = False,
+) -> dict[str, object]:
+    if not case.get("expected_no_answer"):
+        return result
+    answer_lower = answer.lower()
+    abstained = _is_abstention(answer_lower)
+    no_sources = not retrieved_chunks
+    passed = 1.0 if abstained or (no_sources and not require_abstention) else 0.0
+    result["answer"] = {"faithfulness": passed, "answer_relevancy": passed, "context_recall": 1.0 if no_sources else 0.0}
+    result["retrieval"] = _score_retrieval(case, retrieved_chunks)
+    return result
+
+
+def _is_abstention(answer_lower: str) -> bool:
+    return any(
+        phrase in answer_lower
+        for phrase in (
+            "could not find",
+            "cannot find",
+            "can't find",
+            "do not know",
+            "don't know",
+            "insufficient",
+            "not enough information",
+            "not in the context",
+            "context does not",
+            "не знайш",
+            "не можу знайти",
+            "недостат",
+            "немає",
+        )
+    )
 
 
 def _expected_terms(case: dict[str, Any]) -> list[str]:
@@ -223,6 +346,7 @@ def _uuid_or_zero(value: str) -> uuid.UUID:
 async def _main() -> int:
     parser = argparse.ArgumentParser(description="Run Cortex query eval regression.")
     parser.add_argument("--dataset", default="evals/query_eval_set.json")
+    parser.add_argument("--dataset-dir", default="")
     parser.add_argument("--min-faithfulness", type=float, default=None)
     parser.add_argument("--min-answer-relevancy", type=float, default=None)
     parser.add_argument("--min-context-recall", type=float, default=None)
@@ -237,7 +361,7 @@ async def _main() -> int:
     parser.add_argument("--output", default="", help="Optional path to write the JSON eval report.")
     args = parser.parse_args()
 
-    cases = _load_cases(Path(args.dataset))
+    cases = _load_cases_from_dir(Path(args.dataset_dir)) if args.dataset_dir else _load_cases(Path(args.dataset))
     if args.base_url and args.token:
         results = [_score_api_case(args.base_url, args.token, case) for case in cases]
     else:
@@ -247,7 +371,15 @@ async def _main() -> int:
 
     answer_summary = _summarize(results, "answer", ["faithfulness", "answer_relevancy", "context_recall"])
     retrieval_summary = _summarize(results, "retrieval", ["hit_rate", "source_recall", "mrr"])
-    output = {"answer_summary": answer_summary, "retrieval_summary": retrieval_summary, "results": results}
+    output = {
+        "answer_summary": answer_summary,
+        "retrieval_summary": retrieval_summary,
+        "collections": {
+            "answer": _summarize_by_collection(results, "answer", ["faithfulness", "answer_relevancy", "context_recall"]),
+            "retrieval": _summarize_by_collection(results, "retrieval", ["hit_rate", "source_recall", "mrr"]),
+        },
+        "results": results,
+    }
     rendered_output = json.dumps(output, indent=2, sort_keys=True)
     print(rendered_output)
     if args.output:
@@ -271,9 +403,22 @@ async def _main() -> int:
     }
     _print_threshold_report("Answer", answer_summary, answer_thresholds)
     _print_threshold_report("Retrieval", retrieval_summary, retrieval_thresholds)
+    print("Per-collection retrieval threshold report:", file=sys.stderr)
+    collection_summaries = cast("dict[str, dict[str, dict[str, float]]]", output["collections"])
+    collection_retrieval = collection_summaries["retrieval"]
+    for collection_id, summary in collection_retrieval.items():
+        print(f"- {collection_id}", file=sys.stderr)
+        for key, minimum in retrieval_thresholds.items():
+            value = summary[key]
+            status = "PASS" if value >= minimum else "FAIL"
+            print(f"  - {status} {key}: {value:.4f} / required {minimum:.4f}", file=sys.stderr)
     failures = [
         *[f"answer.{failure}" for failure in _threshold_failures(answer_summary, answer_thresholds)],
         *[f"retrieval.{failure}" for failure in _threshold_failures(retrieval_summary, retrieval_thresholds)],
+        *[
+            f"collection_retrieval.{failure}"
+            for failure in _collection_threshold_failures(collection_retrieval, retrieval_thresholds)
+        ],
     ]
     if failures:
         print("Eval regression failed:", file=sys.stderr)

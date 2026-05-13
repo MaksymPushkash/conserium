@@ -12,9 +12,11 @@ from src.core.startup_checks import validate_startup_settings
 from src.presentation.api.health import router as health_router
 from src.presentation.api.v1.auth import router as auth_router
 from src.presentation.api.v1.chats import router as chat_router
+from src.presentation.api.v1.collections import router as collection_router
 from src.presentation.api.v1.documents import router as document_router
 from src.presentation.api.v1.ingestion import router as ingestion_router
 from src.presentation.api.v1.notes import router as note_router
+from src.presentation.api.v1.observability import router as observability_router
 from src.presentation.api.v1.query import router as query_router
 from src.presentation.api.v1.user import router as user_router
 from src.presentation.exception_handlers import setup_exception_handlers
@@ -46,11 +48,13 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(user_router, prefix="/api/v1")
+    app.include_router(collection_router, prefix="/api/v1")
     app.include_router(document_router, prefix="/api/v1")
     app.include_router(ingestion_router, prefix="/api/v1")
     app.include_router(note_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(query_router, prefix="/api/v1")
+    app.include_router(observability_router, prefix="/api/v1")
 
     return app
 
