@@ -52,7 +52,7 @@ class LiveEvalContext:
 
 class ApiClient:
     def __init__(self, base_url: str, token: str | None = None) -> None:
-        self._base_url = base_url.rstrip("/")
+        self._base_url = _normalize_base_url(base_url)
         self._token = token
 
     def with_token(self, token: str) -> ApiClient:
@@ -84,7 +84,25 @@ class ApiClient:
                 return cast("JsonObject", json.loads(body)) if body else {}
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
+            if _looks_like_html(detail):
+                raise RuntimeError(
+                    f"{method} {path} failed with HTTP {exc.code}: received HTML instead of JSON. "
+                    "PRODUCTION_API_BASE_URL must point to the backend API origin, "
+                    "for example https://api.cortexx.me, not the frontend app URL."
+                ) from exc
             raise RuntimeError(f"{method} {path} failed with HTTP {exc.code}: {detail}") from exc
+
+
+def _normalize_base_url(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/api/v1"):
+        return normalized[: -len("/api/v1")]
+    return normalized
+
+
+def _looks_like_html(body: str) -> bool:
+    stripped = body.lstrip().lower()
+    return stripped.startswith("<!doctype html") or stripped.startswith("<html")
 
 
 def _authenticate(base_url: str, email: str, password: str, create_user: bool) -> ApiClient:

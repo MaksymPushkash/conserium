@@ -13,12 +13,15 @@ Run manually:
 
 ```bash
 python3 scripts/run_live_eval.py \
-  --base-url https://cortexx.me \
+  --base-url https://api.cortexx.me \
   --email "$LIVE_EVAL_EMAIL" \
   --password "$LIVE_EVAL_PASSWORD" \
   --dataset evals/live/seed.json \
   --output artifacts/live-retrieval-eval-report.json
 ```
+
+`--base-url` must be the backend API origin without `/api/v1`. The frontend app URL
+(`https://cortexx.me`) will return Next.js HTML 404 responses for API calls and fail validation.
 
 The script deletes seeded documents and collections unless `--keep-seed` is passed.
 
