@@ -7,6 +7,7 @@ import pytest
 from src.application.dtos.document_dtos import CreateDocumentDTO, DeleteDocumentDTO, GetDocumentDTO, ListDocumentsDTO
 from src.application.dtos.ingestion_dtos import IngestDocumentDTO
 from src.application.dtos.note_dtos import CreateNoteDTO, ListNotesDTO, UpdateNoteDTO
+from src.application.ports.persistence.note_version_repository import NoteVersionRecord
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
@@ -89,6 +90,7 @@ class _FakeUnitOfWork:
     def __init__(self, document_repo: _FakeDocumentRepository) -> None:
         self.document_repo = document_repo
         self.chunk_repo = _FakeChunkRepository()
+        self.note_version_repo = _FakeNoteVersionRepository()
         self.committed = False
         self.rolled_back = False
 
@@ -112,6 +114,36 @@ class _FakeChunkRepository:
 
     async def delete_by_document_id(self, document_id: uuid.UUID) -> None:
         self.deleted_document_ids.append(document_id)
+
+
+class _FakeNoteVersionRepository:
+    def __init__(self) -> None:
+        self.records: list[NoteVersionRecord] = []
+
+    async def create(self, version: NoteVersionRecord) -> None:
+        self.records.append(version)
+
+    async def list_by_note_id(self, *, note_id: uuid.UUID, user_id: uuid.UUID) -> list[NoteVersionRecord]:
+        return [record for record in self.records if record.note_id == note_id and record.user_id == user_id]
+
+    async def get_by_id(
+        self,
+        *,
+        version_id: uuid.UUID,
+        note_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> NoteVersionRecord | None:
+        return next(
+            (
+                record
+                for record in self.records
+                if record.id == version_id and record.note_id == note_id and record.user_id == user_id
+            ),
+            None,
+        )
+
+    async def count_by_note_id(self, note_id: uuid.UUID) -> int:
+        return sum(1 for record in self.records if record.note_id == note_id)
 
 
 class _FakeFileStorage:

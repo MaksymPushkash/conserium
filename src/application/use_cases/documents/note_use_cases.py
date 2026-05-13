@@ -13,6 +13,8 @@ from src.application.dtos.note_dtos import (
     NoteListItemDTO,
     UpdateNoteDTO,
 )
+from src.application.dtos.note_version_dtos import NoteVersionDTO
+from src.application.ports.persistence.note_version_repository import NoteVersionRecord
 from src.application.use_cases.documents.base import ensure_collection_owner, ensure_document_owner
 from src.domain.entities.document_entity import DocumentEntity
 from src.domain.exceptions import DocumentNotFoundException
@@ -122,6 +124,7 @@ class UpdateNoteUseCase:
         has_content = bool(content.strip())
         async with self._uow:
             await ensure_collection_owner(self._uow, dto.collection_id, dto.user_id)
+        previous_document = _copy_document(document)
         document.rename(_normalize_title(dto.title, content))
         document.assign_collection(dto.collection_id)
         document.update_content(
@@ -135,6 +138,7 @@ class UpdateNoteUseCase:
             document.mark_ready()
 
         async with self._uow:
+            await _save_note_version(self._uow, previous_document)
             await self._uow.document_repo.update(document)
             if not has_content:
                 await self._uow.chunk_repo.delete_by_document_id(document.id)
@@ -161,6 +165,70 @@ class DeleteNoteUseCase:
             await self._uow.commit()
 
 
+class ListNoteVersionsUseCase:
+    def __init__(self, uow: IUnitOfWork) -> None:
+        self._uow = uow
+
+    async def __call__(self, *, user_id: uuid.UUID, note_id: uuid.UUID) -> list[NoteVersionDTO]:
+        await _get_note(self._uow, user_id=user_id, note_id=note_id)
+        async with self._uow:
+            versions = await self._uow.note_version_repo.list_by_note_id(note_id=note_id, user_id=user_id)
+        return [_note_version_to_dto(version) for version in versions]
+
+
+class RestoreNoteVersionUseCase:
+    def __init__(
+        self,
+        uow: IUnitOfWork,
+        status_cache: IDocumentStatusCache,
+        task_dispatcher: ITaskDispatcher,
+    ) -> None:
+        self._uow = uow
+        self._status_cache = status_cache
+        self._task_dispatcher = task_dispatcher
+
+    async def __call__(self, *, user_id: uuid.UUID, note_id: uuid.UUID, version_id: uuid.UUID) -> NoteDTO:
+        document = await _get_note(self._uow, user_id=user_id, note_id=note_id)
+        async with self._uow:
+            version = await self._uow.note_version_repo.get_by_id(
+                version_id=version_id,
+                note_id=note_id,
+                user_id=user_id,
+            )
+        if version is None:
+            raise DocumentNotFoundException("note version not found")
+
+        previous_document = _copy_document(document)
+        content = _normalize_content(version.content)
+        has_content = bool(content.strip())
+        document.rename(version.title)
+        document.update_content(
+            raw_content=content if has_content else None,
+            word_count=len(content.split()),
+            language=document.language,
+        )
+        if has_content:
+            document.mark_queued()
+        else:
+            document.mark_ready()
+
+        async with self._uow:
+            await _save_note_version(self._uow, previous_document)
+            await self._uow.document_repo.update(document)
+            if not has_content:
+                await self._uow.chunk_repo.delete_by_document_id(document.id)
+            await self._uow.commit()
+
+        if has_content:
+            await _queue_note_processing(
+                document=document,
+                status_cache=self._status_cache,
+                task_dispatcher=self._task_dispatcher,
+                uow=self._uow,
+            )
+        return _note_to_dto(document)
+
+
 async def _get_note(uow: IUnitOfWork, *, user_id: uuid.UUID, note_id: uuid.UUID) -> DocumentEntity:
     async with uow:
         document = await uow.document_repo.get_by_id(note_id)
@@ -168,6 +236,20 @@ async def _get_note(uow: IUnitOfWork, *, user_id: uuid.UUID, note_id: uuid.UUID)
         raise DocumentNotFoundException("note not found")
     ensure_document_owner(document, user_id)
     return document
+
+
+async def _save_note_version(uow: IUnitOfWork, document: DocumentEntity) -> None:
+    version_number = await uow.note_version_repo.count_by_note_id(document.id) + 1
+    await uow.note_version_repo.create(
+        NoteVersionRecord(
+            id=uuid.uuid4(),
+            note_id=document.id,
+            user_id=document.user_id,
+            version_number=version_number,
+            title=document.title,
+            content=document.raw_content or "",
+        )
+    )
 
 
 async def _queue_note_processing(
@@ -216,6 +298,19 @@ def _note_to_dto(document: DocumentEntity) -> NoteDTO:
     )
 
 
+def _note_version_to_dto(version: NoteVersionRecord) -> NoteVersionDTO:
+    if version.created_at is None:
+        raise ValueError("note version created_at is required")
+    return NoteVersionDTO(
+        id=version.id,
+        note_id=version.note_id,
+        version_number=version.version_number,
+        title=version.title,
+        content=version.content,
+        created_at=version.created_at,
+    )
+
+
 def _note_to_list_item_dto(document: DocumentEntity) -> NoteListItemDTO:
     return NoteListItemDTO(
         id=document.id,
@@ -226,6 +321,33 @@ def _note_to_list_item_dto(document: DocumentEntity) -> NoteListItemDTO:
         language=document.language,
         created_at=document.created_at,
         updated_at=document.updated_at,
+    )
+
+
+def _copy_document(document: DocumentEntity) -> DocumentEntity:
+    return DocumentEntity(
+        id=document.id,
+        user_id=document.user_id,
+        collection_id=document.collection_id,
+        title=document.title,
+        type=document.type,
+        status=document.status,
+        source_url=document.source_url,
+        file_path=document.file_path,
+        file_size_bytes=document.file_size_bytes,
+        raw_content=document.raw_content,
+        summary=document.summary,
+        word_count=document.word_count,
+        language=document.language,
+        entities=document.entities,
+        categories=document.categories,
+        visual_metadata=document.visual_metadata,
+        doc_embedding=document.doc_embedding,
+        is_duplicate=document.is_duplicate,
+        duplicate_of_id=document.duplicate_of_id,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
+        tags=document.tags,
     )
 
 

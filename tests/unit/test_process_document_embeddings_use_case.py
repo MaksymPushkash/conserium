@@ -96,6 +96,7 @@ class _FakeChunkRepository(IChunkRepository):
         user_id: uuid.UUID,
         limit: int = 10,
         collection_id: uuid.UUID | None = None,
+        tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
     ) -> list[ChunkSearchResult]:
         raise NotImplementedError

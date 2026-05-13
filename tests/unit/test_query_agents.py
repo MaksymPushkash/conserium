@@ -163,6 +163,7 @@ def test_conversation_context_agent_does_not_treat_connective_search_as_follow_u
 class _FakeRetrievalService:
     def __init__(self) -> None:
         self.received_query: str | None = None
+        self.received_tag_names: tuple[str, ...] | None = None
         self.received_document_types: tuple[DocumentType, ...] | None = None
 
     async def retrieve(
@@ -172,9 +173,11 @@ class _FakeRetrievalService:
         user_id: uuid.UUID,
         limit: int,
         collection_id: uuid.UUID | None,
+        tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
     ) -> list[QuerySourceDTO]:
         self.received_query = query
+        self.received_tag_names = tag_names
         self.received_document_types = document_types
         promoted_document_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
         other_document_id = uuid.UUID("00000000-0000-0000-0000-000000000002")

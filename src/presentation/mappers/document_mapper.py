@@ -28,6 +28,7 @@ def to_document_response(dto: DocumentDTO) -> DocumentResponse:
         entities=dto.entities,
         categories=dto.categories,
         visual_metadata=dto.visual_metadata,
+        suggested_questions=_suggested_questions(dto.visual_metadata),
         tags=dto.tags or [],
         is_duplicate=dto.is_duplicate,
         duplicate_of_id=dto.duplicate_of_id,
@@ -50,12 +51,22 @@ def to_document_list_item_response(dto: DocumentDTO) -> DocumentListItemResponse
         summary=dto.summary,
         word_count=dto.word_count,
         language=dto.language,
+        suggested_questions=_suggested_questions(dto.visual_metadata),
         tags=dto.tags or [],
         is_duplicate=dto.is_duplicate,
         duplicate_of_id=dto.duplicate_of_id,
         created_at=dto.created_at,
         updated_at=dto.updated_at,
     )
+
+
+def _suggested_questions(visual_metadata: dict[str, object] | None) -> list[str]:
+    if not visual_metadata:
+        return []
+    value = visual_metadata.get("suggested_questions")
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
 
 
 def to_document_chunk_response(dto: DocumentChunkDTO) -> DocumentChunkResponse:

@@ -7,6 +7,7 @@ from src.infrastructure.database.repositories.chat_repository import SQLAlchemyC
 from src.infrastructure.database.repositories.chunk_repository import SQLAlchemyChunkRepository
 from src.infrastructure.database.repositories.collection_repository import SQLAlchemyCollectionRepository
 from src.infrastructure.database.repositories.document_repository import SQLAlchemyDocumentRepository
+from src.infrastructure.database.repositories.note_version_repository import SQLAlchemyNoteVersionRepository
 from src.infrastructure.database.repositories.search_query_repository import SQLAlchemySearchQueryRepository
 from src.infrastructure.database.repositories.user_repository import SQLAlchemyUserRepository
 
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from src.application.ports.persistence.chunk_repository import IChunkRepository
     from src.application.ports.persistence.collection_repository import ICollectionRepository
     from src.application.ports.persistence.document_repository import IDocumentRepository
+    from src.application.ports.persistence.note_version_repository import INoteVersionRepository
     from src.application.ports.persistence.search_query_repository import ISearchQueryRepository
     from src.application.ports.persistence.user_repository import IUserRepository
 
@@ -31,6 +33,7 @@ class SQLAlchemyUnitOfWork(IUnitOfWork):
         self.collection_repo: ICollectionRepository = SQLAlchemyCollectionRepository(session)
         self.document_repo: IDocumentRepository = SQLAlchemyDocumentRepository(session)
         self.chunk_repo: IChunkRepository = SQLAlchemyChunkRepository(session)
+        self.note_version_repo: INoteVersionRepository = SQLAlchemyNoteVersionRepository(session)
         self.search_query_repo: ISearchQueryRepository = SQLAlchemySearchQueryRepository(session)
 
     async def __aenter__(self) -> SQLAlchemyUnitOfWork:

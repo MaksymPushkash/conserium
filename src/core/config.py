@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.domain.constants import EMBEDDING_DIMENSIONS
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -33,7 +35,7 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str = ""
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    OPENAI_EMBEDDING_DIMENSIONS: int = 1536
+    OPENAI_EMBEDDING_DIMENSIONS: int = EMBEDDING_DIMENSIONS
     OPENAI_LLM_MODEL: str = "gpt-4o-mini"
 
     FILE_STORAGE_TYPE: str = "local"

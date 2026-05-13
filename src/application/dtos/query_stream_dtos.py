@@ -9,6 +9,7 @@ class QueryStreamEventType(StrEnum):
     TOKEN = "token"
     SOURCES = "sources"
     REFRAG_CONTEXT = "refrag_context"
+    DEBUG = "debug"
     DONE = "done"
     ERROR = "error"
 

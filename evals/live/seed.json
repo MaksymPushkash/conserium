@@ -89,6 +89,14 @@
           "limit": 5
         },
         {
+          "id": "live-retrieval-suggested-question-scoped-summary",
+          "kind": "suggested_question",
+          "query": "Summarize Live Eval - Scoped Retrieval.",
+          "expected_document_keys": ["scoped_retrieval"],
+          "expected_answer_terms": ["collection_id", "retrieval service", "database query"],
+          "limit": 5
+        },
+        {
           "id": "live-retrieval-quality-filter-noise",
           "query": "Which chunks should quality filters reject?",
           "expected_document_keys": ["quality_filters"],

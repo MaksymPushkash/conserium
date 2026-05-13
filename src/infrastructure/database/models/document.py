@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from src.domain.constants import EMBEDDING_DIMENSIONS
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 from src.infrastructure.database.models.base import (
@@ -58,7 +59,7 @@ class DocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     categories: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
     visual_metadata: Mapped[dict[str, object] | None] = mapped_column(JSONB)
  
-    doc_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    doc_embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
  
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)

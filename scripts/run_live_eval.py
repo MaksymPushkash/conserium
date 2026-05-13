@@ -249,6 +249,7 @@ def _run_case(
     source_document_ids = [str(source.get("document_id", "")) for source in sources]
     expected_document_ids = [context.documents[str(key)].id for key in case.get("expected_document_keys", [])]
     retrieval = _score_retrieval(source_document_ids, expected_document_ids)
+    collection_scope = _score_collection_scope(source_document_ids, collection_id, context)
     noise_rejection = 1.0 if not (set(source_document_ids) & noise_document_ids) else 0.0
     abstention = _score_abstention(answer) if case.get("expected_no_answer") or case.get("must_abstain") else None
     result: JsonObject = {
@@ -258,6 +259,7 @@ def _run_case(
         "query": case["query"],
         "answer": answer,
         "retrieval": retrieval,
+        "collection_scope": collection_scope,
         "noise_rejection": noise_rejection,
         "sources": [
             {
@@ -306,6 +308,13 @@ def _score_retrieval(source_document_ids: list[str], expected_document_ids: list
     }
 
 
+def _score_collection_scope(source_document_ids: list[str], collection_id: str, context: LiveEvalContext) -> float:
+    if not source_document_ids:
+        return 1.0
+    document_collections = {document.id: document.collection_id for document in context.documents.values()}
+    return 1.0 if all(document_collections.get(document_id) == collection_id for document_id in source_document_ids) else 0.0
+
+
 def _score_abstention(answer: str) -> float:
     normalized = answer.casefold()
     return 1.0 if any(phrase in normalized for phrase in _ABSTENTION_PHRASES) else 0.0
@@ -321,6 +330,7 @@ def _summarize(results: list[JsonObject]) -> JsonObject:
             "source_recall": _average([float(result["retrieval"]["source_recall"]) for result in retrieval_cases]),
             "mrr": _average([float(result["retrieval"]["mrr"]) for result in retrieval_cases]),
             "noise_rejection": _average([float(result["noise_rejection"]) for result in results]),
+            "collection_scope": _average([float(result["collection_scope"]) for result in results]),
         },
         "abstention": {
             "answer_must_abstain": _average([float(result["abstention"]) for result in abstention_cases]),
@@ -343,6 +353,7 @@ def _threshold_failures(summary: JsonObject, args: argparse.Namespace) -> list[s
         "retrieval.source_recall": (float(summary["retrieval"]["source_recall"]), args.min_retrieval_source_recall),
         "retrieval.mrr": (float(summary["retrieval"]["mrr"]), args.min_retrieval_mrr),
         "retrieval.noise_rejection": (float(summary["retrieval"]["noise_rejection"]), args.min_noise_rejection),
+        "retrieval.collection_scope": (float(summary["retrieval"]["collection_scope"]), args.min_collection_scope),
         "abstention.answer_must_abstain": (
             float(summary["abstention"]["answer_must_abstain"]),
             args.min_abstention_rate,
@@ -393,6 +404,7 @@ def _main() -> int:
     parser.add_argument("--min-retrieval-source-recall", type=float, default=0.9)
     parser.add_argument("--min-retrieval-mrr", type=float, default=0.75)
     parser.add_argument("--min-noise-rejection", type=float, default=1.0)
+    parser.add_argument("--min-collection-scope", type=float, default=1.0)
     parser.add_argument("--min-abstention-rate", type=float, default=1.0)
     parser.add_argument("--min-query-rewrite-source-recall", type=float, default=0.8)
     args = parser.parse_args()

@@ -32,6 +32,7 @@ jobs:
           --min-retrieval-hit-rate 0.9
           --min-retrieval-source-recall 0.75
           --min-retrieval-mrr 0.75
+          --min-noise-rejection 1.0
           --output artifacts/eval-regression-report.json
       - name: Upload eval regression report
         if: always()

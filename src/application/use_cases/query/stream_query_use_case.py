@@ -14,6 +14,7 @@ from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStr
 from src.application.use_cases.documents.base import ensure_collection_owner
 from src.application.use_cases.query.query_use_case import (
     _mark_sources_used_in_answer,
+    _query_debug_payload,
     _refrag_context_payload,
     _source_payload,
     _title_from_query,
@@ -28,7 +29,6 @@ if TYPE_CHECKING:
     from src.application.dtos.query_dtos import QueryDTO, QuerySourceDTO
     from src.application.dtos.refrag_dtos import RefragChunk
     from src.application.ports.conversations.conversation_store import IConversationStore
-    from src.application.ports.persistence.chat_repository import IChatRepository
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
 
 logger = structlog.get_logger(__name__)
@@ -80,6 +80,7 @@ class StreamQueryUseCase:
                     limit=dto.limit,
                     conversation_id=conversation_id,
                     collection_id=dto.collection_id,
+                    tag_names=dto.tag_names,
                     document_types=dto.document_types,
                     conversation_turns=conversation_turns,
                 )
@@ -119,6 +120,10 @@ class StreamQueryUseCase:
 
             state.answer = "".join(answer_parts)
             state.sources = _mark_sources_used_in_answer(state.sources, state.answer)
+            yield QueryStreamEventDTO(
+                event=QueryStreamEventType.DEBUG,
+                data=_query_debug_payload(query, state),
+            )
             yield QueryStreamEventDTO(
                 event=QueryStreamEventType.SOURCES,
                 data={
@@ -246,14 +251,10 @@ class StreamQueryUseCase:
             await self._uow.commit()
 
     async def _ensure_chat_session(self, *, user_id: UUID, conversation_id: UUID, title: str) -> None:
-        chat_repo = getattr(self._uow, "chat_repo", None)
-        if chat_repo is None:
-            return
-        repository: IChatRepository = chat_repo
         async with self._uow:
-            session = await repository.get_session(user_id=user_id, chat_id=conversation_id)
+            session = await self._uow.chat_repo.get_session(user_id=user_id, chat_id=conversation_id)
             if session is None:
-                await repository.create_session(
+                await self._uow.chat_repo.create_session(
                     user_id=user_id,
                     chat_id=conversation_id,
                     title=_title_from_query(title),
@@ -261,12 +262,8 @@ class StreamQueryUseCase:
                 await self._uow.commit()
 
     async def _get_persisted_recent_turns(self, *, user_id: UUID, conversation_id: UUID) -> list[ConversationTurnDTO]:
-        chat_repo = getattr(self._uow, "chat_repo", None)
-        if chat_repo is None:
-            return []
-        repository: IChatRepository = chat_repo
         async with self._uow:
-            return await repository.get_recent_turns(
+            return await self._uow.chat_repo.get_recent_turns(
                 user_id=user_id,
                 chat_id=conversation_id,
                 limit=self.RECENT_TURN_LIMIT,
@@ -283,13 +280,9 @@ class StreamQueryUseCase:
         eval_scores: Mapping[str, object],
         trace_id: str | None,
     ) -> None:
-        chat_repo = getattr(self._uow, "chat_repo", None)
-        if chat_repo is None:
-            return
-        repository: IChatRepository = chat_repo
         async with self._uow:
-            await repository.append_message(chat_id=conversation_id, role="user", content=query)
-            await repository.append_message(
+            await self._uow.chat_repo.append_message(chat_id=conversation_id, role="user", content=query)
+            await self._uow.chat_repo.append_message(
                 chat_id=conversation_id,
                 role="assistant",
                 content=answer,

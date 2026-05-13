@@ -8,6 +8,7 @@ from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from src.domain.constants import EMBEDDING_DIMENSIONS
 from src.infrastructure.database.models.base import Base, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ class SearchQueryModel(UUIDPrimaryKeyMixin, Base):
     
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
     query_type: Mapped[QueryType] = mapped_column(SQLEnum(QueryType), nullable=False)
-    query_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    query_embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
     
     result_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     answer_text: Mapped[str | None] = mapped_column(Text)

@@ -10,6 +10,7 @@ class QueryRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     conversation_id: UUID | None = None
     collection_id: UUID | None = None
+    tag_names: list[str] | None = Field(default=None, max_length=20)
     document_types: list[DocumentType] | None = None
     limit: int = Field(default=5, ge=1, le=20)
 
@@ -49,9 +50,22 @@ class RefragContextResponse(BaseModel):
     compression_strategy: str
 
 
+class QueryDebugResponse(BaseModel):
+    original_query: str
+    retrieval_query: str
+    selected_collection_id: UUID | None
+    selected_tags: list[str]
+    promoted_document_ids: list[UUID]
+    retrieved_sources: list[QuerySourceResponse]
+    final_sources: list[QuerySourceResponse]
+    used_sources: list[QuerySourceResponse]
+    filtered_sources: list[QuerySourceResponse]
+
+
 class QueryResponse(BaseModel):
     conversation_id: UUID
     query: str
     answer: str
     sources: list[QuerySourceResponse]
     refrag_context: RefragContextResponse
+    debug: QueryDebugResponse | None = None
