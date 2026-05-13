@@ -2,7 +2,7 @@ import re
 
 from src.application.agents.query.state import CortexQueryState
 from src.application.ports.ai.reranker import IReranker
-from src.application.services.retrieval.chunk_quality_filter import ChunkQualityFilter
+from src.application.services.retrieval.chunk_quality_filter import ChunkQualityFilter, ChunkRelevanceFilter
 from src.application.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
 from src.core.config import settings
 from src.core.metrics import metrics_registry
@@ -15,10 +15,12 @@ class RetrievalAgent:
         retrieval_service: HybridRetrievalService,
         reranker: IReranker | None = None,
         chunk_quality_filter: ChunkQualityFilter | None = None,
+        chunk_relevance_filter: ChunkRelevanceFilter | None = None,
     ) -> None:
         self._retrieval_service = retrieval_service
         self._reranker = reranker
         self._chunk_quality_filter = chunk_quality_filter or ChunkQualityFilter()
+        self._chunk_relevance_filter = chunk_relevance_filter or ChunkRelevanceFilter()
 
     async def retrieve(self, state: CortexQueryState) -> CortexQueryState:
         retrieval_query = state.retrieval_query or state.query
@@ -38,10 +40,11 @@ class RetrievalAgent:
         if settings.RERANKER_ENABLED and self._reranker is not None and state.sources:
             top_k = min(settings.RERANKER_TOP_K, len(state.sources))
             state.sources = await self._reranker.rerank(state.retrieval_query or state.query, state.sources, top_k)
-        filtered_sources = self._chunk_quality_filter.filter_sources(state.sources)
-        filtered_keys = {source.chunk_id for source in filtered_sources}
-        state.filtered_sources = [source for source in state.sources if source.chunk_id not in filtered_keys]
-        state.sources = filtered_sources
+        quality_sources = self._chunk_quality_filter.filter_sources(state.sources)
+        relevant_sources = self._chunk_relevance_filter.filter_sources(retrieval_query, quality_sources)
+        relevant_keys = {source.chunk_id for source in relevant_sources}
+        state.filtered_sources = [source for source in state.sources if source.chunk_id not in relevant_keys]
+        state.sources = relevant_sources
         if state.promoted_document_ids:
             promoted_ids = set(state.promoted_document_ids)
             state.sources = sorted(

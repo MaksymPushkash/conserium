@@ -3,7 +3,7 @@ import uuid
 from src.application.dtos.query_dtos import QuerySourceDTO
 from src.application.dtos.refrag_dtos import RefragRepresentation
 from src.application.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
-from src.application.services.retrieval.chunk_quality_filter import ChunkQualityFilter
+from src.application.services.retrieval.chunk_quality_filter import ChunkQualityFilter, ChunkRelevanceFilter
 
 
 def _source(index: int, *, score: float | None, content: str | None = None) -> QuerySourceDTO:
@@ -71,3 +71,43 @@ def test_chunk_quality_filter_drops_placeholder_chunks() -> None:
     filtered = ChunkQualityFilter().filter_sources(sources)
 
     assert [source.chunk_id for source in filtered] == [sources[1].chunk_id]
+
+
+def test_chunk_quality_filter_drops_synthetic_noise_chunks() -> None:
+    sources = [
+        _source(
+            1,
+            score=0.9,
+            content=(
+                "Invoice payment bananas blue calendar placeholder. This synthetic noise chunk is intentionally "
+                "unrelated to dependency direction, use cases, ports, adapters, or architecture boundaries."
+            ),
+        ),
+        _source(2, score=0.8, content="Clean Architecture keeps dependencies inward across the application layers."),
+    ]
+
+    filtered = ChunkQualityFilter().filter_sources(sources)
+
+    assert [source.chunk_id for source in filtered] == [sources[1].chunk_id]
+
+
+def test_chunk_relevance_filter_drops_unrelated_noise_chunks() -> None:
+    sources = [
+        _source(1, score=0.9, content="Clean Architecture keeps dependencies inward across application layers."),
+        _source(2, score=0.8, content="Invoice payment bananas blue calendar placeholder unrelated synthetic noise."),
+    ]
+
+    filtered = ChunkRelevanceFilter().filter_sources("What is the Clean Architecture dependency rule?", sources)
+
+    assert [source.chunk_id for source in filtered] == [sources[0].chunk_id]
+
+
+def test_chunk_relevance_filter_can_return_empty_context_for_out_of_scope_query() -> None:
+    sources = [
+        _source(1, score=0.9, content="Clean Architecture keeps dependencies inward across application layers."),
+        _source(2, score=0.8, content="Celery workers are a second composition root for task adapters."),
+    ]
+
+    filtered = ChunkRelevanceFilter().filter_sources("What payroll tax rate is documented?", sources)
+
+    assert filtered == []

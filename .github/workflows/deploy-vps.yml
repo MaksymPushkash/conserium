@@ -59,6 +59,13 @@ jobs:
           ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null
           ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts
 
+      - name: Capture current VPS revision
+        run: |
+          previous_ref="$(ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "cd '$VPS_APP_DIR' && git rev-parse HEAD")"
+          echo "PREVIOUS_DEPLOY_REF=${previous_ref}" >> "$GITHUB_ENV"
+          echo "Current VPS revision: ${previous_ref}"
+
       - name: Deploy on VPS
         run: |
           ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
@@ -166,6 +173,23 @@ jobs:
           echo "=== worker-media logs ==="
           docker compose --env-file .env.prod logs --tail=220 worker-media || true
           REMOTE_LIVE_EVAL_DIAGNOSTICS
+
+      - name: Roll back VPS deployment
+        if: ${{ failure() && env.PREVIOUS_DEPLOY_REF != '' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "PREVIOUS_DEPLOY_REF='$PREVIOUS_DEPLOY_REF' VPS_APP_DIR='$VPS_APP_DIR' bash -s" <<'REMOTE_ROLLBACK'
+          set -euo pipefail
+          cd "$VPS_APP_DIR"
+
+          echo "Rolling back to ${PREVIOUS_DEPLOY_REF}"
+          git fetch origin main
+          git reset --hard "$PREVIOUS_DEPLOY_REF"
+          docker compose --env-file .env.prod up -d --build --remove-orphans
+          docker compose --env-file .env.prod exec -T app uv run alembic upgrade head
+          docker compose --env-file .env.prod ps
+          curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
+          REMOTE_ROLLBACK
 
       - name: Upload live retrieval validation report
         if: always()

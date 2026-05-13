@@ -248,3 +248,50 @@ async def test_retrieval_agent_prefers_explicit_document_type_filter() -> None:
 
     assert service.received_document_types == (DocumentType.MARKDOWN,)
     assert service.received_query == "give me a quote about sql"
+
+
+class _NoiseRetrievalService:
+    async def retrieve(
+        self,
+        *,
+        query: str,
+        user_id: uuid.UUID,
+        limit: int,
+        collection_id: uuid.UUID | None,
+        tag_names: tuple[str, ...] | None = None,
+        document_types: tuple[DocumentType, ...] | None = None,
+    ) -> list[QuerySourceDTO]:
+        return [
+            QuerySourceDTO(
+                chunk_id=uuid.uuid4(),
+                document_id=uuid.uuid4(),
+                document_title="Architecture",
+                content="Clean Architecture keeps dependencies inward across application layers.",
+                page_number=None,
+                chunk_index=0,
+                score=0.9,
+            ),
+            QuerySourceDTO(
+                chunk_id=uuid.uuid4(),
+                document_id=uuid.uuid4(),
+                document_title="Noise",
+                content="Invoice payment bananas blue calendar placeholder unrelated synthetic noise.",
+                page_number=None,
+                chunk_index=1,
+                score=0.8,
+            ),
+        ]
+
+
+async def test_retrieval_agent_filters_unrelated_noise_sources() -> None:
+    state = CortexQueryState(
+        query="What is the Clean Architecture dependency rule?",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+    )
+
+    result = await RetrievalAgent(cast("HybridRetrievalService", _NoiseRetrievalService())).retrieve(state)
+
+    assert [source.document_title for source in result.sources] == ["Architecture"]
+    assert [source.document_title for source in result.filtered_sources] == ["Noise"]
