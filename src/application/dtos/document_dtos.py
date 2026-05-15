@@ -117,6 +117,7 @@ class DocumentDTO:
     created_at: datetime
     updated_at: datetime | None
     visual_metadata: MetadataItem | None = None
+    suggested_questions: list[str] | None = None
     tags: list[str] | None = None
 
 

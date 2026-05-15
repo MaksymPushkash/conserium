@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from contextlib import suppress
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from src.application.dtos.note_dtos import (
@@ -24,6 +25,8 @@ if TYPE_CHECKING:
     from src.application.ports.cache.document_status_cache import IDocumentStatusCache
     from src.application.ports.ingestion.task_dispatcher import ITaskDispatcher
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
+
+NOTE_VERSION_COALESCE_WINDOW = timedelta(seconds=60)
 
 
 class CreateNoteUseCase:
@@ -125,7 +128,17 @@ class UpdateNoteUseCase:
         async with self._uow:
             await ensure_collection_owner(self._uow, dto.collection_id, dto.user_id)
         previous_document = _copy_document(document)
-        document.rename(_normalize_title(dto.title, content))
+        next_title = _normalize_title(dto.title, content)
+        if not _note_update_changed(
+            document,
+            title=next_title,
+            content=content,
+            collection_id=dto.collection_id,
+            language=dto.language,
+        ):
+            return _note_to_dto(document)
+
+        document.rename(next_title)
         document.assign_collection(dto.collection_id)
         document.update_content(
             raw_content=content if has_content else None,
@@ -138,7 +151,7 @@ class UpdateNoteUseCase:
             document.mark_ready()
 
         async with self._uow:
-            await _save_note_version(self._uow, previous_document)
+            await _save_note_version(self._uow, previous_document, document)
             await self._uow.document_repo.update(document)
             if not has_content:
                 await self._uow.chunk_repo.delete_by_document_id(document.id)
@@ -201,6 +214,15 @@ class RestoreNoteVersionUseCase:
         previous_document = _copy_document(document)
         content = _normalize_content(version.content)
         has_content = bool(content.strip())
+        if not _note_update_changed(
+            document,
+            title=version.title,
+            content=content,
+            collection_id=document.collection_id,
+            language=document.language,
+        ):
+            return _note_to_dto(document)
+
         document.rename(version.title)
         document.update_content(
             raw_content=content if has_content else None,
@@ -213,7 +235,7 @@ class RestoreNoteVersionUseCase:
             document.mark_ready()
 
         async with self._uow:
-            await _save_note_version(self._uow, previous_document)
+            await _save_note_version(self._uow, previous_document, document, force=True)
             await self._uow.document_repo.update(document)
             if not has_content:
                 await self._uow.chunk_repo.delete_by_document_id(document.id)
@@ -238,17 +260,56 @@ async def _get_note(uow: IUnitOfWork, *, user_id: uuid.UUID, note_id: uuid.UUID)
     return document
 
 
-async def _save_note_version(uow: IUnitOfWork, document: DocumentEntity) -> None:
-    version_number = await uow.note_version_repo.count_by_note_id(document.id) + 1
+async def _save_note_version(
+    uow: IUnitOfWork,
+    previous_document: DocumentEntity,
+    current_document: DocumentEntity,
+    *,
+    force: bool = False,
+) -> None:
+    if not _note_content_changed(previous_document, current_document):
+        return
+    if not force:
+        versions = await uow.note_version_repo.list_by_note_id(
+            note_id=previous_document.id,
+            user_id=previous_document.user_id,
+        )
+        latest = versions[0] if versions else None
+        if latest and latest.created_at and datetime.now(UTC) - latest.created_at < NOTE_VERSION_COALESCE_WINDOW:
+            return
+    version_number = await uow.note_version_repo.count_by_note_id(previous_document.id) + 1
     await uow.note_version_repo.create(
         NoteVersionRecord(
             id=uuid.uuid4(),
-            note_id=document.id,
-            user_id=document.user_id,
+            note_id=previous_document.id,
+            user_id=previous_document.user_id,
             version_number=version_number,
-            title=document.title,
-            content=document.raw_content or "",
+            title=previous_document.title,
+            content=previous_document.raw_content or "",
         )
+    )
+
+
+def _note_update_changed(
+    document: DocumentEntity,
+    *,
+    title: str,
+    content: str,
+    collection_id: uuid.UUID | None,
+    language: str | None,
+) -> bool:
+    return (
+        document.title != title
+        or (document.raw_content or "") != content
+        or document.collection_id != collection_id
+        or document.language != language
+    )
+
+
+def _note_content_changed(previous_document: DocumentEntity, current_document: DocumentEntity) -> bool:
+    return (
+        previous_document.title != current_document.title
+        or (previous_document.raw_content or "") != (current_document.raw_content or "")
     )
 
 
@@ -342,6 +403,7 @@ def _copy_document(document: DocumentEntity) -> DocumentEntity:
         entities=document.entities,
         categories=document.categories,
         visual_metadata=document.visual_metadata,
+        suggested_questions=document.suggested_questions,
         doc_embedding=document.doc_embedding,
         is_duplicate=document.is_duplicate,
         duplicate_of_id=document.duplicate_of_id,

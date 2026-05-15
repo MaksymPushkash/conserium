@@ -93,9 +93,7 @@ class EnrichmentService:
             tags=result["tags"],
             categories=result["categories"],
         )
-        visual_metadata = doc.visual_metadata or {}
-        visual_metadata["suggested_questions"] = result["suggested_questions"]
-        doc.update_visual_metadata(visual_metadata)
+        doc.update_suggested_questions(result["suggested_questions"])
 
         doc.update_enrichment(
             entities=cast("list[dict[str, object]]", result["entities"]),

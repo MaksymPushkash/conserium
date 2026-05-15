@@ -88,7 +88,7 @@ services:
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=media_processing", "--concurrency=2"]
+    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=media_processing,hf_processing", "--concurrency=2"]
     depends_on:
       postgres:
         condition: service_healthy

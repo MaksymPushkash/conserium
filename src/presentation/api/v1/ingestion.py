@@ -57,8 +57,10 @@ async def ingest_document(
     deprecated=True,
 )
 @router.post("/ingest/pdf", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("20/minute")
 @inject
 async def ingest_pdf_document(
+    request: Request,
     current_user: CurrentUser,
     use_case: FromDishka[IngestDocumentUseCase],
     file_storage: FromDishka[IFileStorage],
@@ -90,8 +92,10 @@ async def ingest_pdf_document(
     deprecated=True,
 )
 @router.post("/ingest/image", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("20/minute")
 @inject
 async def ingest_image_document(
+    request: Request,
     current_user: CurrentUser,
     use_case: FromDishka[IngestDocumentUseCase],
     file_storage: FromDishka[IFileStorage],

@@ -76,50 +76,17 @@ class ImageExtractor(IContentExtractor):
         except ImportError as exc:
             raise RuntimeError("pytesseract is required for image OCR ingestion.") from exc
 
-        psm_env = os.getenv("OCR_TESSERACT_PSM")
-        tesseract_psm = psm_env if psm_env is not None else "3"
-        tesseract_oem = os.getenv("OCR_TESSERACT_OEM", "3")
-        tesseract_config = f"--oem {tesseract_oem} --psm {tesseract_psm}"
+        tesseract_config = self._tesseract_config()
         ocr_language = _tesseract_language_for(language)
 
         try:
-            with Image.open(io.BytesIO(data)) as image:
-                img: PILImage | Any = image
-                try:
-                    from PIL import ImageOps
-
-                    img = ImageOps.exif_transpose(img)
-                except Exception:
-                    pass
-
-                img = img.convert("RGB")
-
-                if settings.OCR_PREPROCESS_AUTOCONTRAST:
-                    img = self._autocontrast(img)
-
-                if settings.OCR_PREPROCESS_DESKEW:
-                    img = self._deskew(img)
-
-                img = self._maybe_upscale(img, min_dimension=settings.OCR_PREPROCESS_MIN_DIMENSION)
-
-                if settings.OCR_PREPROCESS_DENOISE:
-                    img = self._denoise(img)
-
-                if settings.OCR_PREPROCESS_THRESHOLD:
-                    img = self._threshold(img)
-
-                if settings.OCR_PREPROCESS_SHARPEN:
-                    img = self._sharpen(img)
-
-                # Ensure RGB for pytesseract
-                img = img.convert("RGB")
-
-                text, visual, ocr_warning = self._ocr_image(
-                    pytesseract=pytesseract,
-                    img=img,
-                    config=tesseract_config,
-                    language=ocr_language,
-                )
+            img = self._load_preprocessed_image(Image, data)
+            text, visual, ocr_warning = self._ocr_image(
+                pytesseract=pytesseract,
+                img=img,
+                config=tesseract_config,
+                language=ocr_language,
+            )
         except pytesseract.TesseractNotFoundError as exc:
             raise RuntimeError("The tesseract binary is required for image OCR ingestion.") from exc
         except pytesseract.TesseractError as exc:
@@ -139,6 +106,36 @@ class ImageExtractor(IContentExtractor):
             language=language,
             visual=visual,
         )
+
+    def _tesseract_config(self) -> str:
+        psm_env = os.getenv("OCR_TESSERACT_PSM")
+        tesseract_psm = psm_env if psm_env is not None else "3"
+        tesseract_oem = os.getenv("OCR_TESSERACT_OEM", "3")
+        return f"--oem {tesseract_oem} --psm {tesseract_psm}"
+
+    def _load_preprocessed_image(self, image_module: Any, data: bytes) -> PILImage | Any:
+        with image_module.open(io.BytesIO(data)) as image:
+            img: PILImage | Any = image
+            try:
+                from PIL import ImageOps
+
+                img = ImageOps.exif_transpose(img)
+            except Exception:
+                pass
+
+            img = img.convert("RGB")
+            if settings.OCR_PREPROCESS_AUTOCONTRAST:
+                img = self._autocontrast(img)
+            if settings.OCR_PREPROCESS_DESKEW:
+                img = self._deskew(img)
+            img = self._maybe_upscale(img, min_dimension=settings.OCR_PREPROCESS_MIN_DIMENSION)
+            if settings.OCR_PREPROCESS_DENOISE:
+                img = self._denoise(img)
+            if settings.OCR_PREPROCESS_THRESHOLD:
+                img = self._threshold(img)
+            if settings.OCR_PREPROCESS_SHARPEN:
+                img = self._sharpen(img)
+            return img.convert("RGB")
 
     def _ocr_image(
         self,

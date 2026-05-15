@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -9,6 +10,7 @@ from src.core.config import settings
 from src.core.container import container
 from src.core.logging import configure_logging
 from src.core.startup_checks import validate_startup_settings
+from src.infrastructure.celery.app import declare_configured_queues
 from src.presentation.api.health import router as health_router
 from src.presentation.api.v1.auth import router as auth_router
 from src.presentation.api.v1.chats import router as chat_router
@@ -22,11 +24,17 @@ from src.presentation.api.v1.user import router as user_router
 from src.presentation.exception_handlers import setup_exception_handlers
 from src.presentation.middleware.rate_limit import setup_rate_limiting
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging(debug=settings.DEBUG)
     validate_startup_settings()
+    try:
+        declare_configured_queues()
+    except Exception:
+        logger.warning("celery_queue_declaration_failed", exc_info=True)
     yield
     await container.close()
 
@@ -39,7 +47,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.FRONTEND_URL],
+        allow_origins=_cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -57,6 +65,13 @@ def create_app() -> FastAPI:
     app.include_router(observability_router, prefix="/api/v1")
 
     return app
+
+
+def _cors_origins() -> list[str]:
+    origins = {settings.FRONTEND_URL}
+    if settings.DEBUG:
+        origins.update({"http://localhost:3000", "http://127.0.0.1:3000"})
+    return sorted(origin for origin in origins if origin)
 
 
 app = create_app()

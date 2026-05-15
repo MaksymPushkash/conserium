@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 
 from src.application.agents.query.state import CortexQueryState
+from src.application.agents.query.synthesis_agent import ABSTENTION_ANSWER
 from src.application.ports.ai.llm_service import IStreamingLLMService
 
 
@@ -11,4 +12,10 @@ class StreamingSynthesisAgent:
     def stream(self, state: CortexQueryState) -> AsyncIterator[str]:
         if state.refrag_context is None:
             raise ValueError("refrag_context is required before streaming synthesis")
+        if not state.refrag_context.selected_chunks:
+            return _stream_abstention()
         return self._llm_service.stream_answer(query=state.query, context=state.refrag_context)
+
+
+async def _stream_abstention() -> AsyncIterator[str]:
+    yield ABSTENTION_ANSWER

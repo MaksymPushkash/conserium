@@ -6,11 +6,14 @@ from src.application.agents.query.conversation_context_agent import Conversation
 from src.application.agents.query.retrieval_agent import RetrievalAgent
 from src.application.agents.query.router_agent import RouterAgent
 from src.application.agents.query.state import CortexQueryState, QueryType
+from src.application.agents.query.synthesis_agent import ABSTENTION_ANSWER, SynthesisAgent
 from src.application.dtos.conversation_dtos import ConversationSourceDTO, ConversationTurnDTO
 from src.application.dtos.query_dtos import QuerySourceDTO
+from src.application.dtos.refrag_dtos import RefragContextPackage
 from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
+    from src.application.ports.ai.llm_service import ILLMService
     from src.application.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
 
 
@@ -30,6 +33,58 @@ def test_router_agent_marks_summary_queries() -> None:
 def test_router_agent_defaults_to_search() -> None:
     state = CortexQueryState(
         query="What did I read about Clean Architecture?",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+    )
+
+    routed_state = RouterAgent().route(state)
+
+    assert routed_state.query_type == QueryType.SEARCH
+
+
+def test_router_agent_uses_word_boundaries_for_summary_markers() -> None:
+    state = CortexQueryState(
+        query="Find documents about summary_stats tables",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+    )
+
+    routed_state = RouterAgent().route(state)
+
+    assert routed_state.query_type == QueryType.SEARCH
+
+
+def test_router_agent_uses_word_boundaries_for_ukrainian_summary_markers() -> None:
+    state = CortexQueryState(
+        query="Знайди нотатку про підсумуймо результати",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+    )
+
+    routed_state = RouterAgent().route(state)
+
+    assert routed_state.query_type == QueryType.SEARCH
+
+
+def test_router_agent_marks_document_qa_queries() -> None:
+    state = CortexQueryState(
+        query="What does this document say about tests?",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+    )
+
+    routed_state = RouterAgent().route(state)
+
+    assert routed_state.query_type == QueryType.DOCUMENT_QA
+
+
+def test_router_agent_does_not_match_pdf_inside_another_token() -> None:
+    state = CortexQueryState(
+        query="Find notes about pdfium rendering",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
         limit=5,
@@ -295,3 +350,87 @@ async def test_retrieval_agent_filters_unrelated_noise_sources() -> None:
 
     assert [source.document_title for source in result.sources] == ["Architecture"]
     assert [source.document_title for source in result.filtered_sources] == ["Noise"]
+
+
+class _AuthNoiseRetrievalService:
+    async def retrieve(
+        self,
+        *,
+        query: str,
+        user_id: uuid.UUID,
+        limit: int,
+        collection_id: uuid.UUID | None,
+        tag_names: tuple[str, ...] | None = None,
+        document_types: tuple[DocumentType, ...] | None = None,
+    ) -> list[QuerySourceDTO]:
+        return [
+            QuerySourceDTO(
+                chunk_id=uuid.uuid4(),
+                document_id=uuid.uuid4(),
+                document_title="Live Eval - Refresh Token Revocation",
+                content="Logout everywhere revokes refresh tokens by deleting Redis refresh keys for the user.",
+                page_number=None,
+                chunk_index=0,
+                score=0.9,
+            ),
+            QuerySourceDTO(
+                chunk_id=uuid.uuid4(),
+                document_id=uuid.uuid4(),
+                document_title="Live Eval Noise - Storage Archive",
+                content="Columnar storage engine notes mention parquet lakehouse compression and archive partitions.",
+                page_number=None,
+                chunk_index=1,
+                score=0.8,
+            ),
+        ]
+
+
+async def test_retrieval_agent_returns_empty_sources_for_collection_scoped_noise() -> None:
+    state = CortexQueryState(
+        query="Which database storage engine is recommended in this Auth collection?",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        collection_id=uuid.uuid4(),
+        limit=5,
+    )
+
+    result = await RetrievalAgent(cast("HybridRetrievalService", _AuthNoiseRetrievalService())).retrieve(state)
+
+    assert result.sources == []
+    assert [source.document_title for source in result.filtered_sources] == [
+        "Live Eval - Refresh Token Revocation",
+        "Live Eval Noise - Storage Archive",
+    ]
+
+
+class _RecordingLLMService:
+    def __init__(self) -> None:
+        self.called = False
+
+    async def synthesize_answer(self, *, query: str, context: RefragContextPackage) -> str:
+        self.called = True
+        return "LLM answer"
+
+
+async def test_synthesis_agent_abstains_without_selected_context() -> None:
+    llm_service = _RecordingLLMService()
+    state = CortexQueryState(
+        query="Which database storage engine is recommended in this Auth collection?",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+        refrag_context=RefragContextPackage(
+            query="Which database storage engine is recommended in this Auth collection?",
+            full_text_chunks=[],
+            compressed_chunks=[],
+            discarded_chunks=[],
+            total_original_tokens=0,
+            total_context_tokens=0,
+            compression_strategy="test",
+        ),
+    )
+
+    result = await SynthesisAgent(cast("ILLMService", llm_service)).synthesize(state)
+
+    assert result.answer == ABSTENTION_ANSWER
+    assert llm_service.called is False

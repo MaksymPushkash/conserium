@@ -58,6 +58,7 @@ class DocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     entities: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
     categories: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
     visual_metadata: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    suggested_questions: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
  
     doc_embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
  

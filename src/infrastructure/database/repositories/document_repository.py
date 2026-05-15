@@ -119,6 +119,7 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
             entities=model.entities,
             categories=model.categories,
             visual_metadata=model.visual_metadata,
+            suggested_questions=_suggested_questions(model.suggested_questions, model.visual_metadata),
             tags=[tag.name for tag in model.tags],
             doc_embedding=list(model.doc_embedding) if model.doc_embedding is not None else None,
             is_duplicate=model.is_duplicate,
@@ -145,6 +146,7 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
             entities=entity.entities,
             categories=entity.categories,
             visual_metadata=entity.visual_metadata,
+            suggested_questions=entity.suggested_questions,
             doc_embedding=entity.doc_embedding,
             is_duplicate=entity.is_duplicate,
             duplicate_of_id=entity.duplicate_of_id,
@@ -168,7 +170,22 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
         model.entities = entity.entities
         model.categories = entity.categories
         model.visual_metadata = entity.visual_metadata
+        model.suggested_questions = entity.suggested_questions
         model.doc_embedding = entity.doc_embedding
         model.is_duplicate = entity.is_duplicate
         model.duplicate_of_id = entity.duplicate_of_id
         model.updated_at = entity.updated_at
+
+
+def _suggested_questions(
+    suggested_questions: list[str] | None,
+    visual_metadata: dict[str, object] | None,
+) -> list[str]:
+    if suggested_questions:
+        return list(suggested_questions)
+    if not visual_metadata:
+        return []
+    value = visual_metadata.get("suggested_questions")
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]

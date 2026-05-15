@@ -28,6 +28,7 @@ def document_to_dto(document: DocumentEntity) -> DocumentDTO:
         entities=document.entities,
         categories=document.categories,
         visual_metadata=document.visual_metadata,
+        suggested_questions=document.suggested_questions,
         tags=document.tags,
         is_duplicate=document.is_duplicate,
         duplicate_of_id=document.duplicate_of_id,

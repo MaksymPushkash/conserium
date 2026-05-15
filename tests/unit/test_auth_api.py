@@ -22,7 +22,7 @@ from src.domain.exceptions import (
 )
 from src.domain.value_objects.email import Email
 from src.infrastructure.auth.oauth_clients import GoogleOAuthClient
-from src.main import create_app
+from src.main import _cors_origins, create_app
 
 
 class _FakeRequestContainer:
@@ -118,6 +118,17 @@ def _make_client(dependencies: Mapping[type[object], object]) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
+def test_debug_cors_includes_local_frontend_origins(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr("src.main.settings.FRONTEND_URL", "https://app.example.com")
+    monkeypatch.setattr("src.main.settings.DEBUG", True)
+
+    assert _cors_origins() == [
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+        "https://app.example.com",
+    ]
+
+
 def test_refresh_route_maps_invalid_token_exception() -> None:
     client = _make_client(
         {
@@ -169,6 +180,43 @@ def test_register_route_maps_duplicate_email_exception() -> None:
     assert response.json() == {"detail": "user@example.com already registered"}
 
 
+def test_register_route_sets_refresh_cookie_without_json_refresh_token() -> None:
+    client = _make_client({RegisterUserUseCase: _SuccessfulUseCase()})
+
+    try:
+        response = client.post(
+            "/api/v1/auth/register",
+            json={"email": "user@example.com", "password": "securepass123"},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 201
+    assert response.json() == {
+        "access_token": "api-access-token",
+        "token_type": "bearer",
+    }
+    assert "oauth_refresh_token=api-refresh-token" in response.headers["set-cookie"]
+    assert "HttpOnly" in response.headers["set-cookie"]
+
+
+def test_login_route_sets_refresh_cookie_without_json_refresh_token() -> None:
+    client = _make_client({LoginUserUseCase: _SuccessfulUseCase()})
+
+    try:
+        response = client.post("/api/v1/auth/login", json={"email": "user@example.com", "password": "securepass123"})
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "access_token": "api-access-token",
+        "token_type": "bearer",
+    }
+    assert "oauth_refresh_token=api-refresh-token" in response.headers["set-cookie"]
+    assert "HttpOnly" in response.headers["set-cookie"]
+
+
 def test_refresh_route_returns_token_response_from_injected_use_case() -> None:
     client = _make_client({RefreshTokenUseCase: _SuccessfulUseCase()})
 
@@ -180,7 +228,6 @@ def test_refresh_route_returns_token_response_from_injected_use_case() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "access_token": "api-access-token",
-        "refresh_token": "api-refresh-token",
         "token_type": "bearer",
     }
     assert "oauth_refresh_token=api-refresh-token" in response.headers["set-cookie"]
