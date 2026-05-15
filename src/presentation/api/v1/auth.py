@@ -26,6 +26,7 @@ from src.presentation.oauth_redirects import (
     build_callback_uri,
     build_frontend_error_redirect,
     build_frontend_token_redirect,
+    clear_oauth_refresh_cookie,
     set_oauth_refresh_cookie,
     set_oauth_state_cookie,
 )
@@ -37,20 +38,26 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @inject
 async def register(
+    request: Request,
+    response: Response,
     body: RegisterRequest,
     use_case: FromDishka[RegisterUserUseCase],
 ) -> TokenResponse:
     result = await use_case(to_register_dto(body))
+    set_oauth_refresh_cookie(response, request, result.refresh_token)
     return to_token_response(result)
 
 
 @router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 @inject
 async def login(
+    request: Request,
+    response: Response,
     body: LoginRequest,
     use_case: FromDishka[LoginUserUseCase],
 ) -> TokenResponse:
     result = await use_case(to_login_dto(body))
+    set_oauth_refresh_cookie(response, request, result.refresh_token)
     return to_token_response(result)
 
 
@@ -81,7 +88,7 @@ async def logout(
     refresh_token = (body.refresh_token if body else None) or request.cookies.get(OAUTH_REFRESH_COOKIE)
     if refresh_token is not None:
         await use_case(to_refresh_dto(refresh_token))
-    response.delete_cookie(OAUTH_REFRESH_COOKIE)
+    clear_oauth_refresh_cookie(response, request)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
 
@@ -89,12 +96,13 @@ async def logout(
 @router.post("/logout/all", status_code=status.HTTP_204_NO_CONTENT)
 @inject
 async def logout_everywhere(
+    request: Request,
     response: Response,
     current_user: CurrentUser,
     use_case: FromDishka[LogoutEverywhereUseCase],
 ) -> Response:
     await use_case(current_user.id)
-    response.delete_cookie(OAUTH_REFRESH_COOKIE)
+    clear_oauth_refresh_cookie(response, request)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
 

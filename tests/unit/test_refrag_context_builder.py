@@ -111,3 +111,46 @@ def test_chunk_relevance_filter_can_return_empty_context_for_out_of_scope_query(
     filtered = ChunkRelevanceFilter().filter_sources("What payroll tax rate is documented?", sources)
 
     assert filtered == []
+
+
+def test_chunk_relevance_filter_requires_strong_short_concept_match() -> None:
+    sources = [
+        _source(
+            1,
+            score=0.9,
+            content="Columnar storage engine notes mention parquet lakehouse compression and archive partitions.",
+        ),
+        _source(
+            2,
+            score=0.8,
+            content="Refresh tokens are revoked by deleting Redis refresh keys for the current user.",
+        ),
+    ]
+
+    filtered = ChunkRelevanceFilter().filter_sources(
+        "Which database storage engine is recommended in this Auth collection?",
+        sources,
+    )
+
+    assert filtered == []
+
+
+def test_chunk_relevance_filter_uses_document_title_for_title_based_queries() -> None:
+    source = _source(
+        1,
+        score=0.9,
+        content="Python is a high-level programming language with significant indentation.",
+    )
+    source = QuerySourceDTO(
+        chunk_id=source.chunk_id,
+        document_id=source.document_id,
+        document_title="python wiki url",
+        content=source.content,
+        page_number=source.page_number,
+        chunk_index=source.chunk_index,
+        score=source.score,
+    )
+
+    filtered = ChunkRelevanceFilter().filter_sources("Summarize python wiki url.", [source])
+
+    assert filtered == [source]

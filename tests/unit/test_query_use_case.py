@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -8,6 +9,7 @@ from src.application.agents.query.graph_runner import QueryGraphRunner
 from src.application.agents.query.refrag_context_agent import RefragContextAgent
 from src.application.agents.query.retrieval_agent import RetrievalAgent
 from src.application.agents.query.router_agent import RouterAgent
+from src.application.agents.query.state import CortexQueryState
 from src.application.agents.query.synthesis_agent import SynthesisAgent
 from src.application.dtos.conversation_dtos import ConversationTurnDTO
 from src.application.dtos.query_dtos import QueryDTO
@@ -18,11 +20,12 @@ from src.application.ports.conversations.conversation_store import IConversation
 from src.application.ports.persistence.chunk_repository import ChunkSearchResult
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.ports.refrag.refrag_context_builder import IRefragContextBuilder
+from src.application.services.query_orchestration import QueryOrchestrationService
 from src.application.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
 from src.application.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
 from src.application.use_cases.query.query_use_case import QueryUseCase
 from src.domain.entities.chunk_entity import ChunkEntity
-from src.domain.exceptions import QueryValidationException
+from src.domain.exceptions import QueryValidationException, ResourceNotFoundException
 from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
@@ -80,6 +83,7 @@ class _FakeUnitOfWork:
     def __init__(self, chunk_repo: _FakeChunkRepository) -> None:
         self.chunk_repo = chunk_repo
         self.chat_repo = _FakeChatRepository()
+        self.collection_repo = _FakeCollectionRepository()
         self.search_query_repo = _FakeSearchQueryRepository()
         self.commit_count = 0
 
@@ -106,16 +110,23 @@ class _FakeSearchQueryRepository:
 
 class _FakeChatRepository:
     def __init__(self) -> None:
+        self.session: object | None = None
+        self.created_sessions: list[tuple[uuid.UUID, uuid.UUID | None, str]] = []
+        self.persisted_turns: list[ConversationTurnDTO] = []
         self.messages: list[tuple[str, str]] = []
+        self.get_recent_turns_count = 0
 
     async def get_session(self, *, user_id: uuid.UUID, chat_id: uuid.UUID) -> object | None:
-        return None
+        return self.session
 
     async def create_session(self, *, user_id: uuid.UUID, title: str, chat_id: uuid.UUID | None = None) -> object:
-        return object()
+        self.created_sessions.append((user_id, chat_id, title))
+        self.session = object()
+        return self.session
 
     async def get_recent_turns(self, *, user_id: uuid.UUID, chat_id: uuid.UUID, limit: int) -> list[ConversationTurnDTO]:
-        return []
+        self.get_recent_turns_count += 1
+        return self.persisted_turns
 
     async def append_message(
         self,
@@ -132,8 +143,37 @@ class _FakeChatRepository:
         return object()
 
 
+class _FailingChatRepository(_FakeChatRepository):
+    async def append_message(
+        self,
+        *,
+        chat_id: uuid.UUID,
+        role: str,
+        content: str,
+        sources: object | None = None,
+        refrag_context: object | None = None,
+        eval_scores: object | None = None,
+        trace_id: str | None = None,
+    ) -> object:
+        raise RuntimeError("chat write failed")
+
+
+class _FakeCollection:
+    def __init__(self, user_id: uuid.UUID) -> None:
+        self.user_id = user_id
+
+
+class _FakeCollectionRepository:
+    def __init__(self) -> None:
+        self.collection: _FakeCollection | None = None
+
+    async def get_by_id(self, collection_id: uuid.UUID) -> _FakeCollection | None:
+        return self.collection
+
+
 class _FakeConversationStore:
     def __init__(self) -> None:
+        self.recent_turns: list[ConversationTurnDTO] = []
         self.requested_conversation_id: uuid.UUID | None = None
         self.appended_conversation_id: uuid.UUID | None = None
         self.appended_turn: ConversationTurnDTO | None = None
@@ -146,7 +186,7 @@ class _FakeConversationStore:
         limit: int,
     ) -> list[ConversationTurnDTO]:
         self.requested_conversation_id = conversation_id
-        return []
+        return self.recent_turns
 
     async def append_turn(
         self,
@@ -261,3 +301,132 @@ async def test_query_use_case_rejects_blank_query() -> None:
 
     with pytest.raises(QueryValidationException, match="query cannot be empty"):
         await use_case(QueryDTO(user_id=uuid.uuid4(), query="  "))
+
+
+async def test_query_interaction_persistence_uses_single_commit() -> None:
+    user_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    uow = _FakeUnitOfWork(_FakeChunkRepository([]))
+    service = QueryOrchestrationService(_as_conversation_store(_FakeConversationStore()), _as_uow(uow))
+    state = CortexQueryState(query="hello", user_id=user_id, conversation_id=conversation_id, limit=5, answer="answer")
+
+    await service.record_interaction(
+        QueryDTO(user_id=user_id, query="hello", limit=5),
+        query="hello",
+        state=state,
+        latency_ms=10,
+        refrag_context={},
+        conversation_id=conversation_id,
+    )
+
+    assert len(uow.search_query_repo.records) == 1
+    assert uow.chat_repo.messages == [("user", "hello"), ("assistant", "answer")]
+    assert uow.commit_count == 1
+
+
+async def test_query_interaction_does_not_commit_partial_state_when_chat_write_fails() -> None:
+    user_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    uow = _FakeUnitOfWork(_FakeChunkRepository([]))
+    uow.chat_repo = _FailingChatRepository()
+    service = QueryOrchestrationService(_as_conversation_store(_FakeConversationStore()), _as_uow(uow))
+    state = CortexQueryState(query="hello", user_id=user_id, conversation_id=conversation_id, limit=5, answer="answer")
+
+    with pytest.raises(RuntimeError, match="chat write failed"):
+        await service.record_interaction(
+            QueryDTO(user_id=user_id, query="hello", limit=5),
+            query="hello",
+            state=state,
+            latency_ms=10,
+            refrag_context={},
+            conversation_id=conversation_id,
+        )
+
+    assert uow.commit_count == 0
+
+
+async def test_query_orchestration_creates_chat_session_if_missing() -> None:
+    user_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    uow = _FakeUnitOfWork(_FakeChunkRepository([]))
+    service = QueryOrchestrationService(_as_conversation_store(_FakeConversationStore()), _as_uow(uow))
+
+    await service.prepare_context(
+        QueryDTO(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        query="Explain Clean Architecture",
+        conversation_id=conversation_id,
+    )
+
+    assert uow.chat_repo.created_sessions == [(user_id, conversation_id, "Explain Clean Architecture")]
+
+
+async def test_query_orchestration_does_not_recreate_existing_chat_session() -> None:
+    user_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    uow = _FakeUnitOfWork(_FakeChunkRepository([]))
+    uow.chat_repo.session = object()
+    service = QueryOrchestrationService(_as_conversation_store(_FakeConversationStore()), _as_uow(uow))
+
+    await service.prepare_context(
+        QueryDTO(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        query="Explain Clean Architecture",
+        conversation_id=conversation_id,
+    )
+
+    assert uow.chat_repo.created_sessions == []
+
+
+async def test_query_orchestration_loads_redis_turns_before_persisted_turns() -> None:
+    user_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    redis_turn = ConversationTurnDTO(query="redis", answer="turn", sources=[], created_at=datetime.now(UTC))
+    persisted_turn = ConversationTurnDTO(query="db", answer="turn", sources=[], created_at=datetime.now(UTC))
+    uow = _FakeUnitOfWork(_FakeChunkRepository([]))
+    uow.chat_repo.persisted_turns = [persisted_turn]
+    conversation_store = _FakeConversationStore()
+    conversation_store.recent_turns = [redis_turn]
+    service = QueryOrchestrationService(_as_conversation_store(conversation_store), _as_uow(uow))
+
+    turns = await service.prepare_context(
+        QueryDTO(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        query="Explain Clean Architecture",
+        conversation_id=conversation_id,
+    )
+
+    assert turns == [redis_turn]
+    assert uow.chat_repo.get_recent_turns_count == 0
+
+
+async def test_query_orchestration_falls_back_to_persisted_turns() -> None:
+    user_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    persisted_turn = ConversationTurnDTO(query="db", answer="turn", sources=[], created_at=datetime.now(UTC))
+    uow = _FakeUnitOfWork(_FakeChunkRepository([]))
+    uow.chat_repo.persisted_turns = [persisted_turn]
+    service = QueryOrchestrationService(_as_conversation_store(_FakeConversationStore()), _as_uow(uow))
+
+    turns = await service.prepare_context(
+        QueryDTO(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        query="Explain Clean Architecture",
+        conversation_id=conversation_id,
+    )
+
+    assert turns == [persisted_turn]
+    assert uow.chat_repo.get_recent_turns_count == 1
+
+
+async def test_query_orchestration_collection_ownership_failure_stops_before_session_creation() -> None:
+    user_id = uuid.uuid4()
+    collection_id = uuid.uuid4()
+    uow = _FakeUnitOfWork(_FakeChunkRepository([]))
+    uow.collection_repo.collection = _FakeCollection(user_id=uuid.uuid4())
+    service = QueryOrchestrationService(_as_conversation_store(_FakeConversationStore()), _as_uow(uow))
+
+    with pytest.raises(ResourceNotFoundException, match="collection not found"):
+        await service.prepare_context(
+            QueryDTO(user_id=user_id, query="Explain Clean Architecture", collection_id=collection_id, limit=5),
+            query="Explain Clean Architecture",
+            conversation_id=uuid.uuid4(),
+        )
+
+    assert uow.chat_repo.created_sessions == []

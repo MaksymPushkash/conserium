@@ -288,7 +288,7 @@ def _render_queue_depth_metrics() -> list[str]:
                 for queue_def in celery_app.conf.task_queues:
                     bound_queue = queue_def(channel)
                     try:
-                        declare_result = bound_queue.queue_declare(passive=True)
+                        declare_result = bound_queue.queue_declare(passive=False)
                         message_count = int(declare_result.message_count)
                     except AMQPNotFound:
                         continue

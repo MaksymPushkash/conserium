@@ -10,7 +10,6 @@ _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _MIN_ALNUM_CHARS = 24
 _MIN_WORDS = 4
 _MIN_UNIQUE_WORDS = 3
-_MIN_QUERY_OVERLAP = 1
 _GARBAGE_PHRASES = {
     "hello",
     "hello text",
@@ -40,7 +39,11 @@ _STOP_WORDS = {
     "be",
     "by",
     "can",
+    "collection",
+    "current",
     "does",
+    "document",
+    "documented",
     "for",
     "from",
     "give",
@@ -49,11 +52,14 @@ _STOP_WORDS = {
     "inside",
     "is",
     "it",
+    "live",
     "me",
     "my",
     "of",
     "on",
     "or",
+    "recommend",
+    "recommended",
     "say",
     "should",
     "summarize",
@@ -78,7 +84,12 @@ class ChunkRelevanceFilter:
         query_terms = _meaningful_terms(query)
         if not query_terms:
             return sources
-        return [source for source in sources if _query_overlap(query_terms, source.content) >= _MIN_QUERY_OVERLAP]
+        required_overlap = _required_query_overlap(len(query_terms))
+        return [
+            source
+            for source in sources
+            if _source_query_overlap(query_terms, source) >= required_overlap
+        ]
 
 
 def is_quality_chunk(content: str) -> bool:
@@ -99,9 +110,32 @@ def is_quality_chunk(content: str) -> bool:
 
 
 def _meaningful_terms(text: str) -> set[str]:
-    return {word for word in _WORD_RE.findall(text.casefold()) if len(word) > 2 and word not in _STOP_WORDS}
+    return {
+        normalized
+        for word in _WORD_RE.findall(text.casefold())
+        if len(word) > 2 and (normalized := _normalize_term(word)) not in _STOP_WORDS
+    }
 
 
-def _query_overlap(query_terms: set[str], content: str) -> int:
-    content_terms = _meaningful_terms(content)
+def _source_query_overlap(query_terms: set[str], source: QuerySourceDTO) -> int:
+    title = source.document_title or ""
+    content_terms = _meaningful_terms(f"{title} {source.content}")
     return len(query_terms & content_terms)
+
+
+def _required_query_overlap(query_term_count: int) -> int:
+    if query_term_count <= 3:
+        return query_term_count
+    if query_term_count <= 5:
+        return query_term_count - 1
+    return max(3, (query_term_count * 3 + 4) // 5)
+
+
+def _normalize_term(word: str) -> str:
+    if len(word) > 4 and word.endswith("ies"):
+        return f"{word[:-3]}y"
+    if len(word) > 4 and word.endswith(("ches", "shes", "sses", "xes", "zes")):
+        return word[:-2]
+    if len(word) > 3 and word.endswith("s"):
+        return word[:-1]
+    return word

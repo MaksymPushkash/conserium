@@ -41,7 +41,8 @@ class RetrievalAgent:
             top_k = min(settings.RERANKER_TOP_K, len(state.sources))
             state.sources = await self._reranker.rerank(state.retrieval_query or state.query, state.sources, top_k)
         quality_sources = self._chunk_quality_filter.filter_sources(state.sources)
-        relevant_sources = self._chunk_relevance_filter.filter_sources(retrieval_query, quality_sources)
+        relevance_query = retrieval_query if document_types == (DocumentType.MARKDOWN,) else state.query
+        relevant_sources = self._chunk_relevance_filter.filter_sources(relevance_query, quality_sources)
         relevant_keys = {source.chunk_id for source in relevant_sources}
         state.filtered_sources = [source for source in state.sources if source.chunk_id not in relevant_keys]
         state.sources = relevant_sources

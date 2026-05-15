@@ -68,6 +68,7 @@ jobs:
 
       - name: Deploy on VPS
         run: |
+          echo "Deploying candidate revision ${DEPLOY_REF}. This workflow is deploy-then-validate; a failed live validation may briefly expose the candidate before rollback."
           ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
             "DEPLOY_REF='$DEPLOY_REF' VPS_APP_DIR='$VPS_APP_DIR' bash -s" <<'REMOTE_DEPLOY'
           set -euo pipefail
@@ -83,6 +84,7 @@ jobs:
           docker compose --env-file .env.prod ps
           curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
           REMOTE_DEPLOY
+          echo "Candidate deployed: ${DEPLOY_REF}"
 
       - name: Wait for public production API
         if: ${{ env.PRODUCTION_API_BASE_URL != '' }}
@@ -130,6 +132,8 @@ jobs:
             exit 0
           fi
 
+          echo "Validation started for candidate revision ${DEPLOY_REF}."
+
           create_user_flag=""
           if [ "$LIVE_EVAL_CREATE_USER" = "true" ]; then
             create_user_flag="--create-user"
@@ -147,9 +151,14 @@ jobs:
             --wait-timeout-seconds 120 \
             $create_user_flag
 
+      - name: Mark candidate revision validated
+        run: |
+          echo "Live validation passed. Candidate revision ${DEPLOY_REF} is now the active production revision."
+
       - name: Collect live eval failure diagnostics
         if: ${{ failure() && env.PRODUCTION_API_BASE_URL != '' }}
         run: |
+          echo "Validation failed for candidate revision ${DEPLOY_REF}. Collecting diagnostics before rollback."
           ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
             "VPS_APP_DIR='$VPS_APP_DIR' bash -s" <<'REMOTE_LIVE_EVAL_DIAGNOSTICS'
           set -euo pipefail
@@ -177,11 +186,13 @@ jobs:
       - name: Roll back VPS deployment
         if: ${{ failure() && env.PREVIOUS_DEPLOY_REF != '' }}
         run: |
+          echo "Rollback started. Candidate revision ${DEPLOY_REF} failed validation; restoring ${PREVIOUS_DEPLOY_REF}."
           ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
-            "PREVIOUS_DEPLOY_REF='$PREVIOUS_DEPLOY_REF' VPS_APP_DIR='$VPS_APP_DIR' bash -s" <<'REMOTE_ROLLBACK'
+            "PREVIOUS_DEPLOY_REF='$PREVIOUS_DEPLOY_REF' VPS_APP_DIR='$VPS_APP_DIR' PRODUCTION_API_BASE_URL='$PRODUCTION_API_BASE_URL' bash -s" <<'REMOTE_ROLLBACK'
           set -euo pipefail
           cd "$VPS_APP_DIR"
 
+          echo "Live validation failed. Restoring previous production revision; database downgrades are intentionally not executed automatically."
           echo "Rolling back to ${PREVIOUS_DEPLOY_REF}"
           git fetch origin main
           git reset --hard "$PREVIOUS_DEPLOY_REF"
@@ -189,6 +200,25 @@ jobs:
           docker compose --env-file .env.prod exec -T app uv run alembic upgrade head
           docker compose --env-file .env.prod ps
           curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
+          if [ -n "${PRODUCTION_API_BASE_URL:-}" ]; then
+            public_health="${PRODUCTION_API_BASE_URL%/}"
+            public_health="${public_health%/api/v1}/health"
+            public_health_ready="false"
+            for attempt in $(seq 1 12); do
+              if curl --fail --silent --show-error "$public_health" >/dev/null; then
+                echo "Rollback public health check passed."
+                public_health_ready="true"
+                break
+              fi
+              echo "Rollback public health not ready: attempt=${attempt}"
+              sleep 5
+            done
+            test "$public_health_ready" = "true"
+          fi
+          current_ref="$(git rev-parse HEAD)"
+          echo "Rollback completed."
+          echo "Current revision after rollback: ${current_ref}"
+          test "$current_ref" = "$PREVIOUS_DEPLOY_REF"
           REMOTE_ROLLBACK
 
       - name: Upload live retrieval validation report

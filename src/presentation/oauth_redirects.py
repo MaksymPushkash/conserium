@@ -55,6 +55,15 @@ def set_oauth_refresh_cookie(response: Response, request: Request, refresh_token
     )
 
 
+def clear_oauth_refresh_cookie(response: Response, request: Request) -> None:
+    response.delete_cookie(
+        key=OAUTH_REFRESH_COOKIE,
+        secure=oauth_cookie_secure(request),
+        httponly=True,
+        samesite="lax",
+    )
+
+
 def oauth_cookie_secure(request: Request) -> bool:
     scheme = _forwarded_header(request, "x-forwarded-proto") or request.url.scheme
     return scheme == "https" or settings.FRONTEND_URL.startswith("https://")

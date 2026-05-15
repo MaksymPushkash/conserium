@@ -36,6 +36,7 @@ class DocumentEntity:
         created_at: datetime,
         updated_at: datetime | None,
         visual_metadata: MetadataItem | None = None,
+        suggested_questions: list[str] | None = None,
         tags: list[str] | None = None,
     ) -> None:
         self._id = id
@@ -54,6 +55,7 @@ class DocumentEntity:
         self._entities = entities
         self._categories = categories
         self._visual_metadata = visual_metadata.copy() if visual_metadata is not None else None
+        self._suggested_questions = list(suggested_questions) if suggested_questions is not None else []
         self._tags = list(tags) if tags is not None else []
         self._doc_embedding = self._validate_embedding(doc_embedding)
         self._is_duplicate = is_duplicate
@@ -140,6 +142,10 @@ class DocumentEntity:
         return self._visual_metadata.copy()
 
     @property
+    def suggested_questions(self) -> list[str]:
+        return list(self._suggested_questions)
+
+    @property
     def tags(self) -> list[str]:
         return list(self._tags)
 
@@ -199,6 +205,7 @@ class DocumentEntity:
             created_at=datetime.now(UTC),
             updated_at=None,
             visual_metadata=None,
+            suggested_questions=[],
             tags=[],
         )
 
@@ -269,6 +276,12 @@ class DocumentEntity:
         if visual_metadata == self._visual_metadata:
             return
         self._visual_metadata = visual_metadata.copy() if visual_metadata is not None else None
+        self._touch()
+
+    def update_suggested_questions(self, suggested_questions: list[str]) -> None:
+        if suggested_questions == self._suggested_questions:
+            return
+        self._suggested_questions = list(suggested_questions)
         self._touch()
 
     def mark_queued(self) -> None:

@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -121,7 +122,7 @@ class _FakeNoteVersionRepository:
         self.records: list[NoteVersionRecord] = []
 
     async def create(self, version: NoteVersionRecord) -> None:
-        self.records.append(version)
+        self.records.append(replace(version, created_at=datetime.now(UTC)))
 
     async def list_by_note_id(self, *, note_id: uuid.UUID, user_id: uuid.UUID) -> list[NoteVersionRecord]:
         return [record for record in self.records if record.note_id == note_id and record.user_id == user_id]
@@ -473,3 +474,74 @@ async def test_update_note_use_case_clears_chunks_for_empty_note() -> None:
     assert result.status == DocumentStatus.READY
     assert uow.chunk_repo.deleted_document_ids == [note.id]
     assert dispatcher.processed_document_ids == []
+
+
+async def test_update_note_use_case_does_not_version_noop_update() -> None:
+    user_id = uuid.uuid4()
+    base_note = _make_document(user_id=user_id)
+    note = DocumentEntity(
+        id=base_note.id,
+        user_id=base_note.user_id,
+        collection_id=base_note.collection_id,
+        title=base_note.title,
+        type=DocumentType.MARKDOWN,
+        status=base_note.status,
+        source_url=base_note.source_url,
+        file_path=base_note.file_path,
+        file_size_bytes=base_note.file_size_bytes,
+        raw_content=base_note.raw_content,
+        summary=base_note.summary,
+        word_count=base_note.word_count,
+        language=base_note.language,
+        doc_embedding=None,
+        is_duplicate=base_note.is_duplicate,
+        duplicate_of_id=base_note.duplicate_of_id,
+        created_at=base_note.created_at,
+        updated_at=base_note.updated_at,
+    )
+    uow = _FakeUnitOfWork(_FakeDocumentRepository([note]))
+    use_case = UpdateNoteUseCase(
+        _as_uow(uow),
+        cast("IDocumentStatusCache", _FakeStatusCache()),
+        cast("ITaskDispatcher", _SuccessfulTaskDispatcher()),
+    )
+
+    await use_case(UpdateNoteDTO(user_id=user_id, note_id=note.id, title=note.title, content=note.raw_content or ""))
+
+    assert uow.note_version_repo.records == []
+
+
+async def test_update_note_use_case_coalesces_autosave_versions() -> None:
+    user_id = uuid.uuid4()
+    base_note = _make_document(user_id=user_id)
+    note = DocumentEntity(
+        id=base_note.id,
+        user_id=base_note.user_id,
+        collection_id=base_note.collection_id,
+        title=base_note.title,
+        type=DocumentType.MARKDOWN,
+        status=base_note.status,
+        source_url=base_note.source_url,
+        file_path=base_note.file_path,
+        file_size_bytes=base_note.file_size_bytes,
+        raw_content=base_note.raw_content,
+        summary=base_note.summary,
+        word_count=base_note.word_count,
+        language=base_note.language,
+        doc_embedding=None,
+        is_duplicate=base_note.is_duplicate,
+        duplicate_of_id=base_note.duplicate_of_id,
+        created_at=base_note.created_at,
+        updated_at=base_note.updated_at,
+    )
+    uow = _FakeUnitOfWork(_FakeDocumentRepository([note]))
+    use_case = UpdateNoteUseCase(
+        _as_uow(uow),
+        cast("IDocumentStatusCache", _FakeStatusCache()),
+        cast("ITaskDispatcher", _SuccessfulTaskDispatcher()),
+    )
+
+    await use_case(UpdateNoteDTO(user_id=user_id, note_id=note.id, title=note.title, content="First autosave"))
+    await use_case(UpdateNoteDTO(user_id=user_id, note_id=note.id, title=note.title, content="Second autosave"))
+
+    assert len(uow.note_version_repo.records) == 1

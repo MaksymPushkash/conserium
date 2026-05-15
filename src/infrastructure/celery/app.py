@@ -8,23 +8,13 @@ from src.core.startup_checks import validate_startup_settings
 _cortex_exchange = Exchange("cortex", type="direct", durable=True)
 
 
-# Queues
-# 1. document_processing  — heavy I/O: extract text from PDF/URL, chunk text
-#                           Concurrency: 4 (CPU-bound light + network-bound)
-# 2. embeddings           — OpenAI API calls + Redis caching
-#                           Concurrency: 8 (mostly waiting on network)
-# 3. notifications        — future: email / webhook delivery
-#                           Concurrency: 4
-# 4. cleanup              — soft-delete sweeps, orphan file removal
-#                           Concurrency: 2
-# 5. media_processing     — CPU-heavy media extraction/enrichment
-#                           Concurrency: 2, separate image
 _QUEUES = (
     Queue("document_processing", _cortex_exchange, routing_key="document_processing", durable=True),
     Queue("embeddings", _cortex_exchange, routing_key="embeddings", durable=True),
     Queue("notifications", _cortex_exchange, routing_key="notifications", durable=True),
     Queue("cleanup", _cortex_exchange, routing_key="cleanup", durable=True),
     Queue("media_processing", _cortex_exchange, routing_key="media_processing", durable=True),
+    Queue("hf_processing", _cortex_exchange, routing_key="hf_processing", durable=True),
 )
 
 
@@ -83,6 +73,18 @@ celery_app.conf.update(
     worker_send_task_events=True,
     task_send_sent_event=True,
 )
+
+
+def declare_configured_queues() -> None:
+    with celery_app.connection_or_acquire() as connection:
+        channel = connection.channel()
+        try:
+            for queue_def in celery_app.conf.task_queues:
+                queue_def(channel).declare()
+        finally:
+            channel.close()
+
+
 def _validate_worker_startup(**_: object) -> None:
     validate_startup_settings()
 
