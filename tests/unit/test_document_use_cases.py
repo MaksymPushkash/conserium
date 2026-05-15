@@ -5,9 +5,17 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from src.application.dtos.document_dtos import CreateDocumentDTO, DeleteDocumentDTO, GetDocumentDTO, ListDocumentsDTO
+from src.application.dtos.document_dtos import (
+    CreateDocumentDTO,
+    DeleteDocumentDTO,
+    GetDocumentDTO,
+    ListDocumentsDTO,
+    SearchDocumentsDTO,
+)
 from src.application.dtos.ingestion_dtos import IngestDocumentDTO
 from src.application.dtos.note_dtos import CreateNoteDTO, ListNotesDTO, UpdateNoteDTO
+from src.application.ports.ai.embedding_provider import IEmbeddingProvider
+from src.application.ports.persistence.chunk_repository import ChunkSearchResult
 from src.application.ports.persistence.note_version_repository import NoteVersionRecord
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
@@ -16,6 +24,8 @@ from src.application.use_cases.documents.get_document_use_case import GetDocumen
 from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
 from src.application.use_cases.documents.note_use_cases import CreateNoteUseCase, ListNotesUseCase, UpdateNoteUseCase
+from src.application.use_cases.documents.search_documents_use_case import SearchDocumentsUseCase
+from src.domain.entities.chunk_entity import ChunkEntity
 from src.domain.entities.document_entity import DocumentEntity
 from src.domain.exceptions import DocumentAccessDeniedException, DocumentNotFoundException
 from src.domain.value_objects.document_status import DocumentStatus
@@ -112,9 +122,43 @@ class _FakeUnitOfWork:
 class _FakeChunkRepository:
     def __init__(self) -> None:
         self.deleted_document_ids: list[uuid.UUID] = []
+        self.search_results: list[ChunkSearchResult] = []
+        self.search_calls: list[dict[str, object]] = []
 
     async def delete_by_document_id(self, document_id: uuid.UUID) -> None:
         self.deleted_document_ids.append(document_id)
+
+    async def hybrid_search(
+        self,
+        *,
+        query: str,
+        embedding: list[float],
+        user_id: uuid.UUID,
+        limit: int = 10,
+        collection_id: uuid.UUID | None = None,
+        tag_names: tuple[str, ...] | None = None,
+        document_types: tuple[DocumentType, ...] | None = None,
+    ) -> list[ChunkSearchResult]:
+        self.search_calls.append(
+            {
+                "query": query,
+                "embedding": embedding,
+                "user_id": user_id,
+                "limit": limit,
+                "collection_id": collection_id,
+                "tag_names": tag_names,
+                "document_types": document_types,
+            }
+        )
+        return self.search_results
+
+
+class _FakeEmbeddingProvider(IEmbeddingProvider):
+    async def embed_text(self, text: str) -> list[float]:
+        return [0.1] * ChunkEntity.EMBEDDING_DIMENSIONS
+
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1] * ChunkEntity.EMBEDDING_DIMENSIONS for _ in texts]
 
 
 class _FakeNoteVersionRepository:
@@ -212,14 +256,19 @@ def _as_uow(uow: _FakeUnitOfWork) -> IUnitOfWork:
     return cast("IUnitOfWork", uow)
 
 
-def _make_document(*, user_id: uuid.UUID | None = None) -> DocumentEntity:
+def _make_document(
+    *,
+    user_id: uuid.UUID | None = None,
+    title: str = "Saved note",
+    status: DocumentStatus = DocumentStatus.PENDING,
+) -> DocumentEntity:
     return DocumentEntity(
         id=uuid.uuid4(),
         user_id=user_id or uuid.uuid4(),
         collection_id=None,
-        title="Saved note",
+        title=title,
         type=DocumentType.TEXT,
-        status=DocumentStatus.PENDING,
+        status=status,
         source_url=None,
         file_path=None,
         file_size_bytes=None,
@@ -232,6 +281,16 @@ def _make_document(*, user_id: uuid.UUID | None = None) -> DocumentEntity:
         duplicate_of_id=None,
         created_at=datetime.now(UTC),
         updated_at=None,
+    )
+
+
+def _make_chunk(document_id: uuid.UUID, content: str) -> ChunkEntity:
+    return ChunkEntity.create(
+        id=uuid.uuid4(),
+        document_id=document_id,
+        content=content,
+        embedding=[0.1] * ChunkEntity.EMBEDDING_DIMENSIONS,
+        chunk_index=0,
     )
 
 
@@ -271,6 +330,41 @@ async def test_list_documents_use_case_returns_paginated_documents() -> None:
     assert result.total == 1
     assert len(result.items) == 1
     assert result.items[0].id == own_document.id
+
+
+async def test_search_documents_use_case_returns_document_results_from_hybrid_chunks() -> None:
+    user_id = uuid.uuid4()
+    document = _make_document(user_id=user_id, title="Async Python", status=DocumentStatus.READY)
+    document_repo = _FakeDocumentRepository([document])
+    uow = _FakeUnitOfWork(document_repo)
+    chunk = _make_chunk(document.id, "asyncio schedules coroutines for concurrent I/O.")
+    uow.chunk_repo.search_results = [ChunkSearchResult(chunk=chunk, document_title=document.title, score=0.91)]
+    use_case = SearchDocumentsUseCase(_as_uow(uow), _FakeEmbeddingProvider())
+
+    result = await use_case(SearchDocumentsDTO(user_id=user_id, query="parallel requests", limit=10))
+
+    assert result.total == 1
+    assert result.items[0].document.id == document.id
+    assert result.items[0].snippet == "asyncio schedules coroutines for concurrent I/O."
+    assert result.items[0].score == 0.91
+    assert uow.chunk_repo.search_calls[0]["query"] == "parallel requests"
+
+
+async def test_search_documents_use_case_filters_document_status_after_chunk_search() -> None:
+    user_id = uuid.uuid4()
+    ready_document = _make_document(user_id=user_id, title="Ready", status=DocumentStatus.READY)
+    failed_document = _make_document(user_id=user_id, title="Failed", status=DocumentStatus.FAILED)
+    document_repo = _FakeDocumentRepository([ready_document, failed_document])
+    uow = _FakeUnitOfWork(document_repo)
+    uow.chunk_repo.search_results = [
+        ChunkSearchResult(chunk=_make_chunk(failed_document.id, "failed document content"), document_title=failed_document.title, score=0.95),
+        ChunkSearchResult(chunk=_make_chunk(ready_document.id, "ready document content"), document_title=ready_document.title, score=0.9),
+    ]
+    use_case = SearchDocumentsUseCase(_as_uow(uow), _FakeEmbeddingProvider())
+
+    result = await use_case(SearchDocumentsDTO(user_id=user_id, query="document", limit=10, status=DocumentStatus.READY))
+
+    assert [item.document.id for item in result.items] == [ready_document.id]
 
 
 async def test_get_document_use_case_returns_owned_document() -> None:

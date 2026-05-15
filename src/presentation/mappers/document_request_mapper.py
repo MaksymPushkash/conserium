@@ -11,6 +11,7 @@ from src.application.dtos.document_dtos import (
     RenameDocumentDTO,
     ReprocessDocumentDTO,
     RetryDocumentDTO,
+    SearchDocumentsDTO,
 )
 from src.application.dtos.ingestion_dtos import IngestDocumentDTO
 from src.domain.value_objects.document_status import DocumentStatus
@@ -47,6 +48,27 @@ def to_list_documents_dto(
         offset=offset,
         collection_id=collection_id,
         status=status,
+    )
+
+
+def to_search_documents_dto(
+    *,
+    user_id: UUID,
+    query: str,
+    limit: int,
+    collection_id: UUID | None,
+    status: DocumentStatus | None,
+    document_type: DocumentType | None,
+    tag_name: str | None,
+) -> SearchDocumentsDTO:
+    return SearchDocumentsDTO(
+        user_id=user_id,
+        query=query,
+        limit=limit,
+        collection_id=collection_id,
+        status=status,
+        document_type=document_type,
+        tag_name=tag_name,
     )
 
 

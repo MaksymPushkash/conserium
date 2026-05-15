@@ -37,6 +37,18 @@ class ListDocumentsDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
+class SearchDocumentsDTO:
+    user_id: UUID
+    query: str
+    limit: int = 20
+    collection_id: UUID | None = None
+    status: DocumentStatus | None = None
+    document_type: DocumentType | None = None
+    tag_name: str | None = None
+
+
+@final
+@dataclass(frozen=True, slots=True)
 class GetDocumentDTO:
     user_id: UUID
     document_id: UUID
@@ -119,6 +131,10 @@ class DocumentDTO:
     visual_metadata: MetadataItem | None = None
     suggested_questions: list[str] | None = None
     tags: list[str] | None = None
+    last_used_at: datetime | None = None
+    query_count: int = 0
+    citation_count: int = 0
+    activity_temperature: str = "hot"
 
 
 @final
@@ -141,3 +157,22 @@ class DocumentListDTO:
     total: int
     limit: int
     offset: int
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class DocumentSearchResultDTO:
+    document: DocumentDTO
+    snippet: str
+    score: float | None
+    chunk_id: UUID
+    page_number: int | None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class DocumentSearchDTO:
+    items: list[DocumentSearchResultDTO]
+    query: str
+    total: int
+    limit: int

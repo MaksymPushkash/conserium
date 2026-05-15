@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from src.application.dtos.document_dtos import DocumentDTO
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def document_to_dto(document: DocumentEntity) -> DocumentDTO:
+    last_used_at = document.created_at
     return DocumentDTO(
         id=document.id,
         user_id=document.user_id,
@@ -30,11 +32,22 @@ def document_to_dto(document: DocumentEntity) -> DocumentDTO:
         visual_metadata=document.visual_metadata,
         suggested_questions=document.suggested_questions,
         tags=document.tags,
+        last_used_at=last_used_at,
+        activity_temperature=activity_temperature(last_used_at),
         is_duplicate=document.is_duplicate,
         duplicate_of_id=document.duplicate_of_id,
         created_at=document.created_at,
         updated_at=document.updated_at,
     )
+
+
+def activity_temperature(last_used_at: datetime) -> str:
+    age_days = (datetime.now(UTC) - last_used_at).days
+    if age_days >= 30:
+        return "forgotten"
+    if age_days >= 14:
+        return "cold"
+    return "hot"
 
 
 def ensure_document_owner(document: DocumentEntity, user_id: object) -> None:

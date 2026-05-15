@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
 from src.application.dtos.chat_dtos import ChatDetailDTO, ChatMessageDTO, ChatSessionDTO
-from src.application.dtos.document_dtos import DocumentDTO, DocumentListDTO
+from src.application.dtos.document_dtos import DocumentDTO, DocumentListDTO, DocumentSearchDTO, DocumentSearchResultDTO
 from src.application.dtos.note_dtos import NoteDTO, NoteListDTO, NoteListItemDTO
 from src.application.dtos.query_dtos import QueryDTO, QueryResultDTO, QuerySourceDTO
 from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStreamEventType
@@ -30,6 +30,7 @@ from src.application.use_cases.documents.note_use_cases import (
     ListNotesUseCase,
     UpdateNoteUseCase,
 )
+from src.application.use_cases.documents.search_documents_use_case import SearchDocumentsUseCase
 from src.application.use_cases.query.chat_use_cases import CreateChatUseCase, GetChatUseCase
 from src.application.use_cases.query.query_use_case import QueryUseCase
 from src.application.use_cases.query.stream_query_use_case import StreamQueryUseCase
@@ -269,6 +270,43 @@ def test_list_documents_route_returns_document_list() -> None:
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["id"] == str(document.id)
     assert "raw_content" not in response.json()["items"][0]
+
+
+def test_search_documents_route_returns_semantic_results() -> None:
+    user = _make_user()
+    document = _make_document_dto(user_id=user.id)
+    chunk_id = uuid.uuid4()
+    use_case = _ReturningUseCase(
+        DocumentSearchDTO(
+            items=[
+                DocumentSearchResultDTO(
+                    document=document,
+                    snippet="asyncio overlaps I/O operations with coroutines.",
+                    score=0.91,
+                    chunk_id=chunk_id,
+                    page_number=None,
+                )
+            ],
+            query="parallel requests",
+            total=1,
+            limit=20,
+        )
+    )
+    client = _make_client(user, {SearchDocumentsUseCase: use_case})
+
+    try:
+        response = client.get(
+            "/api/v1/documents/search?query=parallel%20requests&limit=20&type=TEXT&status=PENDING&tag=python",
+            headers={"Authorization": "Bearer access-token"},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["document"]["id"] == str(document.id)
+    assert response.json()["items"][0]["snippet"] == "asyncio overlaps I/O operations with coroutines."
+    assert response.json()["items"][0]["chunk_id"] == str(chunk_id)
+    assert use_case.received_dto is not None
 
 
 def test_ingest_document_route_queues_document() -> None:

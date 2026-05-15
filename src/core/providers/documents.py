@@ -1,5 +1,6 @@
 from dishka import Provider, Scope, provide
 
+from src.application.ports.ai.embedding_provider import IEmbeddingProvider
 from src.application.ports.cache.document_status_cache import IDocumentStatusCache
 from src.application.ports.ingestion.file_storage import IFileStorage
 from src.application.ports.ingestion.task_dispatcher import ITaskDispatcher
@@ -36,6 +37,7 @@ from src.application.use_cases.documents.note_use_cases import (
 )
 from src.application.use_cases.documents.reprocess_document_use_case import ReprocessDocumentUseCase
 from src.application.use_cases.documents.retry_document_use_case import RetryDocumentUseCase
+from src.application.use_cases.documents.search_documents_use_case import SearchDocumentsUseCase
 
 
 class DocumentsProvider(Provider):
@@ -62,6 +64,14 @@ class DocumentsProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_list_documents_use_case(self, uow: IUnitOfWork) -> ListDocumentsUseCase:
         return ListDocumentsUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_search_documents_use_case(
+        self,
+        uow: IUnitOfWork,
+        embedding_provider: IEmbeddingProvider,
+    ) -> SearchDocumentsUseCase:
+        return SearchDocumentsUseCase(uow, embedding_provider)
 
     @provide(scope=Scope.REQUEST)
     def get_get_document_use_case(self, uow: IUnitOfWork) -> GetDocumentUseCase:
