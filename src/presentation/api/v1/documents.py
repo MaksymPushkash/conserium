@@ -16,12 +16,15 @@ from src.application.use_cases.documents.manage_document_use_cases import (
 )
 from src.application.use_cases.documents.reprocess_document_use_case import ReprocessDocumentUseCase
 from src.application.use_cases.documents.retry_document_use_case import RetryDocumentUseCase
+from src.application.use_cases.documents.search_documents_use_case import SearchDocumentsUseCase
 from src.domain.value_objects.document_status import DocumentStatus
+from src.domain.value_objects.document_type import DocumentType
 from src.presentation.dependencies.auth import CurrentUser
 from src.presentation.mappers.document_mapper import (
     to_document_chunk_response,
     to_document_list_response,
     to_document_response,
+    to_document_search_response,
 )
 from src.presentation.mappers.document_request_mapper import (
     to_bulk_document_operation_dto,
@@ -34,6 +37,7 @@ from src.presentation.mappers.document_request_mapper import (
     to_rename_document_dto,
     to_reprocess_document_dto,
     to_retry_document_dto,
+    to_search_documents_dto,
 )
 from src.presentation.schemas.document import (
     BulkDocumentOperationRequest,
@@ -41,6 +45,7 @@ from src.presentation.schemas.document import (
     DocumentChunkResponse,
     DocumentListResponse,
     DocumentResponse,
+    DocumentSearchResponse,
     MoveDocumentRequest,
     RenameDocumentRequest,
 )
@@ -71,6 +76,32 @@ async def list_documents(
 ) -> DocumentListResponse:
     result = await use_case(to_list_documents_dto(current_user.id, limit, offset, collection_id, document_status))
     return to_document_list_response(result)
+
+
+@router.get("/search", response_model=DocumentSearchResponse)
+@inject
+async def search_documents(
+    current_user: CurrentUser,
+    use_case: FromDishka[SearchDocumentsUseCase],
+    query: str = Query(min_length=1, max_length=500),
+    limit: int = Query(default=20, ge=1, le=50),
+    collection_id: UUID | None = Query(default=None),
+    document_status: DocumentStatus | None = Query(default=None, alias="status"),
+    document_type: DocumentType | None = Query(default=None, alias="type"),
+    tag: str | None = Query(default=None, min_length=1, max_length=100),
+) -> DocumentSearchResponse:
+    result = await use_case(
+        to_search_documents_dto(
+            user_id=current_user.id,
+            query=query,
+            limit=limit,
+            collection_id=collection_id,
+            status=document_status,
+            document_type=document_type,
+            tag_name=tag,
+        )
+    )
+    return to_document_search_response(result)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)

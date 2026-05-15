@@ -22,6 +22,7 @@ class UserEntity:
         is_active: bool,
         created_at: datetime,
         updated_at: datetime | None,
+        preferences: dict[str, object] | None = None,
     ) -> None:
         
         self._id = id
@@ -31,6 +32,7 @@ class UserEntity:
         self._is_active = is_active
         self._created_at = self._validate_created_at(created_at)
         self._updated_at = self._validate_updated_at(updated_at, created_at)
+        self._preferences = dict(preferences or {})
 
 
     @property
@@ -61,6 +63,10 @@ class UserEntity:
     def updated_at(self) -> datetime | None:
         return self._updated_at
 
+    @property
+    def preferences(self) -> dict[str, object]:
+        return dict(self._preferences)
+
 
 
     def deactivate(self) -> None:
@@ -79,6 +85,12 @@ class UserEntity:
         if email == self._email:
             return
         self._email = email
+        self._updated_at = datetime.now(UTC)
+
+    def update_preferences(self, preferences: dict[str, object]) -> None:
+        if preferences == self._preferences:
+            return
+        self._preferences = dict(preferences)
         self._updated_at = datetime.now(UTC)
 
     def ensure_active(self) -> None:

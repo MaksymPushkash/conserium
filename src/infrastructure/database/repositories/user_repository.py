@@ -49,6 +49,7 @@ class SQLAlchemyUserRepository(IUserRepository):
         model.hashed_password = str(user.password)
         model.display_name = user.display_name
         model.is_active = user.is_active
+        model.preferences = user.preferences
         model.updated_at = user.updated_at
 
     async def delete(self, user_id: UUID) -> None:
@@ -65,6 +66,7 @@ class SQLAlchemyUserRepository(IUserRepository):
             is_active=model.is_active,
             created_at=model.created_at,
             updated_at=model.updated_at,
+            preferences=model.preferences,
         )
 
     def _to_model(self, entity: UserEntity) -> UserModel:
@@ -74,6 +76,7 @@ class SQLAlchemyUserRepository(IUserRepository):
             hashed_password=str(entity.password),
             display_name=entity.display_name,
             is_active=entity.is_active,
+            preferences=entity.preferences,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )

@@ -1,4 +1,4 @@
-from src.application.dtos.document_dtos import DocumentChunkDTO, DocumentDTO, DocumentListDTO
+from src.application.dtos.document_dtos import DocumentChunkDTO, DocumentDTO, DocumentListDTO, DocumentSearchDTO
 from src.application.ports.cache.document_status_cache import DocumentStatusDTO
 from src.presentation.schemas.document import (
     DocumentChunkResponse,
@@ -6,6 +6,8 @@ from src.presentation.schemas.document import (
     DocumentListResponse,
     DocumentProcessingStepResponse,
     DocumentResponse,
+    DocumentSearchResponse,
+    DocumentSearchResultResponse,
     DocumentStatusResponse,
 )
 
@@ -30,6 +32,10 @@ def to_document_response(dto: DocumentDTO) -> DocumentResponse:
         visual_metadata=dto.visual_metadata,
         suggested_questions=_suggested_questions(dto.suggested_questions, dto.visual_metadata),
         tags=dto.tags or [],
+        last_used_at=dto.last_used_at,
+        query_count=dto.query_count,
+        citation_count=dto.citation_count,
+        activity_temperature=dto.activity_temperature,
         is_duplicate=dto.is_duplicate,
         duplicate_of_id=dto.duplicate_of_id,
         created_at=dto.created_at,
@@ -53,6 +59,10 @@ def to_document_list_item_response(dto: DocumentDTO) -> DocumentListItemResponse
         language=dto.language,
         suggested_questions=_suggested_questions(dto.suggested_questions, dto.visual_metadata),
         tags=dto.tags or [],
+        last_used_at=dto.last_used_at,
+        query_count=dto.query_count,
+        citation_count=dto.citation_count,
+        activity_temperature=dto.activity_temperature,
         is_duplicate=dto.is_duplicate,
         duplicate_of_id=dto.duplicate_of_id,
         created_at=dto.created_at,
@@ -93,6 +103,24 @@ def to_document_list_response(dto: DocumentListDTO) -> DocumentListResponse:
         total=dto.total,
         limit=dto.limit,
         offset=dto.offset,
+    )
+
+
+def to_document_search_response(dto: DocumentSearchDTO) -> DocumentSearchResponse:
+    return DocumentSearchResponse(
+        items=[
+            DocumentSearchResultResponse(
+                document=to_document_list_item_response(item.document),
+                snippet=item.snippet,
+                score=item.score,
+                chunk_id=item.chunk_id,
+                page_number=item.page_number,
+            )
+            for item in dto.items
+        ],
+        query=dto.query,
+        total=dto.total,
+        limit=dto.limit,
     )
 
 

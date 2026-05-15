@@ -87,6 +87,10 @@ class DocumentResponse(BaseModel):
     visual_metadata: MetadataItem | None = None
     suggested_questions: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    last_used_at: datetime | None = None
+    query_count: int = 0
+    citation_count: int = 0
+    activity_temperature: str = "hot"
     is_duplicate: bool
     duplicate_of_id: UUID | None
     created_at: datetime
@@ -131,6 +135,10 @@ class DocumentListItemResponse(BaseModel):
     language: str | None
     suggested_questions: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    last_used_at: datetime | None = None
+    query_count: int = 0
+    citation_count: int = 0
+    activity_temperature: str = "hot"
     is_duplicate: bool
     duplicate_of_id: UUID | None
     created_at: datetime
@@ -142,6 +150,21 @@ class DocumentListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class DocumentSearchResultResponse(BaseModel):
+    document: DocumentListItemResponse
+    snippet: str
+    score: float | None
+    chunk_id: UUID
+    page_number: int | None
+
+
+class DocumentSearchResponse(BaseModel):
+    items: list[DocumentSearchResultResponse]
+    query: str
+    total: int
+    limit: int
 
 
 class DocumentStatusResponse(BaseModel):

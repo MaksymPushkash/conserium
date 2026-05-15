@@ -13,6 +13,7 @@ from src.application.use_cases.auth.complete_oauth_login_use_case import Complet
 from src.application.use_cases.auth.login_use_case import LoginUserUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.use_cases.auth.register_use_case import RegisterUserUseCase
+from src.application.use_cases.auth.update_user_preferences_use_case import UpdateUserPreferencesUseCase
 from src.domain.entities.user_entity import UserEntity
 from src.domain.exceptions import (
     EmailAlreadyExistsException,
@@ -75,6 +76,16 @@ class _FailingOAuthUseCase:
         raise OAuthAuthenticationException("no_email", "oauth provider did not return an email")
 
 
+class _PreferencesUseCase:
+    def __init__(self, user: UserEntity) -> None:
+        self._user = user
+        self.received_dto: object | None = None
+
+    async def __call__(self, dto: object) -> UserEntity:
+        self.received_dto = dto
+        return self._user
+
+
 class _FakeUserRepository:
     def __init__(self, user: UserEntity | None) -> None:
         self._user = user
@@ -94,7 +105,7 @@ class _FakeUnitOfWork:
         return None
 
 
-def _make_user(*, is_active: bool = True) -> UserEntity:
+def _make_user(*, is_active: bool = True, preferences: dict[str, object] | None = None) -> UserEntity:
     return UserEntity(
         id=uuid.uuid4(),
         email=Email(value="user@example.com"),
@@ -103,6 +114,7 @@ def _make_user(*, is_active: bool = True) -> UserEntity:
         is_active=is_active,
         created_at=datetime.now(UTC),
         updated_at=None,
+        preferences=preferences,
     )
 
 
@@ -301,6 +313,69 @@ def test_get_me_returns_401_without_authorization_header() -> None:
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Not authenticated"}
+
+
+def test_get_preferences_returns_current_user_preferences() -> None:
+    user = _make_user(
+        preferences={
+            "appearance": {"theme": "dark"},
+            "privacy": {"share_usage_data": True, "retain_query_history": False},
+            "ai": {"answer_language": "ukrainian", "retrieval_depth": "broad"},
+        }
+    )
+    client = _make_client(
+        {
+            IJWTService: _make_jwt_service(user.id),
+            IUnitOfWork: _FakeUnitOfWork(user),
+        }
+    )
+
+    try:
+        response = client.get("/api/v1/users/preferences", headers={"Authorization": "Bearer access-token"})
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "appearance": {"theme": "dark"},
+        "privacy": {"share_usage_data": True, "retain_query_history": False},
+        "ai": {"answer_language": "ukrainian", "retrieval_depth": "broad"},
+    }
+
+
+def test_update_preferences_returns_saved_preferences() -> None:
+    user = _make_user(
+        preferences={
+            "appearance": {"theme": "dark"},
+            "privacy": {"share_usage_data": False, "retain_query_history": True},
+            "ai": {"answer_language": "match_question", "retrieval_depth": "focused"},
+        }
+    )
+    use_case = _PreferencesUseCase(user)
+    client = _make_client(
+        {
+            IJWTService: _make_jwt_service(user.id),
+            IUnitOfWork: _FakeUnitOfWork(user),
+            UpdateUserPreferencesUseCase: use_case,
+        }
+    )
+
+    try:
+        response = client.patch(
+            "/api/v1/users/preferences",
+            headers={"Authorization": "Bearer access-token"},
+            json={
+                "appearance": {"theme": "dark"},
+                "privacy": {"share_usage_data": False, "retain_query_history": True},
+                "ai": {"answer_language": "match_question", "retrieval_depth": "focused"},
+            },
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["ai"]["retrieval_depth"] == "focused"
+    assert use_case.received_dto is not None
 
 
 def test_google_start_uses_forwarded_origin_and_sets_state_cookie() -> None:

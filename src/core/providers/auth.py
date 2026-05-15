@@ -10,6 +10,7 @@ from src.application.use_cases.auth.login_use_case import LoginUserUseCase
 from src.application.use_cases.auth.logout_use_case import LogoutEverywhereUseCase, LogoutUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.use_cases.auth.register_use_case import RegisterUserUseCase
+from src.application.use_cases.auth.update_user_preferences_use_case import UpdateUserPreferencesUseCase
 from src.core.config import settings
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.auth.oauth_clients import GithubOAuthClient, GoogleOAuthClient
@@ -94,6 +95,10 @@ class AuthProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_delete_account_use_case(self, uow: IUnitOfWork) -> DeleteAccountUseCase:
         return DeleteAccountUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_update_user_preferences_use_case(self, uow: IUnitOfWork) -> UpdateUserPreferencesUseCase:
+        return UpdateUserPreferencesUseCase(uow)
 
     @provide(scope=Scope.REQUEST)
     def get_complete_oauth_login_use_case(
