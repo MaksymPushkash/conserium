@@ -19,6 +19,7 @@ from src.infrastructure.ai.extractors.youtube_extractor import YoutubeExtractor
 from src.infrastructure.ai.providers.cached_embedding_provider import CachedEmbeddingProvider
 from src.infrastructure.ai.providers.hf_classifier_provider import HFClassifierProvider
 from src.infrastructure.ai.providers.hf_ner_provider import HFNERProvider
+from src.infrastructure.ai.providers.openai_document_summary_service import OpenAIDocumentSummaryService
 from src.infrastructure.ai.providers.openai_embedding_provider import OpenAIEmbeddingProvider
 from src.infrastructure.cache.document_status_cache import RedisDocumentStatusCache
 from src.infrastructure.cache.redis_cache import RedisCache
@@ -98,6 +99,7 @@ async def enrich_document(document_id: str) -> dict[str, object]:
                 ner_provider=HFNERProvider(),
                 classifier_provider=HFClassifierProvider(),
                 tag_sync=SQLAlchemyDocumentTagSync(session),
+                summary_service=OpenAIDocumentSummaryService(),
             )
             use_case = EnrichDocumentUseCase(enrichment_service)
             result = await use_case.execute(UUID(document_id))

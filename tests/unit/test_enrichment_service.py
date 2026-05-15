@@ -55,8 +55,68 @@ async def test_enrichment_service_with_ner_and_classification():
     assert len(result["categories"]) == 2
     assert result["categories"][0]["label"] == "business"
     assert result["is_duplicate"] is False
+    assert result["summary"] is None
     ner_provider.extract_entities.assert_called_once()
     classifier_provider.classify.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_enrichment_service_generates_summary_for_supported_documents():
+    doc_id = uuid4()
+    user_id = uuid4()
+    doc = DocumentEntity.create(
+        id=doc_id,
+        user_id=user_id,
+        title="Async Python",
+        type=DocumentType.URL,
+        raw_content="Async Python lets programs overlap I/O work. It uses coroutines and an event loop.",
+    )
+
+    uow = AsyncMock()
+    uow.document_repo.get_by_id.return_value = doc
+    uow.document_repo.get_by_user_id.return_value = []
+    uow.chunk_repo.get_by_document_id.return_value = []
+    embedding_provider = AsyncMock()
+    embedding_provider.embed_text.return_value = [0.1] * 1536
+    summary_service = AsyncMock()
+    summary_service.summarize_document.return_value = "Async Python overlaps I/O work with coroutines and an event loop."
+
+    service = EnrichmentService(uow, embedding_provider, summary_service=summary_service)
+    result = await service.enrich_document(doc_id)
+
+    assert result["summary"] == "Async Python overlaps I/O work with coroutines and an event loop."
+    assert doc.summary == "Async Python overlaps I/O work with coroutines and an event loop."
+    summary_service.summarize_document.assert_awaited_once_with(
+        title="Async Python",
+        text="Async Python lets programs overlap I/O work. It uses coroutines and an event loop.",
+    )
+
+
+@pytest.mark.asyncio
+async def test_enrichment_service_skips_summary_for_empty_text():
+    doc_id = uuid4()
+    user_id = uuid4()
+    doc = DocumentEntity.create(
+        id=doc_id,
+        user_id=user_id,
+        title="Empty",
+        type=DocumentType.TEXT,
+        raw_content=None,
+    )
+
+    uow = AsyncMock()
+    uow.document_repo.get_by_id.return_value = doc
+    uow.document_repo.get_by_user_id.return_value = []
+    uow.chunk_repo.get_by_document_id.return_value = []
+    embedding_provider = AsyncMock()
+    summary_service = AsyncMock()
+
+    service = EnrichmentService(uow, embedding_provider, summary_service=summary_service)
+    result = await service.enrich_document(doc_id)
+
+    assert result["summary"] is None
+    assert doc.summary is None
+    summary_service.summarize_document.assert_not_awaited()
 
 
 @pytest.mark.asyncio

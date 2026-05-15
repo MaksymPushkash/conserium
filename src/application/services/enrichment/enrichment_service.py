@@ -7,12 +7,14 @@ from src.application.services.enrichment.duplicate_detector import DuplicateDete
 from src.application.services.enrichment.suggested_questions import build_suggested_questions
 from src.application.services.enrichment.tag_builder import build_auto_tags
 from src.domain.exceptions import DocumentNotFoundException
+from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
     from uuid import UUID
 
     from src.application.dtos.ingestion_dtos import CategoryDTO, EntityDTO
     from src.application.ports.ai.classifier_provider import IClassifierProvider
+    from src.application.ports.ai.document_summary_service import IDocumentSummaryService
     from src.application.ports.ai.embedding_provider import IEmbeddingProvider
     from src.application.ports.ai.ner_provider import INERProvider
     from src.application.ports.persistence.document_tag_sync import IDocumentTagSync
@@ -20,6 +22,7 @@ if TYPE_CHECKING:
 
 
 class EnrichmentResult(TypedDict):
+    summary: str | None
     entities: list[EntityDTO]
     categories: list[CategoryDTO]
     tags: list[str]
@@ -36,6 +39,7 @@ class EnrichmentService:
         ner_provider: INERProvider | None = None,
         classifier_provider: IClassifierProvider | None = None,
         tag_sync: IDocumentTagSync | None = None,
+        summary_service: IDocumentSummaryService | None = None,
     ) -> None:
         self._uow = uow
         self._document_embedding = DocumentEmbeddingService(uow, embedding_provider)
@@ -43,6 +47,7 @@ class EnrichmentService:
         self._ner = ner_provider
         self._clf = classifier_provider
         self._tag_sync = tag_sync
+        self._summary_service = summary_service
 
     async def enrich_document(self, document_id: UUID) -> EnrichmentResult:
         async with self._uow:
@@ -51,6 +56,7 @@ class EnrichmentService:
                 raise DocumentNotFoundException("document not found")
 
         result: EnrichmentResult = {
+            "summary": None,
             "entities": [],
             "categories": [],
             "tags": [],
@@ -60,6 +66,11 @@ class EnrichmentService:
         }
 
         text = doc.raw_content or ""
+
+        if self._summary_service is not None and _supports_auto_summary(doc.type) and text:
+            result["summary"] = await self._summary_service.summarize_document(title=doc.title, text=text)
+            if result["summary"]:
+                doc.update_summary(result["summary"])
 
         if self._ner and text:
             entities: list[EntityDTO] = await self._ner.extract_entities(text)
@@ -106,3 +117,7 @@ class EnrichmentService:
             await self._uow.commit()
 
         return result
+
+
+def _supports_auto_summary(document_type: DocumentType) -> bool:
+    return document_type in {DocumentType.TEXT, DocumentType.URL, DocumentType.PDF, DocumentType.MARKDOWN}
