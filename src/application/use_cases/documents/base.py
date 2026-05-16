@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from src.application.dtos.document_dtos import DocumentDTO
+from src.application.ports.persistence.document_activity_repository import DocumentActivitySummary
 from src.domain.entities.document_entity import DocumentEntity
 from src.domain.exceptions import DocumentAccessDeniedException, ResourceNotFoundException
 
@@ -11,8 +12,8 @@ if TYPE_CHECKING:
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
 
 
-def document_to_dto(document: DocumentEntity) -> DocumentDTO:
-    last_used_at = document.created_at
+def document_to_dto(document: DocumentEntity, activity: DocumentActivitySummary | None = None) -> DocumentDTO:
+    last_used_at = activity.last_used_at if activity and activity.last_used_at else document.created_at
     return DocumentDTO(
         id=document.id,
         user_id=document.user_id,
@@ -33,6 +34,8 @@ def document_to_dto(document: DocumentEntity) -> DocumentDTO:
         suggested_questions=document.suggested_questions,
         tags=document.tags,
         last_used_at=last_used_at,
+        query_count=activity.query_count if activity else 0,
+        citation_count=activity.citation_count if activity else 0,
         activity_temperature=activity_temperature(last_used_at),
         is_duplicate=document.is_duplicate,
         duplicate_of_id=document.duplicate_of_id,

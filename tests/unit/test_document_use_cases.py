@@ -16,6 +16,10 @@ from src.application.dtos.ingestion_dtos import IngestDocumentDTO
 from src.application.dtos.note_dtos import CreateNoteDTO, ListNotesDTO, UpdateNoteDTO
 from src.application.ports.ai.embedding_provider import IEmbeddingProvider
 from src.application.ports.persistence.chunk_repository import ChunkSearchResult
+from src.application.ports.persistence.document_activity_repository import (
+    DocumentActivityEventType,
+    DocumentActivitySummary,
+)
 from src.application.ports.persistence.note_version_repository import NoteVersionRecord
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
@@ -100,6 +104,7 @@ class _FakeDocumentRepository:
 class _FakeUnitOfWork:
     def __init__(self, document_repo: _FakeDocumentRepository) -> None:
         self.document_repo = document_repo
+        self.document_activity_repo = _FakeDocumentActivityRepository()
         self.chunk_repo = _FakeChunkRepository()
         self.note_version_repo = _FakeNoteVersionRepository()
         self.committed = False
@@ -117,6 +122,29 @@ class _FakeUnitOfWork:
 
     async def rollback(self) -> None:
         self.rolled_back = True
+
+
+class _FakeDocumentActivityRepository:
+    def __init__(self) -> None:
+        self.events: list[tuple[uuid.UUID, uuid.UUID, DocumentActivityEventType]] = []
+        self.summaries: dict[uuid.UUID, DocumentActivitySummary] = {}
+
+    async def record_event(
+        self,
+        *,
+        user_id: uuid.UUID,
+        document_id: uuid.UUID,
+        event_type: DocumentActivityEventType,
+    ) -> None:
+        self.events.append((user_id, document_id, event_type))
+
+    async def summarize_by_document_ids(
+        self,
+        *,
+        user_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, DocumentActivitySummary]:
+        return {document_id: self.summaries[document_id] for document_id in document_ids if document_id in self.summaries}
 
 
 class _FakeChunkRepository:

@@ -16,12 +16,14 @@ from src.infrastructure.database.models.base import (
     TimestampMixin,
     UUIDPrimaryKeyMixin,
     document_tags,
+    document_topics,
 )
 
 if TYPE_CHECKING:
     from src.infrastructure.database.models.chunk import ChunkModel
     from src.infrastructure.database.models.collection import CollectionModel
     from src.infrastructure.database.models.tag import TagModel
+    from src.infrastructure.database.models.topic import TopicModel
     from src.infrastructure.database.models.user import UserModel
 
 
@@ -69,5 +71,6 @@ class DocumentModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     collection: Mapped["CollectionModel | None"] = relationship(back_populates="documents")
     chunks: Mapped[list["ChunkModel"]] = relationship(back_populates="document", cascade="all, delete-orphan", passive_deletes=True)
     tags: Mapped[list["TagModel"]] = relationship(secondary=document_tags, back_populates="documents")
+    topics: Mapped[list["TopicModel"]] = relationship(secondary=document_topics, back_populates="documents")
     duplicate_of: Mapped["DocumentModel | None"] = relationship("DocumentModel", remote_side="DocumentModel.id", foreign_keys="[DocumentModel.duplicate_of_id]")
  

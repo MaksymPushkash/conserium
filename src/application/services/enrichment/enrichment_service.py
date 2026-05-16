@@ -6,6 +6,7 @@ from src.application.services.enrichment.document_embedding_service import Docum
 from src.application.services.enrichment.duplicate_detector import DuplicateDetector
 from src.application.services.enrichment.suggested_questions import build_suggested_questions
 from src.application.services.enrichment.tag_builder import build_auto_tags
+from src.application.services.topics.topic_builder import topic_names_from_tags
 from src.domain.exceptions import DocumentNotFoundException
 from src.domain.value_objects.document_type import DocumentType
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from src.application.ports.ai.embedding_provider import IEmbeddingProvider
     from src.application.ports.ai.ner_provider import INERProvider
     from src.application.ports.persistence.document_tag_sync import IDocumentTagSync
+    from src.application.ports.persistence.document_topic_sync import IDocumentTopicSync
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
 
 
@@ -39,6 +41,7 @@ class EnrichmentService:
         ner_provider: INERProvider | None = None,
         classifier_provider: IClassifierProvider | None = None,
         tag_sync: IDocumentTagSync | None = None,
+        topic_sync: IDocumentTopicSync | None = None,
         summary_service: IDocumentSummaryService | None = None,
     ) -> None:
         self._uow = uow
@@ -47,6 +50,7 @@ class EnrichmentService:
         self._ner = ner_provider
         self._clf = classifier_provider
         self._tag_sync = tag_sync
+        self._topic_sync = topic_sync
         self._summary_service = summary_service
 
     async def enrich_document(self, document_id: UUID) -> EnrichmentResult:
@@ -97,6 +101,13 @@ class EnrichmentService:
             )
         else:
             result["tags"] = tag_names
+
+        if self._topic_sync is not None:
+            await self._topic_sync.sync_topics(
+                user_id=doc.user_id,
+                document_id=doc.id,
+                topic_names=topic_names_from_tags(result["tags"]),
+            )
 
         result["suggested_questions"] = build_suggested_questions(
             title=doc.title,

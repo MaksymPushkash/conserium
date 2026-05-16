@@ -6,8 +6,11 @@ from src.core.providers import (
     CacheProvider,
     DatabaseProvider,
     DocumentsProvider,
+    DraftsProvider,
     IngestionProvider,
     QueryProvider,
+    StatsProvider,
+    TopicsProvider,
 )
 
 container = make_async_container(
@@ -18,4 +21,7 @@ container = make_async_container(
     AIProvider(),
     DocumentsProvider(),
     QueryProvider(),
+    DraftsProvider(),
+    StatsProvider(),
+    TopicsProvider(),
 )

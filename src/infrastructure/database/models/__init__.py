@@ -7,6 +7,7 @@ from src.infrastructure.database.models.document_activity import DocumentActivit
 from src.infrastructure.database.models.note_version import NoteVersionModel
 from src.infrastructure.database.models.search_query import SearchQueryModel
 from src.infrastructure.database.models.tag import TagModel
+from src.infrastructure.database.models.topic import TopicModel
 from src.infrastructure.database.models.user import UserModel
 
 __all__ = [
@@ -20,5 +21,6 @@ __all__ = [
     "NoteVersionModel",
     "SearchQueryModel",
     "TagModel",
+    "TopicModel",
     "UserModel",
 ]

@@ -18,6 +18,10 @@ from src.application.ports.ai.embedding_provider import IEmbeddingProvider
 from src.application.ports.ai.llm_service import ILLMService
 from src.application.ports.conversations.conversation_store import IConversationStore
 from src.application.ports.persistence.chunk_repository import ChunkSearchResult
+from src.application.ports.persistence.document_activity_repository import (
+    DocumentActivityEventType,
+    DocumentActivitySummary,
+)
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.ports.refrag.refrag_context_builder import IRefragContextBuilder
 from src.application.services.query_orchestration import QueryOrchestrationService
@@ -82,6 +86,7 @@ class _FakeLLMService:
 class _FakeUnitOfWork:
     def __init__(self, chunk_repo: _FakeChunkRepository) -> None:
         self.chunk_repo = chunk_repo
+        self.document_activity_repo = _FakeDocumentActivityRepository()
         self.chat_repo = _FakeChatRepository()
         self.collection_repo = _FakeCollectionRepository()
         self.search_query_repo = _FakeSearchQueryRepository()
@@ -98,6 +103,28 @@ class _FakeUnitOfWork:
 
     async def rollback(self) -> None:
         return None
+
+
+class _FakeDocumentActivityRepository:
+    def __init__(self) -> None:
+        self.events: list[tuple[uuid.UUID, uuid.UUID, DocumentActivityEventType]] = []
+
+    async def record_event(
+        self,
+        *,
+        user_id: uuid.UUID,
+        document_id: uuid.UUID,
+        event_type: DocumentActivityEventType,
+    ) -> None:
+        self.events.append((user_id, document_id, event_type))
+
+    async def summarize_by_document_ids(
+        self,
+        *,
+        user_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, DocumentActivitySummary]:
+        return {}
 
 
 class _FakeSearchQueryRepository:

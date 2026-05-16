@@ -26,6 +26,7 @@ from src.infrastructure.cache.redis_cache import RedisCache
 from src.infrastructure.celery.dependencies import get_worker_redis, get_worker_session_factory
 from src.infrastructure.celery.dispatcher import CeleryTaskDispatcher
 from src.infrastructure.database.services.document_tag_sync import SQLAlchemyDocumentTagSync
+from src.infrastructure.database.services.document_topic_sync import SQLAlchemyDocumentTopicSync
 from src.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 from src.infrastructure.storage.factory import build_file_storage
 from src.infrastructure.text_processing.simple_text_chunker import SimpleTextChunker
@@ -99,6 +100,7 @@ async def enrich_document(document_id: str) -> dict[str, object]:
                 ner_provider=HFNERProvider(),
                 classifier_provider=HFClassifierProvider(),
                 tag_sync=SQLAlchemyDocumentTagSync(session),
+                topic_sync=SQLAlchemyDocumentTopicSync(session),
                 summary_service=OpenAIDocumentSummaryService(),
             )
             use_case = EnrichDocumentUseCase(enrichment_service)
