@@ -61,6 +61,49 @@ async def test_enrichment_service_with_ner_and_classification():
 
 
 @pytest.mark.asyncio
+async def test_enrichment_service_syncs_topics_from_tags():
+    doc_id = uuid4()
+    user_id = uuid4()
+    doc = DocumentEntity.create(
+        id=doc_id,
+        user_id=user_id,
+        title="Async Python",
+        type=DocumentType.TEXT,
+        raw_content="Async Python uses coroutines.",
+    )
+
+    uow = AsyncMock()
+    uow.document_repo.get_by_id.return_value = doc
+    uow.document_repo.get_by_user_id.return_value = []
+    uow.chunk_repo.get_by_document_id.return_value = []
+    embedding_provider = AsyncMock()
+    embedding_provider.embed_text.return_value = [0.1] * 1536
+    classifier_provider = AsyncMock()
+    classifier_provider.classify.return_value = [{"label": "python", "score": 0.9}]
+    tag_sync = AsyncMock()
+    tag_sync.sync_auto_tags.return_value = ["python"]
+    topic_sync = AsyncMock()
+    topic_sync.sync_topics.return_value = ["python"]
+
+    service = EnrichmentService(
+        uow,
+        embedding_provider,
+        classifier_provider=classifier_provider,
+        tag_sync=tag_sync,
+        topic_sync=topic_sync,
+    )
+
+    result = await service.enrich_document(doc_id)
+
+    assert result["tags"] == ["python"]
+    topic_sync.sync_topics.assert_awaited_once_with(
+        user_id=user_id,
+        document_id=doc_id,
+        topic_names=["python"],
+    )
+
+
+@pytest.mark.asyncio
 async def test_enrichment_service_generates_summary_for_supported_documents():
     doc_id = uuid4()
     user_id = uuid4()

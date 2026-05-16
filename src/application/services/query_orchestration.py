@@ -123,6 +123,7 @@ class QueryOrchestrationService:
                 eval_scores=dict(state.eval_scores),
                 trace_id=state.trace_id,
             )
+            await self._record_document_activity(dto.user_id, state.sources)
             await self._uow.commit()
 
     async def ensure_chat_session(self, *, user_id: UUID, conversation_id: UUID, title: str) -> None:
@@ -160,6 +161,22 @@ class QueryOrchestrationService:
                 langfuse_trace_id=state.trace_id,
             )
         )
+
+    async def _record_document_activity(self, user_id: UUID, sources: list[QuerySourceDTO]) -> None:
+        queried_document_ids = {source.document_id for source in sources}
+        cited_document_ids = {source.document_id for source in sources if source.used_in_answer}
+        for document_id in queried_document_ids:
+            await self._uow.document_activity_repo.record_event(
+                user_id=user_id,
+                document_id=document_id,
+                event_type="queried",
+            )
+        for document_id in cited_document_ids:
+            await self._uow.document_activity_repo.record_event(
+                user_id=user_id,
+                document_id=document_id,
+                event_type="cited_in_answer",
+            )
 
 
 def title_from_query(query: str) -> str:

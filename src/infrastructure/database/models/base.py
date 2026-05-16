@@ -47,3 +47,21 @@ document_tags = Table(
         primary_key=True,
     ),
 )
+
+
+document_topics = Table(
+    "document_topics",
+    Base.metadata,
+    Column(
+        "document_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "topic_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("topics.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
