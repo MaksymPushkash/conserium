@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query, Response, status
 
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
+from src.application.use_cases.documents.export_document_use_case import ExportDocumentUseCase
 from src.application.use_cases.documents.get_document_chunk_use_case import GetDocumentChunkUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
@@ -113,6 +114,22 @@ async def get_document(
 ) -> DocumentResponse:
     result = await use_case(to_get_document_dto(document_id, current_user.id))
     return to_document_response(result)
+
+
+@router.get("/{document_id}/export")
+@inject
+async def export_document(
+    document_id: UUID,
+    current_user: CurrentUser,
+    use_case: FromDishka[ExportDocumentUseCase],
+    export_format: str = Query(default="markdown", alias="format", pattern="^(markdown|md|pdf)$"),
+) -> Response:
+    result = await use_case(to_get_document_dto(document_id, current_user.id), export_format=export_format)
+    return Response(
+        content=result.content,
+        media_type=result.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
+    )
 
 
 @router.get("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkResponse)

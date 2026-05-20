@@ -27,6 +27,7 @@ celery_app = Celery(
         "src.infrastructure.celery.tasks.embedding_tasks",
         "src.infrastructure.celery.tasks.enrichment_tasks",
         "src.infrastructure.celery.tasks.media_processing_tasks",
+        "src.infrastructure.celery.tasks.repo_sync_tasks",
     ],
 )
 
@@ -47,6 +48,15 @@ celery_app.conf.update(
         },
         "src.infrastructure.celery.tasks.enrichment_tasks.*": {
             "queue": "media_processing",
+        },
+        "src.infrastructure.celery.tasks.repo_sync_tasks.*": {
+            "queue": "cleanup",
+        },
+    },
+    beat_schedule={
+        "run-due-repo-syncs": {
+            "task": "src.infrastructure.celery.tasks.repo_sync_tasks.run_due_repo_syncs_task",
+            "schedule": 900.0,
         },
     },
 

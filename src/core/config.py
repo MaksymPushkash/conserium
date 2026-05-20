@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""
+    GITHUB_TOKEN: str = ""
+    REPO_SYNC_INTERVAL_MINUTES: int = 360
+    REPO_SYNC_BATCH_LIMIT: int = 10
+    NOTION_API_TOKEN: str = ""
+    NOTION_PARENT_PAGE_ID: str = ""
+    NOTION_CLIENT_ID: str = ""
+    NOTION_CLIENT_SECRET: str = ""
+    TOKEN_ENCRYPTION_KEY: str = ""
+    TOKEN_ENCRYPTION_KEY_VERSION: str = "v1"
 
     FRONTEND_URL: str
     OAUTH_INCLUDE_REFRESH_TOKEN_IN_FRAGMENT: bool = False

@@ -42,3 +42,12 @@ class ITopicRepository(ABC):
         name: str,
         document_limit: int,
     ) -> TopicDetailRecord | None: ...
+
+    @abstractmethod
+    async def get_details_by_names(
+        self,
+        user_id: UUID,
+        *,
+        names: set[str],
+        document_limit: int,
+    ) -> dict[str, TopicDetailRecord]: ...

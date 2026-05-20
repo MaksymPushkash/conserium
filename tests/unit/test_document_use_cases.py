@@ -13,7 +13,7 @@ from src.application.dtos.document_dtos import (
     SearchDocumentsDTO,
 )
 from src.application.dtos.ingestion_dtos import IngestDocumentDTO
-from src.application.dtos.note_dtos import CreateNoteDTO, ListNotesDTO, UpdateNoteDTO
+from src.application.dtos.note_dtos import CreateNoteDTO, GetNoteDTO, ListNotesDTO, UpdateNoteDTO
 from src.application.ports.ai.embedding_provider import IEmbeddingProvider
 from src.application.ports.persistence.chunk_repository import ChunkSearchResult
 from src.application.ports.persistence.document_activity_repository import (
@@ -27,7 +27,15 @@ from src.application.use_cases.documents.delete_document_use_case import DeleteD
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
 from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
-from src.application.use_cases.documents.note_use_cases import CreateNoteUseCase, ListNotesUseCase, UpdateNoteUseCase
+from src.application.use_cases.documents.note_use_cases import (
+    CreateNoteUseCase,
+    DeleteNoteUseCase,
+    GetNoteUseCase,
+    ListNotesUseCase,
+    ListNoteVersionsUseCase,
+    RestoreNoteVersionUseCase,
+    UpdateNoteUseCase,
+)
 from src.application.use_cases.documents.search_documents_use_case import SearchDocumentsUseCase
 from src.domain.entities.chunk_entity import ChunkEntity
 from src.domain.entities.document_entity import DocumentEntity
@@ -166,6 +174,7 @@ class _FakeChunkRepository:
         collection_id: uuid.UUID | None = None,
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
+        document_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> list[ChunkSearchResult]:
         self.search_calls.append(
             {
@@ -176,6 +185,7 @@ class _FakeChunkRepository:
                 "collection_id": collection_id,
                 "tag_names": tag_names,
                 "document_types": document_types,
+                "document_ids": document_ids,
             }
         )
         return self.search_results
@@ -309,6 +319,36 @@ def _make_document(
         duplicate_of_id=None,
         created_at=datetime.now(UTC),
         updated_at=None,
+    )
+
+
+def _make_note_document(
+    *,
+    user_id: uuid.UUID | None = None,
+    title: str = "Saved note",
+    content: str = "Important text",
+    status: DocumentStatus = DocumentStatus.READY,
+) -> DocumentEntity:
+    document = _make_document(user_id=user_id, title=title, status=status)
+    return DocumentEntity(
+        id=document.id,
+        user_id=document.user_id,
+        collection_id=document.collection_id,
+        title=document.title,
+        type=DocumentType.MARKDOWN,
+        status=document.status,
+        source_url=document.source_url,
+        file_path=document.file_path,
+        file_size_bytes=document.file_size_bytes,
+        raw_content=content,
+        summary=document.summary,
+        word_count=len(content.split()),
+        language=document.language,
+        doc_embedding=None,
+        is_duplicate=document.is_duplicate,
+        duplicate_of_id=document.duplicate_of_id,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
     )
 
 
@@ -558,6 +598,30 @@ async def test_list_notes_use_case_filters_and_counts_notes_in_repository() -> N
     assert [item.id for item in result.items] == [note.id]
 
 
+async def test_get_note_use_case_returns_owned_note() -> None:
+    user_id = uuid.uuid4()
+    note = _make_note_document(user_id=user_id)
+    use_case = GetNoteUseCase(_as_uow(_FakeUnitOfWork(_FakeDocumentRepository([note]))))
+
+    result = await use_case(GetNoteDTO(user_id=user_id, note_id=note.id))
+
+    assert result.id == note.id
+    assert result.content == "Important text"
+
+
+async def test_delete_note_use_case_deletes_owned_note() -> None:
+    user_id = uuid.uuid4()
+    note = _make_note_document(user_id=user_id)
+    document_repo = _FakeDocumentRepository([note])
+    uow = _FakeUnitOfWork(document_repo)
+    use_case = DeleteNoteUseCase(_as_uow(uow))
+
+    await use_case(user_id=user_id, note_id=note.id)
+
+    assert document_repo.deleted == [note.id]
+    assert uow.committed is True
+
+
 async def test_update_note_use_case_clears_chunks_for_empty_note() -> None:
     user_id = uuid.uuid4()
     base_note = _make_document(user_id=user_id)
@@ -667,3 +731,60 @@ async def test_update_note_use_case_coalesces_autosave_versions() -> None:
     await use_case(UpdateNoteDTO(user_id=user_id, note_id=note.id, title=note.title, content="Second autosave"))
 
     assert len(uow.note_version_repo.records) == 1
+
+
+async def test_list_note_versions_use_case_returns_owned_note_versions() -> None:
+    user_id = uuid.uuid4()
+    note = _make_note_document(user_id=user_id)
+    uow = _FakeUnitOfWork(_FakeDocumentRepository([note]))
+    version_id = uuid.uuid4()
+    uow.note_version_repo.records.append(
+        NoteVersionRecord(
+            id=version_id,
+            note_id=note.id,
+            user_id=user_id,
+            version_number=1,
+            title="Earlier note",
+            content="Earlier content",
+            created_at=datetime.now(UTC),
+        )
+    )
+    use_case = ListNoteVersionsUseCase(_as_uow(uow))
+
+    result = await use_case(user_id=user_id, note_id=note.id)
+
+    assert [version.id for version in result] == [version_id]
+    assert result[0].content == "Earlier content"
+
+
+async def test_restore_note_version_use_case_restores_content_and_queues_processing() -> None:
+    user_id = uuid.uuid4()
+    note = _make_note_document(user_id=user_id, title="Current", content="Current content")
+    uow = _FakeUnitOfWork(_FakeDocumentRepository([note]))
+    version_id = uuid.uuid4()
+    uow.note_version_repo.records.append(
+        NoteVersionRecord(
+            id=version_id,
+            note_id=note.id,
+            user_id=user_id,
+            version_number=1,
+            title="Restored",
+            content="Restored content",
+            created_at=datetime.now(UTC),
+        )
+    )
+    status_cache = _FakeStatusCache()
+    dispatcher = _SuccessfulTaskDispatcher()
+    use_case = RestoreNoteVersionUseCase(
+        _as_uow(uow),
+        cast("IDocumentStatusCache", status_cache),
+        cast("ITaskDispatcher", dispatcher),
+    )
+
+    result = await use_case(user_id=user_id, note_id=note.id, version_id=version_id)
+
+    assert result.title == "Restored"
+    assert result.content == "Restored content"
+    assert result.status == DocumentStatus.QUEUED
+    assert len(uow.note_version_repo.records) == 2
+    assert dispatcher.processed_document_ids == [str(note.id)]

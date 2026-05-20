@@ -28,7 +28,7 @@ async def query_documents(
     use_case: FromDishka[QueryUseCase],
 ) -> QueryResponse:
     with query_latency_timer("sync"):
-        result = await use_case(to_query_dto(body, current_user.id))
+        result = await use_case(to_query_dto(body, current_user))
     record_http_request("query_documents", status="200")
     return to_query_response(result)
 
@@ -45,7 +45,7 @@ async def stream_query_documents(
     async def event_stream() -> AsyncIterator[str]:
         started_at = perf_counter()
         try:
-            async for event in use_case(to_query_dto(body, current_user.id)):
+            async for event in use_case(to_query_dto(body, current_user)):
                 yield format_sse_event(event)
         finally:
             observe_query_latency("stream", perf_counter() - started_at)

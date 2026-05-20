@@ -8,8 +8,8 @@ import structlog
 
 from src.application.agents.query.state import CortexQueryState
 from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStreamEventType
-from src.application.services.query_orchestration import (
-    QueryOrchestrationService,
+from src.application.services.query_orchestration import QueryOrchestrationService
+from src.application.services.query_payloads import (
     mark_sources_used_in_answer,
     query_debug_payload,
     refrag_context_payload,
@@ -65,7 +65,12 @@ class StreamQueryUseCase:
                     collection_id=dto.collection_id,
                     tag_names=dto.tag_names,
                     document_types=dto.document_types,
+                    document_ids=dto.document_ids,
                     conversation_turns=conversation_turns,
+                    retrieval_query=dto.retrieval_query.strip() if dto.retrieval_query is not None else None,
+                    relevance_query=dto.relevance_query.strip() if dto.relevance_query is not None else None,
+                    answer_language=dto.answer_language,
+                    retrieval_depth=dto.retrieval_depth,
                 )
             )
             if state.refrag_context is None:

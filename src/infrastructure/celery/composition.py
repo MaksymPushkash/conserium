@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from src.application.dtos.repo_sync_dtos import RepoSyncDTO, RunRepoSyncDTO
 from src.application.services.enrichment.enrichment_service import EnrichmentService
 from src.application.use_cases.documents.enrich_document_use_case import EnrichDocumentUseCase
 from src.application.use_cases.documents.process_document_embeddings_use_case import (
@@ -12,6 +15,8 @@ from src.application.use_cases.documents.process_document_ingestion_use_case imp
     ProcessDocumentIngestionUseCase,
 )
 from src.application.use_cases.documents.process_image_document_use_case import ProcessImageDocumentUseCase
+from src.application.use_cases.repo_syncs import RunRepoSyncUseCase
+from src.core.config import settings
 from src.infrastructure.ai.extractors.image_extractor import ImageExtractor
 from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
 from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
@@ -28,8 +33,11 @@ from src.infrastructure.celery.dispatcher import CeleryTaskDispatcher
 from src.infrastructure.database.services.document_tag_sync import SQLAlchemyDocumentTagSync
 from src.infrastructure.database.services.document_topic_sync import SQLAlchemyDocumentTopicSync
 from src.infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
+from src.infrastructure.integrations.github_repository_client import GitHubRepositoryClient
 from src.infrastructure.storage.factory import build_file_storage
 from src.infrastructure.text_processing.simple_text_chunker import SimpleTextChunker
+
+logger = logging.getLogger(__name__)
 
 
 async def process_document_ingestion(document_id: str) -> dict[str, str]:
@@ -136,3 +144,45 @@ async def process_image_document(document_id: str) -> dict[str, str]:
             return {"document_id": result.document_id, "status": result.status}
     finally:
         await redis.aclose()
+
+
+async def run_due_repo_syncs() -> dict[str, int]:
+    factory = get_worker_session_factory()
+    redis = get_worker_redis(decode_responses=True)
+    try:
+        async with factory() as session:
+            uow = SQLAlchemyUnitOfWork(session)
+            cutoff = datetime.now(UTC) - timedelta(minutes=settings.REPO_SYNC_INTERVAL_MINUTES)
+            repo_syncs = await _list_due_repo_syncs(uow, cutoff=cutoff)
+            use_case = RunRepoSyncUseCase(
+                uow=uow,
+                github_client=GitHubRepositoryClient(),
+                status_cache=RedisDocumentStatusCache(redis),
+                task_dispatcher=CeleryTaskDispatcher(),
+            )
+            completed = 0
+            failed = 0
+            for repo_sync in repo_syncs:
+                try:
+                    await use_case(
+                        RunRepoSyncDTO(
+                            user_id=repo_sync.user_id,
+                            repo_sync_id=repo_sync.id,
+                            max_files=50,
+                        )
+                    )
+                    completed += 1
+                except Exception as exc:
+                    logger.exception("Repo sync failed for %s/%s@%s: %s", repo_sync.owner, repo_sync.repo, repo_sync.branch, exc)
+                    failed += 1
+            return {"queued": len(repo_syncs), "completed": completed, "failed": failed}
+    finally:
+        await redis.aclose()
+
+
+async def _list_due_repo_syncs(uow: SQLAlchemyUnitOfWork, *, cutoff: datetime) -> list[RepoSyncDTO]:
+    async with uow:
+        return await uow.repo_sync_repo.list_due_for_sync(
+            before=cutoff,
+            limit=settings.REPO_SYNC_BATCH_LIMIT,
+        )

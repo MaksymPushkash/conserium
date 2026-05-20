@@ -1,7 +1,7 @@
 """Tests for Celery error handling and classification."""
 
 from openai import APIConnectionError, APITimeoutError, RateLimitError
-from requests.exceptions import ConnectionError, Timeout  # type: ignore[import-untyped]
+from requests.exceptions import ConnectionError, Timeout  # type: ignore[import-untyped,unused-ignore]
 
 from src.domain.exceptions import DomainException, ValidationException
 from src.infrastructure.celery.error_handling import classify_error

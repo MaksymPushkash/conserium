@@ -15,12 +15,21 @@ from src.presentation.api.health import router as health_router
 from src.presentation.api.v1.auth import router as auth_router
 from src.presentation.api.v1.chats import router as chat_router
 from src.presentation.api.v1.collections import router as collection_router
+from src.presentation.api.v1.compare import router as compare_router
+from src.presentation.api.v1.conflicts import router as conflict_router
 from src.presentation.api.v1.documents import router as document_router
 from src.presentation.api.v1.drafts import router as draft_router
+from src.presentation.api.v1.exports import router as export_router
 from src.presentation.api.v1.ingestion import router as ingestion_router
+from src.presentation.api.v1.integrations import router as integration_router
+from src.presentation.api.v1.knowledge_gaps import router as knowledge_gap_router
+from src.presentation.api.v1.knowledge_graph import router as knowledge_graph_router
+from src.presentation.api.v1.learning_goals import router as learning_goal_router
 from src.presentation.api.v1.notes import router as note_router
 from src.presentation.api.v1.observability import router as observability_router
+from src.presentation.api.v1.public import router as public_router
 from src.presentation.api.v1.query import router as query_router
+from src.presentation.api.v1.repo_syncs import router as repo_sync_router
 from src.presentation.api.v1.stats import router as stats_router
 from src.presentation.api.v1.topics import router as topic_router
 from src.presentation.api.v1.user import router as user_router
@@ -60,15 +69,24 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(user_router, prefix="/api/v1")
     app.include_router(collection_router, prefix="/api/v1")
+    app.include_router(compare_router, prefix="/api/v1")
+    app.include_router(conflict_router, prefix="/api/v1")
     app.include_router(document_router, prefix="/api/v1")
     app.include_router(draft_router, prefix="/api/v1")
+    app.include_router(export_router, prefix="/api/v1")
     app.include_router(ingestion_router, prefix="/api/v1")
+    app.include_router(integration_router, prefix="/api/v1")
+    app.include_router(knowledge_graph_router, prefix="/api/v1")
+    app.include_router(knowledge_gap_router, prefix="/api/v1")
+    app.include_router(learning_goal_router, prefix="/api/v1")
     app.include_router(note_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(query_router, prefix="/api/v1")
+    app.include_router(repo_sync_router, prefix="/api/v1")
     app.include_router(stats_router, prefix="/api/v1")
     app.include_router(topic_router, prefix="/api/v1")
     app.include_router(observability_router, prefix="/api/v1")
+    app.include_router(public_router, prefix="/api/v1")
 
     return app
 
