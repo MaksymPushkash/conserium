@@ -43,6 +43,31 @@ class SQLAlchemyTopicRepository(ITopicRepository):
         documents = await self._documents_for_topic(user_id=user_id, name=name, limit=document_limit)
         return TopicDetailRecord(topic=topic, documents=documents)
 
+    async def get_details_by_names(
+        self,
+        user_id: UUID,
+        *,
+        names: set[str],
+        document_limit: int,
+    ) -> dict[str, TopicDetailRecord]:
+        if not names:
+            return {}
+        requested_names = {name.casefold(): name for name in names}
+        topics = {
+            record.name.casefold(): record
+            for record in await self._merged_topics(user_id)
+            if record.name.casefold() in requested_names
+        }
+        documents = await self._documents_for_topic_names(
+            user_id=user_id,
+            names={topic.name for topic in topics.values()},
+            limit=document_limit,
+        )
+        return {
+            topic_name: TopicDetailRecord(topic=topic, documents=documents.get(topic.name.casefold(), []))
+            for topic_name, topic in topics.items()
+        }
+
     async def _merged_topics(self, user_id: UUID) -> list[TopicRecord]:
         topics: dict[str, TopicRecord] = {}
         for record in await self._stored_topics(user_id):
@@ -117,6 +142,27 @@ class SQLAlchemyTopicRepository(ITopicRepository):
         ranked = sorted(documents.values(), key=lambda document: document.created_at, reverse=True)
         return ranked[:limit]
 
+    async def _documents_for_topic_names(
+        self,
+        *,
+        user_id: UUID,
+        names: set[str],
+        limit: int,
+    ) -> dict[str, list[TopicDocumentRecord]]:
+        documents: dict[str, dict[UUID, TopicDocumentRecord]] = {name.casefold(): {} for name in names}
+        for topic_name, records in (await self._stored_topic_documents_by_name(user_id=user_id, names=names)).items():
+            for record in records:
+                documents.setdefault(topic_name.casefold(), {})[record.id] = record
+        fallback_names = {name for name in names if len(documents.get(name.casefold(), {})) < limit}
+        for topic_name, records in (await self._fallback_tag_documents_by_name(user_id=user_id, names=fallback_names)).items():
+            topic_documents = documents.setdefault(topic_name.casefold(), {})
+            for record in records:
+                topic_documents.setdefault(record.id, record)
+        return {
+            topic_name: sorted(topic_documents.values(), key=lambda document: document.created_at, reverse=True)[:limit]
+            for topic_name, topic_documents in documents.items()
+        }
+
     async def _stored_topic_documents(self, *, user_id: UUID, name: str, limit: int) -> list[TopicDocumentRecord]:
         statement = (
             select(
@@ -136,6 +182,31 @@ class SQLAlchemyTopicRepository(ITopicRepository):
             .limit(limit)
         )
         return [topic_document_record(row) for row in (await self._session.execute(statement)).all()]
+
+    async def _stored_topic_documents_by_name(self, *, user_id: UUID, names: set[str]) -> dict[str, list[TopicDocumentRecord]]:
+        if not names:
+            return {}
+        statement = (
+            select(
+                TopicModel.name.label("topic_name"),
+                DocumentModel.id,
+                DocumentModel.title,
+                DocumentModel.type,
+                DocumentModel.status,
+                DocumentModel.summary,
+                DocumentModel.created_at,
+            )
+            .join(document_topics, document_topics.c.document_id == DocumentModel.id)
+            .join(TopicModel, TopicModel.id == document_topics.c.topic_id)
+            .where(DocumentModel.user_id == user_id)
+            .where(TopicModel.user_id == user_id)
+            .where(TopicModel.name.in_(names))
+            .order_by(TopicModel.name.asc(), DocumentModel.created_at.desc())
+        )
+        grouped: dict[str, list[TopicDocumentRecord]] = {}
+        for row in (await self._session.execute(statement)).all():
+            grouped.setdefault(row.topic_name, []).append(topic_document_record(row))
+        return grouped
 
     async def _fallback_tag_documents(self, *, user_id: UUID, name: str, limit: int) -> list[TopicDocumentRecord]:
         document_has_topics = exists().where(document_topics.c.document_id == DocumentModel.id)
@@ -158,6 +229,33 @@ class SQLAlchemyTopicRepository(ITopicRepository):
             .limit(limit)
         )
         return [topic_document_record(row) for row in (await self._session.execute(statement)).all()]
+
+    async def _fallback_tag_documents_by_name(self, *, user_id: UUID, names: set[str]) -> dict[str, list[TopicDocumentRecord]]:
+        if not names:
+            return {}
+        document_has_topics = exists().where(document_topics.c.document_id == DocumentModel.id)
+        statement = (
+            select(
+                TagModel.name.label("topic_name"),
+                DocumentModel.id,
+                DocumentModel.title,
+                DocumentModel.type,
+                DocumentModel.status,
+                DocumentModel.summary,
+                DocumentModel.created_at,
+            )
+            .join(document_tags, document_tags.c.document_id == DocumentModel.id)
+            .join(TagModel, TagModel.id == document_tags.c.tag_id)
+            .where(DocumentModel.user_id == user_id)
+            .where(TagModel.user_id == user_id)
+            .where(TagModel.name.in_(names))
+            .where(~document_has_topics)
+            .order_by(TagModel.name.asc(), DocumentModel.created_at.desc())
+        )
+        grouped: dict[str, list[TopicDocumentRecord]] = {}
+        for row in (await self._session.execute(statement)).all():
+            grouped.setdefault(row.topic_name, []).append(topic_document_record(row))
+        return grouped
 
 
 def max_date(left: datetime | None, right: datetime | None) -> datetime | None:

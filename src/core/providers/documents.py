@@ -5,7 +5,9 @@ from src.application.ports.cache.document_status_cache import IDocumentStatusCac
 from src.application.ports.ingestion.file_storage import IFileStorage
 from src.application.ports.ingestion.task_dispatcher import ITaskDispatcher
 from src.application.ports.ingestion.text_chunker import ITextChunker
+from src.application.ports.integrations.notion_export_client import INotionExportClient
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
+from src.application.ports.security.token_cipher import ITokenCipher
 from src.application.use_cases.documents.collection_use_cases import (
     CreateCollectionUseCase,
     DeleteCollectionUseCase,
@@ -14,6 +16,8 @@ from src.application.use_cases.documents.collection_use_cases import (
 )
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
+from src.application.use_cases.documents.export_document_use_case import ExportDocumentUseCase
+from src.application.use_cases.documents.export_markdown_to_notion_use_case import ExportMarkdownToNotionUseCase
 from src.application.use_cases.documents.get_document_chunk_use_case import GetDocumentChunkUseCase
 from src.application.use_cases.documents.get_document_status_use_case import GetDocumentStatusUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
@@ -38,9 +42,14 @@ from src.application.use_cases.documents.note_use_cases import (
 from src.application.use_cases.documents.reprocess_document_use_case import ReprocessDocumentUseCase
 from src.application.use_cases.documents.retry_document_use_case import RetryDocumentUseCase
 from src.application.use_cases.documents.search_documents_use_case import SearchDocumentsUseCase
+from src.infrastructure.integrations.notion_export_client import NotionExportClient
 
 
 class DocumentsProvider(Provider):
+    @provide(scope=Scope.APP)
+    def get_notion_export_client(self) -> INotionExportClient:
+        return NotionExportClient()
+
     @provide(scope=Scope.REQUEST)
     def get_create_collection_use_case(self, uow: IUnitOfWork) -> CreateCollectionUseCase:
         return CreateCollectionUseCase(uow)
@@ -76,6 +85,19 @@ class DocumentsProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_get_document_use_case(self, uow: IUnitOfWork) -> GetDocumentUseCase:
         return GetDocumentUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_export_document_use_case(self, uow: IUnitOfWork) -> ExportDocumentUseCase:
+        return ExportDocumentUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_export_markdown_to_notion_use_case(
+        self,
+        uow: IUnitOfWork,
+        notion_client: INotionExportClient,
+        token_cipher: ITokenCipher,
+    ) -> ExportMarkdownToNotionUseCase:
+        return ExportMarkdownToNotionUseCase(uow, notion_client, token_cipher)
 
     @provide(scope=Scope.REQUEST)
     def get_get_document_chunk_use_case(self, uow: IUnitOfWork) -> GetDocumentChunkUseCase:

@@ -9,6 +9,8 @@ from src.domain.exceptions import (
     DocumentNotFoundException,
     DomainException,
     EmailAlreadyExistsException,
+    IntegrationConfigurationException,
+    IntegrationRequestException,
     InvalidCredentialsException,
     InvalidEmailException,
     InvalidPasswordException,
@@ -37,6 +39,8 @@ DOMAIN_EXCEPTION_STATUS: dict[type[DomainException], int] = {
     InvalidEmailException: status.HTTP_422_UNPROCESSABLE_CONTENT,
     InvalidPasswordException: status.HTTP_422_UNPROCESSABLE_CONTENT,
     ValidationException: status.HTTP_422_UNPROCESSABLE_CONTENT,
+    IntegrationConfigurationException: status.HTTP_422_UNPROCESSABLE_CONTENT,
+    IntegrationRequestException: status.HTTP_502_BAD_GATEWAY,
     QueryProcessingException: status.HTTP_500_INTERNAL_SERVER_ERROR,
     ApplicationStateException: status.HTTP_500_INTERNAL_SERVER_ERROR,
 }

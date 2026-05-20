@@ -21,3 +21,4 @@ def test_celery_routes_ingestion_tasks_to_expected_queues() -> None:
     assert routes["src.infrastructure.celery.tasks.embedding_tasks.*"]["queue"] == "embeddings"
     assert routes["src.infrastructure.celery.tasks.media_processing_tasks.*"]["queue"] == "media_processing"
     assert routes["src.infrastructure.celery.tasks.enrichment_tasks.*"]["queue"] == "media_processing"
+    assert routes["src.infrastructure.celery.tasks.repo_sync_tasks.*"]["queue"] == "cleanup"

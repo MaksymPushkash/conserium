@@ -65,6 +65,7 @@ class _FakeChunkRepository:
         collection_id: uuid.UUID | None = None,
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
+        document_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> list[ChunkSearchResult]:
         self.received_embedding = embedding
         self.received_user_id = user_id

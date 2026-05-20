@@ -50,4 +50,5 @@ class IChunkRepository(ABC):
         collection_id: UUID | None = None,
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
+        document_ids: tuple[UUID, ...] | None = None,
     ) -> list[ChunkSearchResult]: ...

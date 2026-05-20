@@ -165,6 +165,33 @@ class DocumentEntity:
     def updated_at(self) -> datetime | None:
         return self._updated_at
 
+    def snapshot(self) -> "DocumentEntity":
+        return DocumentEntity(
+            id=self._id,
+            user_id=self._user_id,
+            collection_id=self._collection_id,
+            title=self._title,
+            type=self._type,
+            status=self._status,
+            source_url=self._source_url,
+            file_path=self._file_path,
+            file_size_bytes=self._file_size_bytes,
+            raw_content=self._raw_content,
+            summary=self._summary,
+            word_count=self._word_count,
+            language=self._language,
+            entities=self.entities,
+            categories=self.categories,
+            visual_metadata=self.visual_metadata,
+            suggested_questions=self.suggested_questions,
+            doc_embedding=self.doc_embedding,
+            is_duplicate=self._is_duplicate,
+            duplicate_of_id=self._duplicate_of_id,
+            created_at=self._created_at,
+            updated_at=self._updated_at,
+            tags=self.tags,
+        )
+
     @classmethod
     def create(
         cls,

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import case, func, outerjoin, select
@@ -10,6 +10,7 @@ from src.application.ports.persistence.document_activity_repository import (
     DocumentActivitySummary,
     IDocumentActivityRepository,
 )
+from src.domain.services.document_activity import activity_temperature
 from src.infrastructure.database.models.document import DocumentModel
 from src.infrastructure.database.models.document_activity import DocumentActivityModel
 
@@ -60,7 +61,7 @@ class SQLAlchemyDocumentActivityRepository(IDocumentActivityRepository):
     async def summarize_user_overview(self, *, user_id: UUID) -> DocumentActivityOverview:
         last_used_rows = await self._last_used_rows(user_id)
         event_counts = await self._event_counts(user_id)
-        temperatures = [_activity_temperature(last_used_at) for last_used_at in last_used_rows]
+        temperatures = [activity_temperature(last_used_at) for last_used_at in last_used_rows]
         return DocumentActivityOverview(
             hot_documents=temperatures.count("hot"),
             cold_documents=temperatures.count("cold"),
@@ -106,12 +107,3 @@ class SQLAlchemyDocumentActivityRepository(IDocumentActivityRepository):
         for event_type, count in rows:
             counts[str(event_type)] = int(count)
         return counts
-
-
-def _activity_temperature(last_used_at: datetime) -> str:
-    age_days = (datetime.now(UTC) - last_used_at).days
-    if age_days >= 30:
-        return "forgotten"
-    if age_days >= 14:
-        return "cold"
-    return "hot"

@@ -9,7 +9,7 @@ from src.application.agents.query.state import CortexQueryState, QueryType
 from src.application.agents.query.synthesis_agent import ABSTENTION_ANSWER, SynthesisAgent
 from src.application.dtos.conversation_dtos import ConversationSourceDTO, ConversationTurnDTO
 from src.application.dtos.query_dtos import QuerySourceDTO
-from src.application.dtos.refrag_dtos import RefragContextPackage
+from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage, RefragRepresentation
 from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
@@ -151,6 +151,29 @@ def test_conversation_context_agent_keeps_standalone_query_unchanged() -> None:
     assert result.promoted_document_ids == []
 
 
+def test_conversation_context_agent_preserves_explicit_retrieval_query() -> None:
+    state = CortexQueryState(
+        query="Write a Markdown draft using only saved context about Python generators",
+        retrieval_query="Python generators",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+        conversation_turns=[
+            ConversationTurnDTO(
+                query="Previous question",
+                answer="Previous answer",
+                sources=[],
+                created_at=datetime.now(UTC),
+            )
+        ],
+    )
+
+    result = ConversationContextAgent().apply(state)
+
+    assert result.retrieval_query == "Python generators"
+    assert result.promoted_document_ids == []
+
+
 def test_conversation_context_agent_does_not_rewrite_short_standalone_query() -> None:
     previous_document_id = uuid.uuid4()
     state = CortexQueryState(
@@ -220,6 +243,7 @@ class _FakeRetrievalService:
         self.received_query: str | None = None
         self.received_tag_names: tuple[str, ...] | None = None
         self.received_document_types: tuple[DocumentType, ...] | None = None
+        self.received_document_ids: tuple[uuid.UUID, ...] | None = None
 
     async def retrieve(
         self,
@@ -230,10 +254,12 @@ class _FakeRetrievalService:
         collection_id: uuid.UUID | None,
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
+        document_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> list[QuerySourceDTO]:
         self.received_query = query
         self.received_tag_names = tag_names
         self.received_document_types = document_types
+        self.received_document_ids = document_ids
         promoted_document_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
         other_document_id = uuid.UUID("00000000-0000-0000-0000-000000000002")
         return [
@@ -272,6 +298,62 @@ async def test_retrieval_agent_uses_contextual_query_and_promotes_previous_docum
     result = await RetrievalAgent(cast("HybridRetrievalService", _FakeRetrievalService())).retrieve(state)
 
     assert result.sources[0].document_id == promoted_document_id
+
+
+class _DraftRetrievalService:
+    async def retrieve(
+        self,
+        *,
+        query: str,
+        user_id: uuid.UUID,
+        limit: int,
+        collection_id: uuid.UUID | None,
+        tag_names: tuple[str, ...] | None = None,
+        document_types: tuple[DocumentType, ...] | None = None,
+        document_ids: tuple[uuid.UUID, ...] | None = None,
+    ) -> list[QuerySourceDTO]:
+        return [
+            QuerySourceDTO(
+                chunk_id=uuid.uuid4(),
+                document_id=uuid.uuid4(),
+                document_title="Python Generators",
+                content="Python generators yield values lazily and are useful for memory-efficient iteration.",
+                page_number=None,
+                chunk_index=0,
+                score=0.9,
+            )
+        ]
+
+
+async def test_retrieval_agent_uses_explicit_relevance_query_for_drafts() -> None:
+    state = CortexQueryState(
+        query="Write a Markdown draft using only saved Cortex materials about Python generators.",
+        retrieval_query="Python generators",
+        relevance_query="Python generators",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+    )
+
+    result = await RetrievalAgent(cast("HybridRetrievalService", _DraftRetrievalService())).retrieve(state)
+
+    assert [source.document_title for source in result.sources] == ["Python Generators"]
+
+
+async def test_retrieval_agent_keeps_ranked_context_when_explicit_relevance_filter_is_too_strict() -> None:
+    state = CortexQueryState(
+        query="Write a Markdown draft using only saved Cortex materials.",
+        retrieval_query="Python generators",
+        relevance_query="article outline",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+    )
+
+    result = await RetrievalAgent(cast("HybridRetrievalService", _DraftRetrievalService())).retrieve(state)
+
+    assert [source.document_title for source in result.sources] == ["Python Generators"]
+    assert result.filtered_sources == []
 
 
 async def test_retrieval_agent_filters_to_notes_when_query_requests_notes_only() -> None:
@@ -315,6 +397,7 @@ class _NoiseRetrievalService:
         collection_id: uuid.UUID | None,
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
+        document_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> list[QuerySourceDTO]:
         return [
             QuerySourceDTO(
@@ -362,6 +445,7 @@ class _AuthNoiseRetrievalService:
         collection_id: uuid.UUID | None,
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
+        document_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> list[QuerySourceDTO]:
         return [
             QuerySourceDTO(
@@ -406,9 +490,11 @@ async def test_retrieval_agent_returns_empty_sources_for_collection_scoped_noise
 class _RecordingLLMService:
     def __init__(self) -> None:
         self.called = False
+        self.received_query: str | None = None
 
     async def synthesize_answer(self, *, query: str, context: RefragContextPackage) -> str:
         self.called = True
+        self.received_query = query
         return "LLM answer"
 
 
@@ -434,3 +520,41 @@ async def test_synthesis_agent_abstains_without_selected_context() -> None:
 
     assert result.answer == ABSTENTION_ANSWER
     assert llm_service.called is False
+
+
+async def test_synthesis_agent_applies_answer_language_preference() -> None:
+    llm_service = _RecordingLLMService()
+    state = CortexQueryState(
+        query="Summarize the source",
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        limit=5,
+        answer_language="ukrainian",
+        refrag_context=RefragContextPackage(
+            query="Summarize the source",
+            full_text_chunks=[
+                RefragChunk(
+                    chunk_id=uuid.uuid4(),
+                    document_id=uuid.uuid4(),
+                    document_title="Source",
+                    original_text="Saved context",
+                    context_text="Saved context",
+                    representation=RefragRepresentation.FULL_TEXT,
+                    page_number=None,
+                    chunk_index=0,
+                    score=0.8,
+                    original_token_count=2,
+                    context_token_count=2,
+                ),
+            ],
+            compressed_chunks=[],
+            discarded_chunks=[],
+            total_original_tokens=2,
+            total_context_tokens=2,
+            compression_strategy="test",
+        ),
+    )
+
+    await SynthesisAgent(cast("ILLMService", llm_service)).synthesize(state)
+
+    assert llm_service.received_query == "Summarize the source\n\nAnswer language: Ukrainian."

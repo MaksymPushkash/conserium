@@ -1,11 +1,16 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.application.ports.persistence.stats_repository import IStatsRepository, StatsTimelineBucket
+from src.application.ports.persistence.stats_repository import (
+    IStatsRepository,
+    StatsOverviewRecord,
+    StatsTimelineBucket,
+)
+from src.domain.value_objects.document_status import DocumentStatus
 from src.infrastructure.database.models.document import DocumentModel
 from src.infrastructure.database.models.document_activity import DocumentActivityModel
 
@@ -13,6 +18,75 @@ from src.infrastructure.database.models.document_activity import DocumentActivit
 class SQLAlchemyStatsRepository(IStatsRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def get_overview(self, *, user_id: UUID) -> StatsOverviewRecord:
+        now = datetime.now(UTC)
+        cold_cutoff = now - timedelta(days=14)
+        forgotten_cutoff = now - timedelta(days=30)
+
+        last_used = (
+            select(
+                DocumentModel.id.label("document_id"),
+                func.coalesce(func.max(DocumentActivityModel.created_at), DocumentModel.created_at).label("last_used_at"),
+            )
+            .select_from(DocumentModel)
+            .outerjoin(
+                DocumentActivityModel,
+                (DocumentActivityModel.document_id == DocumentModel.id)
+                & (DocumentActivityModel.user_id == user_id),
+            )
+            .where(DocumentModel.user_id == user_id)
+            .group_by(DocumentModel.id, DocumentModel.created_at)
+            .subquery()
+        )
+
+        total_documents = _document_count(user_id=user_id)
+        ready_documents = _document_count(user_id=user_id, status=DocumentStatus.READY)
+        failed_documents = _document_count(user_id=user_id, status=DocumentStatus.FAILED)
+        pending_documents = _document_count(user_id=user_id, status=DocumentStatus.PENDING)
+        queued_documents = _document_count(user_id=user_id, status=DocumentStatus.QUEUED)
+        processing_documents = _document_count(user_id=user_id, status=DocumentStatus.PROCESSING)
+        query_count = _activity_count(user_id=user_id, event_type="queried")
+        citation_count = _activity_count(user_id=user_id, event_type="cited_in_answer")
+
+        statement = select(
+            total_documents.label("total_documents"),
+            ready_documents.label("ready_documents"),
+            (pending_documents + queued_documents + processing_documents).label("processing_documents"),
+            failed_documents.label("failed_documents"),
+            select(func.count())
+            .select_from(last_used)
+            .where(last_used.c.last_used_at >= cold_cutoff)
+            .scalar_subquery()
+            .label("hot_documents"),
+            select(func.count())
+            .select_from(last_used)
+            .where(last_used.c.last_used_at < cold_cutoff)
+            .where(last_used.c.last_used_at >= forgotten_cutoff)
+            .scalar_subquery()
+            .label("cold_documents"),
+            select(func.count())
+            .select_from(last_used)
+            .where(last_used.c.last_used_at < forgotten_cutoff)
+            .scalar_subquery()
+            .label("forgotten_documents"),
+            select(func.count()).select_from(last_used).scalar_subquery().label("active_documents"),
+            query_count.label("query_count"),
+            citation_count.label("citation_count"),
+        )
+        row = (await self._session.execute(statement)).one()
+        return StatsOverviewRecord(
+            total_documents=int(row.total_documents or 0),
+            ready_documents=int(row.ready_documents or 0),
+            processing_documents=int(row.processing_documents or 0),
+            failed_documents=int(row.failed_documents or 0),
+            hot_documents=int(row.hot_documents or 0),
+            cold_documents=int(row.cold_documents or 0),
+            forgotten_documents=int(row.forgotten_documents or 0),
+            active_documents=int(row.active_documents or 0),
+            query_count=int(row.query_count or 0),
+            citation_count=int(row.citation_count or 0),
+        )
 
     async def get_learning_timeline(self, *, user_id: UUID, months: int) -> list[StatsTimelineBucket]:
         month_count = max(1, min(months, 24))
@@ -92,3 +166,19 @@ def shift_month(value: datetime, offset: int) -> datetime:
 
 def month_key(value: datetime) -> str:
     return f"{value.year:04d}-{value.month:02d}"
+
+
+def _document_count(*, user_id: UUID, status: DocumentStatus | None = None) -> Any:
+    statement = select(func.count(DocumentModel.id)).where(DocumentModel.user_id == user_id)
+    if status is not None:
+        statement = statement.where(DocumentModel.status == status)
+    return statement.scalar_subquery()
+
+
+def _activity_count(*, user_id: UUID, event_type: str) -> Any:
+    return (
+        select(func.count(DocumentActivityModel.id))
+        .where(DocumentActivityModel.user_id == user_id)
+        .where(DocumentActivityModel.event_type == event_type)
+        .scalar_subquery()
+    )

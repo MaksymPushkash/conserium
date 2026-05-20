@@ -225,34 +225,44 @@ uv run pytest tests/unit -v
 uv run python scripts/run_eval_harness.py
 ```
 
-Status: **220 tests passing**, mypy clean, ruff clean.
+Status: unit tests, mypy, ruff, and frontend build are expected to pass before deploy.
 
 ---
 
-## Features (MVP)
+## Features
 
-✅ Document ingestion (PDF, URL, audio, image)  
-✅ Asynchronous processing (Celery + RabbitMQ)  
-✅ Hybrid retrieval (BM25 + pgvector)  
-✅ LLM synthesis + streaming  
-✅ REFRAG context packaging + citations  
-✅ RAGAS eval scoring  
-✅ JWT auth + OAuth2  
-✅ Rate limiting + input validation  
-✅ Prometheus metrics + Grafana dashboards  
-✅ Nginx + HTTPS
-✅ Web UI (Next.js, TypeScript, React, TanStack Query, Zustand, Tailwind CSS, shadcn) Deployed on Vercel
-
-✅ AWS S3 Storage
+- Document ingestion for PDF, URL, YouTube, image, text, and markdown
+- Notes with versions, restore, image upload, and memory indexing
+- Auto summaries, tags, entities, categories, suggested questions, and visual metadata
+- Hybrid retrieval with semantic search, REFRAG packaging, citations, streaming, and evaluation
+- Chat history, contextual follow-up queries, and source activity tracking
+- Library search, filters, collections, document details, exports, retry, and reprocess
+- Dashboard stats, activity temperature, learning timeline, topics, and topic detail pages
+- Draft generation from saved knowledge with source constraints
+- Compare mode and conflict detection v1
+- Knowledge graph v1 and knowledge gaps v1
+- Learning goals with resources and completion tracking
+- Public collection pages with share controls
+- GitHub markdown repo sync v1
+- Markdown, PDF, and Notion export
+- Settings for account, privacy, AI preferences, and integrations
+- Command palette and global drag-and-drop ingestion
+- JWT auth, OAuth integrations, rate limiting, Prometheus, Grafana, Langfuse, and Docker deployment
+- S3-compatible file storage
 
 ---
 
 ## Roadmap
 
-- [ ] Managed media worker (separate VPS)
-- [ ] Role-based access (teams)
-- [ ] Audit logs
-- [ ] SaaS pricing
+- [ ] Notion page picker hardening and token key rotation tooling
+- [ ] Persistent learning resource cache with scheduled refresh
+- [ ] GitHub sync hardening: auth scopes, rate limits, duplicate handling, and sync conflicts
+- [ ] Public knowledge pages security review and analytics
+- [ ] Export polish for Markdown/PDF/Notion
+- [ ] Knowledge gaps v2 with cached rubrics
+- [ ] Conflict detector v2 with background claim extraction
+- [ ] Learning goal reminders and resource plans
+- [ ] Role-based access, audit logs, and billing
 
 ---
 

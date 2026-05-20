@@ -11,10 +11,15 @@ from src.domain.value_objects.document_type import DocumentType
 class QueryDTO:
     user_id: UUID
     query: str
+    retrieval_query: str | None = None
+    relevance_query: str | None = None
+    answer_language: str = "match_question"
+    retrieval_depth: str = "balanced"
     conversation_id: UUID | None = None
     collection_id: UUID | None = None
     tag_names: tuple[str, ...] | None = None
     document_types: tuple[DocumentType, ...] | None = None
+    document_ids: tuple[UUID, ...] | None = None
     limit: int = 5
 
 

@@ -62,6 +62,8 @@ class ConversationContextAgent:
 
     def apply(self, state: CortexQueryState) -> CortexQueryState:
         state.promoted_document_ids = []
+        if state.retrieval_query:
+            return state
         if not state.conversation_turns:
             state.retrieval_query = state.query
             return state

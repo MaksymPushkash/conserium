@@ -26,8 +26,12 @@ class CortexQueryState:
     collection_id: UUID | None = None
     tag_names: tuple[str, ...] | None = None
     document_types: tuple[DocumentType, ...] | None = None
+    document_ids: tuple[UUID, ...] | None = None
     conversation_turns: list[ConversationTurnDTO] = field(default_factory=list)
     retrieval_query: str | None = None
+    relevance_query: str | None = None
+    answer_language: str = "match_question"
+    retrieval_depth: str = "balanced"
     promoted_document_ids: list[UUID] = field(default_factory=list)
     query_type: QueryType = QueryType.SEARCH
     sources: list[QuerySourceDTO] = field(default_factory=list)
@@ -52,8 +56,12 @@ def coerce_cortex_query_state(value: CortexQueryState | Mapping[str, Any]) -> Co
         collection_id=cast("UUID | None", value.get("collection_id")),
         tag_names=cast("tuple[str, ...] | None", value.get("tag_names")),
         document_types=cast("tuple[DocumentType, ...] | None", value.get("document_types")),
+        document_ids=cast("tuple[UUID, ...] | None", value.get("document_ids")),
         conversation_turns=cast("list[ConversationTurnDTO]", value.get("conversation_turns", [])),
         retrieval_query=cast("str | None", value.get("retrieval_query")),
+        relevance_query=cast("str | None", value.get("relevance_query")),
+        answer_language=cast("str", value.get("answer_language", "match_question")),
+        retrieval_depth=cast("str", value.get("retrieval_depth", "balanced")),
         promoted_document_ids=cast("list[UUID]", value.get("promoted_document_ids", [])),
         query_type=query_type if isinstance(query_type, QueryType) else QueryType(query_type),
         sources=cast("list[QuerySourceDTO]", value.get("sources", [])),

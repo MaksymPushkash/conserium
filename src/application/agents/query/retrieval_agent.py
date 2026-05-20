@@ -1,6 +1,7 @@
 import re
 
 from src.application.agents.query.state import CortexQueryState
+from src.application.dtos.query_dtos import QuerySourceDTO
 from src.application.ports.ai.reranker import IReranker
 from src.application.services.retrieval.chunk_quality_filter import ChunkQualityFilter, ChunkRelevanceFilter
 from src.application.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
@@ -34,6 +35,7 @@ class RetrievalAgent:
             collection_id=state.collection_id,
             tag_names=state.tag_names,
             document_types=document_types,
+            document_ids=state.document_ids,
         )
         state.retrieved_sources = list(state.sources)
 
@@ -41,8 +43,14 @@ class RetrievalAgent:
             top_k = min(settings.RERANKER_TOP_K, len(state.sources))
             state.sources = await self._reranker.rerank(state.retrieval_query or state.query, state.sources, top_k)
         quality_sources = self._chunk_quality_filter.filter_sources(state.sources)
-        relevance_query = retrieval_query if document_types == (DocumentType.MARKDOWN,) else state.query
+        explicit_relevance_query = state.relevance_query is not None
+        relevance_query = state.relevance_query or (retrieval_query if document_types == (DocumentType.MARKDOWN,) else state.query)
         relevant_sources = self._chunk_relevance_filter.filter_sources(relevance_query, quality_sources)
+        if explicit_relevance_query or state.document_ids is not None:
+            relevant_sources = _merge_relevance_fallbacks(
+                relevant_sources,
+                quality_sources[: _fallback_source_count(state.limit, document_scoped=state.document_ids is not None)],
+            )
         relevant_keys = {source.chunk_id for source in relevant_sources}
         state.filtered_sources = [source for source in state.sources if source.chunk_id not in relevant_keys]
         state.sources = relevant_sources
@@ -83,3 +91,19 @@ def _strip_notes_filter_terms(query: str) -> str:
     cleaned = re.sub(r"\bmy\s+notes?\b", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or query
+
+
+def _fallback_source_count(limit: int, *, document_scoped: bool) -> int:
+    if document_scoped:
+        return max(4, limit)
+    return min(max(3, limit // 2), limit)
+
+
+def _merge_relevance_fallbacks(primary: list[QuerySourceDTO], fallback: list[QuerySourceDTO]) -> list[QuerySourceDTO]:
+    merged = list(primary)
+    seen = {source.chunk_id for source in merged}
+    for source in fallback:
+        if source.chunk_id not in seen:
+            merged.append(source)
+            seen.add(source.chunk_id)
+    return merged

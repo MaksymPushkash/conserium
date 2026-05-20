@@ -24,6 +24,7 @@ class HybridRetrievalService:
         collection_id: UUID | None,
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
+        document_ids: tuple[UUID, ...] | None = None,
     ) -> list[QuerySourceDTO]:
         embedding = await self._embedding_provider.embed_text(query)
         async with self._uow:
@@ -35,6 +36,7 @@ class HybridRetrievalService:
                 collection_id=collection_id,
                 tag_names=tag_names,
                 document_types=document_types,
+                document_ids=document_ids,
             )
 
         return [
