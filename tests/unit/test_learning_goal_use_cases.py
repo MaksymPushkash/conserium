@@ -153,6 +153,17 @@ class _FakeWebResourceFetcher:
         return FetchedWebResource(title="Python Tutorial", excerpt=f"Fetched {url}")
 
 
+class _PartiallyFailingWebResourceFetcher:
+    def __init__(self) -> None:
+        self.fetch_count = 0
+
+    async def fetch(self, url: str) -> FetchedWebResource | None:
+        self.fetch_count += 1
+        if "tutorial" in url:
+            raise RuntimeError("fetch failed")
+        return FetchedWebResource(title="Fetched resource", excerpt=f"Fetched {url}")
+
+
 def _goal_record(
     *,
     goal_id: UUID,
@@ -313,3 +324,21 @@ async def test_rank_learning_goal_resources_uses_fresh_cache() -> None:
     assert result[0].cached is True
     assert result[0].refreshed_at is not None
     assert fetcher.fetch_count == 0
+
+
+@pytest.mark.asyncio
+async def test_rank_learning_goal_resources_keeps_results_when_one_fetch_fails() -> None:
+    user_id = uuid4()
+    goal = _goal_record(goal_id=uuid4(), user_id=user_id, topic="Python")
+    uow = _FakeUnitOfWork(_FakeLearningGoalRepository([goal]), _FakeTopicRepository({}))
+    fetcher = _PartiallyFailingWebResourceFetcher()
+
+    result = await RankLearningGoalResourcesUseCase(_as_uow(uow), cast("IWebResourceFetcher", fetcher))(
+        user_id=user_id,
+        goal_id=goal.id,
+        refresh=True,
+    )
+
+    assert len(result) == 3
+    assert any(resource.excerpt is None for resource in result)
+    assert uow.goals.cached_resources[goal.id]

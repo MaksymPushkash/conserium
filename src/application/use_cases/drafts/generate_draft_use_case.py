@@ -22,8 +22,7 @@ class GenerateDraftUseCase:
             raise QueryValidationException("draft prompt cannot be empty")
 
         result = await self._query_use_case(draft_query_dto(dto, prompt, relevance_query=prompt, limit=max(dto.limit, 12)))
-        gaps = draft_gaps(result.answer)
-        if gaps:
+        if not has_sufficient_draft_context(result.sources):
             fallback_sources = await self._fallback_sources(dto)
             if fallback_sources:
                 fallback_context = refrag_context_from_sources(draft_query(prompt), fallback_sources)
@@ -32,8 +31,11 @@ class GenerateDraftUseCase:
                     prompt=prompt,
                     markdown=answer,
                     sources=fallback_sources,
-                    gaps=draft_gaps(answer),
+                    gaps=[],
                 )
+            gaps = ["Saved context is insufficient for this draft."]
+        else:
+            gaps = []
         return DraftResultDTO(
             prompt=prompt,
             markdown=result.answer,
@@ -107,9 +109,5 @@ def draft_query(prompt: str) -> str:
     )
 
 
-def draft_gaps(markdown: str) -> list[str]:
-    normalized = markdown.casefold()
-    if "does not contain enough relevant information" in normalized or "could not find relevant saved context" in normalized:
-        return ["Saved context is insufficient for this draft."]
-    return []
-
+def has_sufficient_draft_context(sources: list[QuerySourceDTO]) -> bool:
+    return any(source.used_in_answer for source in sources) or bool(sources)

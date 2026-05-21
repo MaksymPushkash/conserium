@@ -106,6 +106,12 @@ class RunRepoSyncUseCase:
             )
             repo_sync, created, updated, skipped, deleted, changed_documents = await self._sync_files(repo_sync, fetch_result.files)
             await self._queue_changed_documents(changed_documents)
+            repo_sync = await self._set_repo_sync_state(
+                repo_sync.id,
+                status="completed",
+                last_error=None,
+                last_synced_at=datetime.now(UTC),
+            )
         except Exception as exc:
             message = sanitize_repo_sync_error(exc)
             await self._mark_repo_sync_failed(repo_sync.id, message)
@@ -155,9 +161,8 @@ class RunRepoSyncUseCase:
 
             repo_sync = await self._uow.repo_sync_repo.update_state(
                 repo_sync_id=repo_sync.id,
-                status="completed",
+                status="queueing",
                 last_error=None,
-                last_synced_at=now,
             )
             await self._uow.commit()
 
@@ -186,14 +191,17 @@ class RunRepoSyncUseCase:
         *,
         status: str,
         last_error: str | None = None,
-    ) -> None:
+        last_synced_at: datetime | None = None,
+    ) -> RepoSyncDTO:
         async with self._uow:
-            await self._uow.repo_sync_repo.update_state(
+            repo_sync = await self._uow.repo_sync_repo.update_state(
                 repo_sync_id=repo_sync_id,
                 status=status,
                 last_error=last_error,
+                last_synced_at=last_synced_at,
             )
             await self._uow.commit()
+        return repo_sync
 
     async def _mark_repo_sync_failed(self, repo_sync_id: UUID, message: str) -> None:
         try:

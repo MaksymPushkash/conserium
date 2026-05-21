@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 from src.application.dtos.draft_dtos import DraftGenerateDTO
 from src.application.dtos.query_dtos import QueryResultDTO, QuerySourceDTO
 from src.application.dtos.refrag_dtos import RefragContextPackage
-from src.application.use_cases.drafts.generate_draft_use_case import GenerateDraftUseCase, draft_gaps
+from src.application.use_cases.drafts.generate_draft_use_case import GenerateDraftUseCase, has_sufficient_draft_context
 from src.domain.entities.document_entity import DocumentEntity
 from src.domain.exceptions import QueryValidationException
 from src.domain.value_objects.document_status import DocumentStatus
@@ -159,10 +159,8 @@ async def test_generate_draft_rejects_empty_prompt() -> None:
         raise AssertionError("expected QueryValidationException")
 
 
-def test_draft_gaps_detects_insufficient_context() -> None:
-    assert draft_gaps("The provided context does not contain enough relevant information.") == [
-        "Saved context is insufficient for this draft."
-    ]
+def test_has_sufficient_draft_context_uses_sources_not_answer_text() -> None:
+    assert has_sufficient_draft_context([]) is False
 
 
 def _make_document() -> DocumentEntity:
