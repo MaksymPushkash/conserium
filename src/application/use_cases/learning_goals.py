@@ -185,7 +185,11 @@ class RankLearningGoalResourcesUseCase:
                 score=resource_score(resource, fetched is not None),
             )
 
-        return list(await asyncio.gather(*(rank(resource) for resource in resources)))
+        ranked = await asyncio.gather(*(rank(resource) for resource in resources), return_exceptions=True)
+        return [
+            result if isinstance(result, RankedLearningResourceDTO) else unfetched_ranked_resource(resource)
+            for resource, result in zip(resources, ranked, strict=True)
+        ]
 
 
 def learning_goal_to_dto(record: LearningGoalRecordDTO, documents: list[TopicDocumentRecord]) -> LearningGoalDTO:
@@ -277,6 +281,18 @@ def resource_score(resource: SuggestedLearningResourceDTO, fetched: bool) -> flo
     if fetched:
         score += 0.25
     return min(score, 1.0)
+
+
+def unfetched_ranked_resource(resource: SuggestedLearningResourceDTO) -> RankedLearningResourceDTO:
+    return RankedLearningResourceDTO(
+        area=resource.area,
+        title=resource.title,
+        search_query=resource.search_query,
+        reason=resource.reason,
+        url=resource.url,
+        excerpt=None,
+        score=resource_score(resource, fetched=False),
+    )
 
 
 def deadline_status(record: LearningGoalRecordDTO) -> str:

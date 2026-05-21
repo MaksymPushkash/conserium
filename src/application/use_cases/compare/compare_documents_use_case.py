@@ -24,42 +24,52 @@ class CompareDocumentsUseCase:
 
         left_document, right_document = await self._load_documents(dto)
         prompt = compare_prompt(left_document, right_document, dto.prompt)
-        retrieval_query = compare_retrieval_query(left_document, right_document, dto.prompt)
-        result = await self._query_use_case(
-            QueryDTO(
-                user_id=dto.user_id,
-                query=prompt,
-                retrieval_query=retrieval_query,
-                relevance_query="",
-                document_ids=(dto.left_document_id, dto.right_document_id),
-                limit=dto.limit,
-            )
+        direct_sources = await self._load_direct_sources(
+            left_document,
+            right_document,
+            limit=max(dto.limit, 8),
         )
-        used_sources = [source for source in result.sources if source.used_in_answer]
-        if compare_needs_fallback(result.answer):
-            fallback_sources = await self._load_direct_sources(
-                left_document,
-                right_document,
-                limit=max(dto.limit, 8),
-            )
-            if fallback_sources:
-                fallback_context = refrag_context_from_sources(prompt, fallback_sources)
-                answer = await self._llm_service.synthesize_answer(query=prompt, context=fallback_context)
-                return CompareResultDTO(
-                    left_document_id=dto.left_document_id,
-                    right_document_id=dto.right_document_id,
-                    left_title=left_document.title,
-                    right_title=right_document.title,
-                    markdown=answer,
-                    sources=fallback_sources,
+        retrieval_query = compare_retrieval_query(left_document, right_document, dto.prompt)
+        try:
+            result = await self._query_use_case(
+                QueryDTO(
+                    user_id=dto.user_id,
+                    query=prompt,
+                    retrieval_query=retrieval_query,
+                    relevance_query="",
+                    document_ids=(dto.left_document_id, dto.right_document_id),
+                    limit=dto.limit,
                 )
+            )
+            used_sources = [source for source in result.sources if source.used_in_answer]
+            sources = used_sources or result.sources or direct_sources
+            fallback_answer = result.answer
+        except Exception:
+            if not direct_sources:
+                raise
+            sources = direct_sources
+            fallback_answer = ""
+        if direct_sources:
+            context_sources = _rank_direct_sources(direct_sources, sources)
+            answer = await self._llm_service.synthesize_answer(
+                query=prompt,
+                context=refrag_context_from_sources(prompt, context_sources),
+            )
+            return CompareResultDTO(
+                left_document_id=dto.left_document_id,
+                right_document_id=dto.right_document_id,
+                left_title=left_document.title,
+                right_title=right_document.title,
+                markdown=answer,
+                sources=context_sources,
+            )
         return CompareResultDTO(
             left_document_id=dto.left_document_id,
             right_document_id=dto.right_document_id,
             left_title=left_document.title,
             right_title=right_document.title,
-            markdown=result.answer,
-            sources=used_sources or result.sources,
+            markdown=fallback_answer,
+            sources=sources,
         )
 
     async def _load_documents(self, dto: CompareDocumentsDTO) -> tuple[DocumentEntity, DocumentEntity]:
@@ -121,12 +131,12 @@ def compare_retrieval_query(left_document: DocumentEntity, right_document: Docum
     return " ".join(part for part in parts if part.strip())
 
 
-def compare_needs_fallback(markdown: str) -> bool:
-    normalized = markdown.casefold()
-    return (
-        "does not contain enough relevant information" in normalized
-        or "could not find relevant saved context" in normalized
-    )
+def _rank_direct_sources(direct_sources: list[QuerySourceDTO], ranked_sources: list[QuerySourceDTO]) -> list[QuerySourceDTO]:
+    direct_by_id = {source.chunk_id: source for source in direct_sources}
+    ordered = [direct_by_id[source.chunk_id] for source in ranked_sources if source.chunk_id in direct_by_id]
+    seen = {source.chunk_id for source in ordered}
+    ordered.extend(source for source in direct_sources if source.chunk_id not in seen)
+    return ordered
 
 
 def sources_from_chunks(document: DocumentEntity, chunks: list[ChunkEntity], *, limit: int) -> list[QuerySourceDTO]:
