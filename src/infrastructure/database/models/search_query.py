@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +28,7 @@ class SearchQueryModel(UUIDPrimaryKeyMixin, Base):
     
     user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     collection_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete="SET NULL"), nullable=True)
+    document_ids: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]", nullable=False)
     
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
     query_type: Mapped[QueryType] = mapped_column(SQLEnum(QueryType), nullable=False)

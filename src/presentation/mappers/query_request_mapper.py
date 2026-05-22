@@ -14,6 +14,7 @@ def to_query_dto(body: QueryRequest, current_user: UserEntity) -> QueryDTO:
         collection_id=body.collection_id,
         tag_names=tag_names or None,
         document_types=tuple(body.document_types) if body.document_types else None,
+        document_ids=(body.document_id,) if body.document_id else None,
         limit=_query_limit(body.limit, retrieval_depth),
         answer_language=_answer_language(ai_preferences),
         retrieval_depth=retrieval_depth,

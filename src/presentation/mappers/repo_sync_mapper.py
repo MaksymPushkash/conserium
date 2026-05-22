@@ -22,6 +22,8 @@ def to_create_repo_sync_dto(body: CreateRepoSyncRequest, user_id: UUID) -> Creat
         collection_id=body.collection_id,
         repo_url=body.repo_url,
         branch=body.branch,
+        include_paths=body.include_paths,
+        exclude_paths=body.exclude_paths,
     )
 
 
@@ -37,6 +39,8 @@ def to_repo_sync_response(dto: RepoSyncDTO) -> RepoSyncResponse:
         owner=dto.owner,
         repo=dto.repo,
         branch=dto.branch,
+        include_paths=dto.include_paths,
+        exclude_paths=dto.exclude_paths,
         status=dto.status,
         last_error=dto.last_error,
         last_synced_at=dto.last_synced_at,

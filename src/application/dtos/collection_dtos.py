@@ -57,3 +57,64 @@ class CollectionListDTO:
     total: int
     limit: int
     offset: int
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class CollectionWorkspaceStatsDTO:
+    total_documents: int
+    ready_documents: int
+    processing_documents: int
+    failed_documents: int
+    topic_count: int
+    recent_question_count: int
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class CollectionWorkspaceDocumentDTO:
+    id: UUID
+    title: str
+    type: str
+    status: str
+    summary: str | None
+    tags: list[str]
+    activity_temperature: str
+    created_at: datetime
+    updated_at: datetime | None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class CollectionWorkspaceTopicDTO:
+    name: str
+    document_count: int
+    last_document_at: datetime | None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class CollectionWorkspaceGapDTO:
+    title: str
+    reason: str
+    severity: str
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class CollectionWorkspaceQuestionDTO:
+    query_text: str
+    answer_preview: str | None
+    result_count: int
+    created_at: datetime
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class CollectionWorkspaceDTO:
+    collection: CollectionDTO
+    stats: CollectionWorkspaceStatsDTO
+    documents: list[CollectionWorkspaceDocumentDTO]
+    topics: list[CollectionWorkspaceTopicDTO]
+    gaps: list[CollectionWorkspaceGapDTO]
+    recent_questions: list[CollectionWorkspaceQuestionDTO]

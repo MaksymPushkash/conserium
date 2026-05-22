@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from src.application.ports.persistence.knowledge_graph_repository import (
     KnowledgeGraphConcernRecord,
     KnowledgeGraphRecord,
 )
+from src.domain.value_objects.document_type import DocumentType
 from src.infrastructure.database.models.base import document_tags, document_topics
 from src.infrastructure.database.models.document import DocumentModel
 from src.infrastructure.database.models.knowledge_edge import KnowledgeEdgeModel
@@ -28,10 +30,31 @@ class SQLAlchemyKnowledgeGraphRepository(IKnowledgeGraphRepository):
         *,
         document_limit: int,
         topic_limit: int,
+        collection_id: UUID | None = None,
+        tag_name: str | None = None,
+        topic_name: str | None = None,
+        document_type: DocumentType | None = None,
+        recency_days: int | None = None,
     ) -> list[KnowledgeGraphRecord]:
         links = [
-            *await self._stored_topic_links(user_id, document_limit=document_limit, topic_limit=topic_limit),
-            *await self._fallback_tag_links(user_id, document_limit=document_limit, topic_limit=topic_limit),
+            *await self._stored_topic_links(
+                user_id,
+                document_limit=document_limit,
+                collection_id=collection_id,
+                tag_name=tag_name,
+                topic_name=topic_name,
+                document_type=document_type,
+                recency_days=recency_days,
+            ),
+            *await self._fallback_tag_links(
+                user_id,
+                document_limit=document_limit,
+                collection_id=collection_id,
+                tag_name=tag_name,
+                topic_name=topic_name,
+                document_type=document_type,
+                recency_days=recency_days,
+            ),
         ]
         topic_counts: dict[str, int] = {}
         for link in links:
@@ -112,22 +135,40 @@ class SQLAlchemyKnowledgeGraphRepository(IKnowledgeGraphRepository):
         user_id: UUID,
         *,
         document_limit: int,
-        topic_limit: int,
+        collection_id: UUID | None,
+        tag_name: str | None,
+        topic_name: str | None,
+        document_type: DocumentType | None,
+        recency_days: int | None,
     ) -> list[KnowledgeGraphRecord]:
         statement = (
             select(
                 DocumentModel.id,
                 DocumentModel.title,
                 DocumentModel.type,
+                DocumentModel.collection_id,
+                DocumentModel.summary,
+                DocumentModel.created_at,
+                DocumentModel.updated_at,
+                DocumentModel.suggested_questions,
                 TopicModel.name.label("topic_name"),
             )
             .join(document_topics, document_topics.c.document_id == DocumentModel.id)
             .join(TopicModel, TopicModel.id == document_topics.c.topic_id)
             .where(DocumentModel.user_id == user_id)
             .where(TopicModel.user_id == user_id)
-            .where(TopicModel.name.in_(top_topic_names_subquery(user_id, topic_limit)))
             .order_by(DocumentModel.created_at.desc())
             .limit(document_limit * 3)
+        )
+        if topic_name:
+            statement = statement.where(func.lower(TopicModel.name) == topic_name.casefold())
+        statement = apply_document_filters(
+            statement,
+            user_id=user_id,
+            collection_id=collection_id,
+            tag_name=tag_name,
+            document_type=document_type,
+            recency_days=recency_days,
         )
         rows = (await self._session.execute(statement)).all()
         return [
@@ -136,6 +177,11 @@ class SQLAlchemyKnowledgeGraphRepository(IKnowledgeGraphRepository):
                 document_title=row.title,
                 document_type=row.type.value,
                 topic_name=row.topic_name,
+                collection_id=row.collection_id,
+                summary=row.summary,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                suggested_questions=list(row.suggested_questions or []),
             )
             for row in rows
         ]
@@ -145,7 +191,11 @@ class SQLAlchemyKnowledgeGraphRepository(IKnowledgeGraphRepository):
         user_id: UUID,
         *,
         document_limit: int,
-        topic_limit: int,
+        collection_id: UUID | None,
+        tag_name: str | None,
+        topic_name: str | None,
+        document_type: DocumentType | None,
+        recency_days: int | None,
     ) -> list[KnowledgeGraphRecord]:
         document_has_topics = exists().where(document_topics.c.document_id == DocumentModel.id)
         statement = (
@@ -153,6 +203,11 @@ class SQLAlchemyKnowledgeGraphRepository(IKnowledgeGraphRepository):
                 DocumentModel.id,
                 DocumentModel.title,
                 DocumentModel.type,
+                DocumentModel.collection_id,
+                DocumentModel.summary,
+                DocumentModel.created_at,
+                DocumentModel.updated_at,
+                DocumentModel.suggested_questions,
                 TagModel.name.label("topic_name"),
             )
             .join(document_tags, document_tags.c.document_id == DocumentModel.id)
@@ -160,9 +215,18 @@ class SQLAlchemyKnowledgeGraphRepository(IKnowledgeGraphRepository):
             .where(DocumentModel.user_id == user_id)
             .where(TagModel.user_id == user_id)
             .where(~document_has_topics)
-            .where(TagModel.name.in_(top_tag_names_subquery(user_id, topic_limit)))
             .order_by(DocumentModel.created_at.desc())
             .limit(document_limit * 3)
+        )
+        if topic_name:
+            statement = statement.where(func.lower(TagModel.name) == topic_name.casefold())
+        statement = apply_document_filters(
+            statement,
+            user_id=user_id,
+            collection_id=collection_id,
+            tag_name=tag_name,
+            document_type=document_type,
+            recency_days=recency_days,
         )
         rows = (await self._session.execute(statement)).all()
         return [
@@ -171,34 +235,43 @@ class SQLAlchemyKnowledgeGraphRepository(IKnowledgeGraphRepository):
                 document_title=row.title,
                 document_type=row.type.value,
                 topic_name=row.topic_name,
+                collection_id=row.collection_id,
+                summary=row.summary,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                suggested_questions=list(row.suggested_questions or []),
             )
             for row in rows
         ]
 
 
-def top_topic_names_subquery(user_id: UUID, topic_limit: int) -> Any:
-    return (
-        select(TopicModel.name)
-        .join(document_topics, document_topics.c.topic_id == TopicModel.id)
-        .join(DocumentModel, DocumentModel.id == document_topics.c.document_id)
-        .where(TopicModel.user_id == user_id)
-        .where(DocumentModel.user_id == user_id)
-        .group_by(TopicModel.name)
-        .order_by(func.count(DocumentModel.id).desc(), TopicModel.name.asc())
-        .limit(topic_limit)
-    )
+def apply_document_filters(
+    statement: Any,
+    *,
+    user_id: UUID,
+    collection_id: UUID | None,
+    tag_name: str | None,
+    document_type: DocumentType | None,
+    recency_days: int | None,
+) -> Any:
+    if collection_id:
+        statement = statement.where(DocumentModel.collection_id == collection_id)
+    if tag_name:
+        statement = statement.where(document_tag_exists(user_id, tag_name))
+    if document_type:
+        statement = statement.where(DocumentModel.type == document_type)
+    if recency_days:
+        cutoff = datetime.now(UTC) - timedelta(days=recency_days)
+        statement = statement.where(DocumentModel.created_at >= cutoff)
+    return statement
 
 
-def top_tag_names_subquery(user_id: UUID, topic_limit: int) -> Any:
-    document_has_topics = exists().where(document_topics.c.document_id == DocumentModel.id)
+def document_tag_exists(user_id: UUID, tag_name: str) -> Any:
     return (
-        select(TagModel.name)
-        .join(document_tags, document_tags.c.tag_id == TagModel.id)
-        .join(DocumentModel, DocumentModel.id == document_tags.c.document_id)
+        select(1)
+        .select_from(document_tags.join(TagModel, TagModel.id == document_tags.c.tag_id))
+        .where(document_tags.c.document_id == DocumentModel.id)
         .where(TagModel.user_id == user_id)
-        .where(DocumentModel.user_id == user_id)
-        .where(~document_has_topics)
-        .group_by(TagModel.name)
-        .order_by(func.count(DocumentModel.id).desc(), TagModel.name.asc())
-        .limit(topic_limit)
+        .where(func.lower(TagModel.name) == tag_name.casefold())
+        .exists()
     )

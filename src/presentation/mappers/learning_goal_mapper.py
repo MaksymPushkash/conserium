@@ -87,6 +87,7 @@ def to_ranked_resource_response(dto: RankedLearningResourceDTO) -> RankedLearnin
         url=dto.url,
         excerpt=dto.excerpt,
         score=dto.score,
+        warning=dto.warning,
         cached=dto.cached,
         refreshed_at=dto.refreshed_at,
     )

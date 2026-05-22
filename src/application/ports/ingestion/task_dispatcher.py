@@ -12,6 +12,10 @@ class ITaskDispatcher(ABC):
         """Enqueue image OCR/chunking work on the media worker."""
 
     @abstractmethod
+    async def dispatch_repo_sync_outbox(self) -> None:
+        """Enqueue repo sync outbox draining work."""
+
+    @abstractmethod
     async def dispatch_embed_and_finalize_document(
         self,
         *,

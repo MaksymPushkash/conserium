@@ -110,6 +110,9 @@ class _FakeTaskDispatcher(ITaskDispatcher):
     async def dispatch_process_image_document(self, document_id: str) -> None:
         raise NotImplementedError
 
+    async def dispatch_repo_sync_outbox(self) -> None:
+        raise NotImplementedError
+
     async def dispatch_embed_and_finalize_document(
         self,
         *,

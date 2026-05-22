@@ -15,7 +15,7 @@ from src.application.use_cases.documents.process_document_ingestion_use_case imp
     ProcessDocumentIngestionUseCase,
 )
 from src.application.use_cases.documents.process_image_document_use_case import ProcessImageDocumentUseCase
-from src.application.use_cases.repo_syncs import RunRepoSyncUseCase
+from src.application.use_cases.repo_syncs import DrainRepoSyncOutboxUseCase, RunRepoSyncUseCase
 from src.core.config import settings
 from src.infrastructure.ai.extractors.image_extractor import ImageExtractor
 from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
@@ -157,7 +157,6 @@ async def run_due_repo_syncs() -> dict[str, int]:
             use_case = RunRepoSyncUseCase(
                 uow=uow,
                 github_client=GitHubRepositoryClient(),
-                status_cache=RedisDocumentStatusCache(redis),
                 task_dispatcher=CeleryTaskDispatcher(),
             )
             completed = 0
@@ -176,6 +175,27 @@ async def run_due_repo_syncs() -> dict[str, int]:
                     logger.exception("Repo sync failed for %s/%s@%s: %s", repo_sync.owner, repo_sync.repo, repo_sync.branch, exc)
                     failed += 1
             return {"queued": len(repo_syncs), "completed": completed, "failed": failed}
+    finally:
+        await redis.aclose()
+
+
+async def drain_repo_sync_outbox(*, limit: int = 100) -> dict[str, int]:
+    factory = get_worker_session_factory()
+    redis = get_worker_redis(decode_responses=True)
+    try:
+        async with factory() as session:
+            use_case = DrainRepoSyncOutboxUseCase(
+                uow=SQLAlchemyUnitOfWork(session),
+                status_cache=RedisDocumentStatusCache(redis),
+                task_dispatcher=CeleryTaskDispatcher(),
+            )
+            result = await use_case(limit=limit)
+            return {
+                "claimed": result.claimed,
+                "dispatched": result.dispatched,
+                "failed": result.failed,
+                "permanently_failed": result.permanently_failed,
+            }
     finally:
         await redis.aclose()
 

@@ -9,6 +9,11 @@ class KnowledgeGraphNodeDTO:
     kind: str
     label: str
     detail: str | None = None
+    collection_id: UUID | None = None
+    summary: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    suggested_questions: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)

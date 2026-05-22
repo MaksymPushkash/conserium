@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from src.application.dtos.repo_sync_dtos import RepoSyncDTO, RepoSyncItemDTO
+from src.application.dtos.repo_sync_dtos import RepoSyncDTO, RepoSyncItemDTO, RepoSyncOutboxDTO
 
 
 class IRepoSyncRepository(ABC):
@@ -36,6 +36,17 @@ class IRepoSyncRepository(ABC):
         owner: str,
         repo: str,
         branch: str,
+        include_paths: list[str],
+        exclude_paths: list[str],
+    ) -> RepoSyncDTO: ...
+
+    @abstractmethod
+    async def update_filters(
+        self,
+        *,
+        repo_sync_id: UUID,
+        include_paths: list[str],
+        exclude_paths: list[str],
     ) -> RepoSyncDTO: ...
 
     @abstractmethod
@@ -68,3 +79,37 @@ class IRepoSyncRepository(ABC):
 
     @abstractmethod
     async def delete_item(self, item_id: UUID) -> None: ...
+
+    @abstractmethod
+    async def create_outbox(
+        self,
+        *,
+        repo_sync_id: UUID,
+        document_id: UUID,
+        task_name: str,
+    ) -> RepoSyncOutboxDTO: ...
+
+    @abstractmethod
+    async def claim_outbox_batch(
+        self,
+        *,
+        limit: int,
+        locked_at: datetime,
+        stale_before: datetime,
+        max_attempts: int,
+    ) -> list[RepoSyncOutboxDTO]: ...
+
+    @abstractmethod
+    async def mark_outbox_dispatched(self, outbox_id: UUID, dispatched_at: datetime) -> RepoSyncOutboxDTO: ...
+
+    @abstractmethod
+    async def mark_outbox_failed(
+        self,
+        outbox_id: UUID,
+        *,
+        last_error: str,
+        retryable: bool,
+    ) -> RepoSyncOutboxDTO: ...
+
+    @abstractmethod
+    async def has_active_outbox(self, repo_sync_id: UUID) -> bool: ...

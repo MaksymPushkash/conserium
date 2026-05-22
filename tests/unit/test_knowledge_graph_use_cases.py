@@ -28,13 +28,19 @@ class _FakeKnowledgeGraphRepository:
         *,
         document_limit: int,
         topic_limit: int,
+        **filters: object,
     ) -> list[KnowledgeGraphRecord]:
+        assert document_limit > 0
+        assert topic_limit > 0
+        assert filters is not None
         return [
             KnowledgeGraphRecord(
                 document_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
                 document_title="FastAPI Notes",
                 document_type="TEXT",
                 topic_name="python",
+                summary="FastAPI summary",
+                suggested_questions=["How does FastAPI work?"],
             ),
             KnowledgeGraphRecord(
                 document_id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
@@ -113,6 +119,9 @@ async def test_get_knowledge_graph_returns_topic_document_nodes_and_edges() -> N
     }
     assert uow.knowledge_graph_repo.replaced_edge_count == 0
     assert not uow.committed
+    fastapi_node = next(node for node in result.nodes if node.id == "document:00000000-0000-0000-0000-000000000001")
+    assert fastapi_node.summary == "FastAPI summary"
+    assert fastapi_node.suggested_questions == ["How does FastAPI work?"]
 
 
 async def test_recompute_knowledge_graph_persists_document_edges() -> None:

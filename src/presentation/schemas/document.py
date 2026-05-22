@@ -167,6 +167,19 @@ class DocumentSearchResponse(BaseModel):
     limit: int
 
 
+class DocumentQuestionHistoryItemResponse(BaseModel):
+    query_text: str
+    answer_text: str | None
+    result_count: int
+    created_at: datetime
+
+
+class DocumentQuestionHistoryResponse(BaseModel):
+    items: list[DocumentQuestionHistoryItemResponse]
+    document_id: UUID
+    limit: int
+
+
 class DocumentStatusResponse(BaseModel):
     document_id: UUID
     status: str

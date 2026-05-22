@@ -110,4 +110,4 @@ def draft_query(prompt: str) -> str:
 
 
 def has_sufficient_draft_context(sources: list[QuerySourceDTO]) -> bool:
-    return any(source.used_in_answer for source in sources) or bool(sources)
+    return any(source.used_in_answer for source in sources)

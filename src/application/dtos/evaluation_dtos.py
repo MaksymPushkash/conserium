@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 class QueryEvaluationRecordDTO:
     user_id: UUID
     collection_id: UUID | None
+    document_ids: tuple[UUID, ...]
     query_text: str
     query_type: str
     result_count: int

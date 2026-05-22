@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Query
 
@@ -6,6 +8,7 @@ from src.application.use_cases.knowledge_graph import (
     GetKnowledgeGraphUseCase,
     RecomputeKnowledgeGraphUseCase,
 )
+from src.domain.value_objects.document_type import DocumentType
 from src.presentation.dependencies.auth import CurrentUser
 from src.presentation.mappers.knowledge_graph_mapper import (
     to_knowledge_graph_concern_response,
@@ -27,8 +30,22 @@ async def get_knowledge_graph(
     use_case: FromDishka[GetKnowledgeGraphUseCase],
     document_limit: int = Query(default=80, ge=1, le=200),
     topic_limit: int = Query(default=20, ge=1, le=50),
+    collection_id: UUID | None = Query(default=None),
+    tag: str | None = Query(default=None, min_length=1, max_length=100),
+    topic: str | None = Query(default=None, min_length=1, max_length=100),
+    document_type: DocumentType | None = Query(default=None),
+    recency_days: int | None = Query(default=None, ge=1, le=3650),
 ) -> KnowledgeGraphResponse:
-    result = await use_case(user_id=current_user.id, document_limit=document_limit, topic_limit=topic_limit)
+    result = await use_case(
+        user_id=current_user.id,
+        document_limit=document_limit,
+        topic_limit=topic_limit,
+        collection_id=collection_id,
+        tag_name=tag,
+        topic_name=topic,
+        document_type=document_type,
+        recency_days=recency_days,
+    )
     return to_knowledge_graph_response(result)
 
 
@@ -39,8 +56,22 @@ async def recompute_knowledge_graph(
     use_case: FromDishka[RecomputeKnowledgeGraphUseCase],
     document_limit: int = Query(default=80, ge=1, le=200),
     topic_limit: int = Query(default=20, ge=1, le=50),
+    collection_id: UUID | None = Query(default=None),
+    tag: str | None = Query(default=None, min_length=1, max_length=100),
+    topic: str | None = Query(default=None, min_length=1, max_length=100),
+    document_type: DocumentType | None = Query(default=None),
+    recency_days: int | None = Query(default=None, ge=1, le=3650),
 ) -> KnowledgeGraphResponse:
-    result = await use_case(user_id=current_user.id, document_limit=document_limit, topic_limit=topic_limit)
+    result = await use_case(
+        user_id=current_user.id,
+        document_limit=document_limit,
+        topic_limit=topic_limit,
+        collection_id=collection_id,
+        tag_name=tag,
+        topic_name=topic,
+        document_type=document_type,
+        recency_days=recency_days,
+    )
     return to_knowledge_graph_response(result)
 
 

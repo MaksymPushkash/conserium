@@ -6,6 +6,7 @@ from src.infrastructure.celery.app import celery_app
 _EMBED_AND_FINALIZE_TASK = "src.infrastructure.celery.tasks.embedding_tasks.embed_and_finalize_document"
 _PROCESS_IMAGE_TASK = "src.infrastructure.celery.tasks.media_processing_tasks.process_image_document"
 _PROCESS_DOCUMENT_TASK = "src.infrastructure.celery.tasks.document_ingestion_task.process_document"
+_DRAIN_REPO_SYNC_OUTBOX_TASK = "src.infrastructure.celery.tasks.repo_sync_tasks.drain_repo_sync_outbox_task"
 
 
 class CeleryTaskDispatcher(ITaskDispatcher):
@@ -23,6 +24,13 @@ class CeleryTaskDispatcher(ITaskDispatcher):
             args=[document_id],
             queue="media_processing",
             routing_key="media_processing",
+        )
+
+    async def dispatch_repo_sync_outbox(self) -> None:
+        celery_app.send_task(
+            _DRAIN_REPO_SYNC_OUTBOX_TASK,
+            queue="cleanup",
+            routing_key="cleanup",
         )
 
     async def dispatch_embed_and_finalize_document(

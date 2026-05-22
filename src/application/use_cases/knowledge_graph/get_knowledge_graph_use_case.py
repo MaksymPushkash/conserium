@@ -9,34 +9,67 @@ from src.application.dtos.knowledge_graph_dtos import (
 from src.application.ports.persistence.knowledge_graph_repository import KnowledgeEdgeRecord, KnowledgeGraphRecord
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.domain.exceptions import ValidationException
+from src.domain.value_objects.document_type import DocumentType
 
 
 class GetKnowledgeGraphUseCase:
     def __init__(self, uow: IUnitOfWork) -> None:
         self._uow = uow
 
-    async def __call__(self, *, user_id: UUID, document_limit: int = 80, topic_limit: int = 20) -> KnowledgeGraphDTO:
+    async def __call__(
+        self,
+        *,
+        user_id: UUID,
+        document_limit: int = 80,
+        topic_limit: int = 20,
+        collection_id: UUID | None = None,
+        tag_name: str | None = None,
+        topic_name: str | None = None,
+        document_type: DocumentType | None = None,
+        recency_days: int | None = None,
+    ) -> KnowledgeGraphDTO:
         async with self._uow:
             links = await self._uow.knowledge_graph_repo.list_topic_document_links(
                 user_id,
                 document_limit=document_limit,
                 topic_limit=topic_limit,
+                collection_id=collection_id,
+                tag_name=normalize_optional_text(tag_name),
+                topic_name=normalize_optional_text(topic_name),
+                document_type=document_type,
+                recency_days=recency_days,
             )
             document_edges = await self._uow.knowledge_graph_repo.list_edges(user_id)
 
-        return knowledge_graph_from_records(links, document_edges)
+        return knowledge_graph_from_records(links, document_edges_for_links(document_edges, links))
 
 
 class RecomputeKnowledgeGraphUseCase:
     def __init__(self, uow: IUnitOfWork) -> None:
         self._uow = uow
 
-    async def __call__(self, *, user_id: UUID, document_limit: int = 80, topic_limit: int = 20) -> KnowledgeGraphDTO:
+    async def __call__(
+        self,
+        *,
+        user_id: UUID,
+        document_limit: int = 80,
+        topic_limit: int = 20,
+        collection_id: UUID | None = None,
+        tag_name: str | None = None,
+        topic_name: str | None = None,
+        document_type: DocumentType | None = None,
+        recency_days: int | None = None,
+    ) -> KnowledgeGraphDTO:
         async with self._uow:
             links = await self._uow.knowledge_graph_repo.list_topic_document_links(
                 user_id,
                 document_limit=document_limit,
                 topic_limit=topic_limit,
+                collection_id=collection_id,
+                tag_name=normalize_optional_text(tag_name),
+                topic_name=normalize_optional_text(topic_name),
+                document_type=document_type,
+                recency_days=recency_days,
             )
             document_edges = document_relation_edges(links)
             await self._uow.knowledge_graph_repo.replace_edges(user_id, document_edges)
@@ -98,6 +131,11 @@ def knowledge_graph_from_records(
             kind="document",
             label=link.document_title,
             detail=link.document_type,
+            collection_id=link.collection_id,
+            summary=link.summary,
+            created_at=link.created_at,
+            updated_at=link.updated_at,
+            suggested_questions=link.suggested_questions,
         )
         edge_id = f"{topic_id}:{document_id}"
         edges[edge_id] = KnowledgeGraphEdgeDTO(
@@ -122,6 +160,18 @@ def knowledge_graph_from_records(
         )
 
     return KnowledgeGraphDTO(nodes=list(nodes.values()), edges=list(edges.values()))
+
+
+def document_edges_for_links(
+    document_edges: list[KnowledgeEdgeRecord],
+    links: list[KnowledgeGraphRecord],
+) -> list[KnowledgeEdgeRecord]:
+    document_ids = {link.document_id for link in links}
+    return [
+        edge
+        for edge in document_edges
+        if edge.source_document_id in document_ids and edge.target_document_id in document_ids
+    ]
 
 
 def topic_node_id(name: str) -> str:

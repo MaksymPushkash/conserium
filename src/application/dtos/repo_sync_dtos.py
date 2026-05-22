@@ -12,6 +12,8 @@ class RepoSyncDTO:
     owner: str
     repo: str
     branch: str
+    include_paths: list[str]
+    exclude_paths: list[str]
     status: str
     last_error: str | None
     last_synced_at: datetime | None
@@ -30,6 +32,8 @@ class CreateRepoSyncDTO:
     collection_id: UUID
     repo_url: str
     branch: str = "main"
+    include_paths: list[str] | None = None
+    exclude_paths: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +62,21 @@ class RepoSyncItemDTO:
     document_id: UUID
     source_url: str
     last_synced_at: datetime
+    created_at: datetime
+    updated_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class RepoSyncOutboxDTO:
+    id: UUID
+    repo_sync_id: UUID
+    document_id: UUID
+    task_name: str
+    status: str
+    attempts: int
+    locked_at: datetime | None
+    last_error: str | None
+    dispatched_at: datetime | None
     created_at: datetime
     updated_at: datetime | None
 
