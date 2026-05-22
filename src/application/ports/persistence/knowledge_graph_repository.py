@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from src.domain.value_objects.document_type import DocumentType
+
 
 @dataclass(frozen=True, slots=True)
 class KnowledgeGraphRecord:
@@ -10,6 +12,11 @@ class KnowledgeGraphRecord:
     document_title: str
     document_type: str
     topic_name: str
+    collection_id: UUID | None = None
+    summary: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    suggested_questions: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +48,11 @@ class IKnowledgeGraphRepository(ABC):
         *,
         document_limit: int,
         topic_limit: int,
+        collection_id: UUID | None = None,
+        tag_name: str | None = None,
+        topic_name: str | None = None,
+        document_type: DocumentType | None = None,
+        recency_days: int | None = None,
     ) -> list[KnowledgeGraphRecord]: ...
 
     @abstractmethod

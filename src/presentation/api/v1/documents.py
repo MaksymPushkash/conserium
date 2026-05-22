@@ -7,6 +7,7 @@ from src.application.use_cases.documents.create_document_use_case import CreateD
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
 from src.application.use_cases.documents.export_document_use_case import ExportDocumentUseCase
 from src.application.use_cases.documents.get_document_chunk_use_case import GetDocumentChunkUseCase
+from src.application.use_cases.documents.get_document_question_history_use_case import GetDocumentQuestionHistoryUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
 from src.application.use_cases.documents.manage_document_use_cases import (
@@ -24,6 +25,7 @@ from src.presentation.dependencies.auth import CurrentUser
 from src.presentation.mappers.document_mapper import (
     to_document_chunk_response,
     to_document_list_response,
+    to_document_question_history_response,
     to_document_response,
     to_document_search_response,
 )
@@ -45,6 +47,7 @@ from src.presentation.schemas.document import (
     CreateDocumentRequest,
     DocumentChunkResponse,
     DocumentListResponse,
+    DocumentQuestionHistoryResponse,
     DocumentResponse,
     DocumentSearchResponse,
     MoveDocumentRequest,
@@ -142,6 +145,18 @@ async def get_document_chunk(
 ) -> DocumentChunkResponse:
     result = await use_case(to_get_document_chunk_dto(document_id, chunk_id, current_user.id))
     return to_document_chunk_response(result)
+
+
+@router.get("/{document_id}/questions", response_model=DocumentQuestionHistoryResponse)
+@inject
+async def get_document_question_history(
+    document_id: UUID,
+    current_user: CurrentUser,
+    use_case: FromDishka[GetDocumentQuestionHistoryUseCase],
+    limit: int = Query(default=5, ge=1, le=20),
+) -> DocumentQuestionHistoryResponse:
+    result = await use_case(to_get_document_dto(document_id, current_user.id), limit=limit)
+    return to_document_question_history_response(result)
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

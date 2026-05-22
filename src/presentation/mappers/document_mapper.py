@@ -1,10 +1,18 @@
-from src.application.dtos.document_dtos import DocumentChunkDTO, DocumentDTO, DocumentListDTO, DocumentSearchDTO
+from src.application.dtos.document_dtos import (
+    DocumentChunkDTO,
+    DocumentDTO,
+    DocumentListDTO,
+    DocumentQuestionHistoryDTO,
+    DocumentSearchDTO,
+)
 from src.application.ports.cache.document_status_cache import DocumentStatusDTO
 from src.presentation.schemas.document import (
     DocumentChunkResponse,
     DocumentListItemResponse,
     DocumentListResponse,
     DocumentProcessingStepResponse,
+    DocumentQuestionHistoryItemResponse,
+    DocumentQuestionHistoryResponse,
     DocumentResponse,
     DocumentSearchResponse,
     DocumentSearchResultResponse,
@@ -121,6 +129,22 @@ def to_document_search_response(dto: DocumentSearchDTO) -> DocumentSearchRespons
         query=dto.query,
         total=dto.total,
         limit=dto.limit,
+    )
+
+
+def to_document_question_history_response(dto: DocumentQuestionHistoryDTO) -> DocumentQuestionHistoryResponse:
+    return DocumentQuestionHistoryResponse(
+        document_id=dto.document_id,
+        limit=dto.limit,
+        items=[
+            DocumentQuestionHistoryItemResponse(
+                query_text=item.query_text,
+                answer_text=item.answer_text,
+                result_count=item.result_count,
+                created_at=item.created_at,
+            )
+            for item in dto.items
+        ],
     )
 
 

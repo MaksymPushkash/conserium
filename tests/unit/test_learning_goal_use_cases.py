@@ -288,6 +288,7 @@ async def test_rank_learning_goal_resources_fetches_live_metadata() -> None:
     assert result[0].title == "Python Tutorial"
     assert result[0].excerpt == "Fetched https://docs.python.org/3/tutorial/"
     assert result[0].score == 1.0
+    assert result[0].warning is None
     assert result[0].cached is False
     assert result[0].refreshed_at is not None
     assert fetcher.fetch_count == 3
@@ -340,5 +341,5 @@ async def test_rank_learning_goal_resources_keeps_results_when_one_fetch_fails()
     )
 
     assert len(result) == 3
-    assert any(resource.excerpt is None for resource in result)
+    assert any(resource.warning == "Resource refresh failed." for resource in result)
     assert uow.goals.cached_resources[goal.id]

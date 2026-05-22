@@ -58,6 +58,10 @@ celery_app.conf.update(
             "task": "src.infrastructure.celery.tasks.repo_sync_tasks.run_due_repo_syncs_task",
             "schedule": 900.0,
         },
+        "drain-repo-sync-outbox": {
+            "task": "src.infrastructure.celery.tasks.repo_sync_tasks.drain_repo_sync_outbox_task",
+            "schedule": 60.0,
+        },
     },
 
 

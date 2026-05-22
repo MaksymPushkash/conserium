@@ -15,6 +15,11 @@ def to_knowledge_graph_response(dto: KnowledgeGraphDTO) -> KnowledgeGraphRespons
                 kind=node.kind,
                 label=node.label,
                 detail=node.detail,
+                collection_id=node.collection_id,
+                summary=node.summary,
+                created_at=node.created_at,
+                updated_at=node.updated_at,
+                suggested_questions=node.suggested_questions,
             )
             for node in dto.nodes
         ],

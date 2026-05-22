@@ -30,6 +30,7 @@ class RankedLearningResourceDTO:
     url: str | None
     excerpt: str | None
     score: float
+    warning: str | None = None
     cached: bool = False
     refreshed_at: datetime | None = None
 

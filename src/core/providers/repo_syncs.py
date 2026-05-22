@@ -1,6 +1,5 @@
 from dishka import Provider, Scope, provide
 
-from src.application.ports.cache.document_status_cache import IDocumentStatusCache
 from src.application.ports.ingestion.task_dispatcher import ITaskDispatcher
 from src.application.ports.integrations.github_repository_client import IGitHubRepositoryClient
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
@@ -26,7 +25,6 @@ class RepoSyncsProvider(Provider):
         self,
         uow: IUnitOfWork,
         github_client: IGitHubRepositoryClient,
-        status_cache: IDocumentStatusCache,
         task_dispatcher: ITaskDispatcher,
     ) -> RunRepoSyncUseCase:
-        return RunRepoSyncUseCase(uow, github_client, status_cache, task_dispatcher)
+        return RunRepoSyncUseCase(uow, github_client, task_dispatcher)

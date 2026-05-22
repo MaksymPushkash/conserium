@@ -11,6 +11,7 @@ from src.application.ports.security.token_cipher import ITokenCipher
 from src.application.use_cases.documents.collection_use_cases import (
     CreateCollectionUseCase,
     DeleteCollectionUseCase,
+    GetCollectionWorkspaceUseCase,
     ListCollectionsUseCase,
     UpdateCollectionUseCase,
 )
@@ -19,6 +20,7 @@ from src.application.use_cases.documents.delete_document_use_case import DeleteD
 from src.application.use_cases.documents.export_document_use_case import ExportDocumentUseCase
 from src.application.use_cases.documents.export_markdown_to_notion_use_case import ExportMarkdownToNotionUseCase
 from src.application.use_cases.documents.get_document_chunk_use_case import GetDocumentChunkUseCase
+from src.application.use_cases.documents.get_document_question_history_use_case import GetDocumentQuestionHistoryUseCase
 from src.application.use_cases.documents.get_document_status_use_case import GetDocumentStatusUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
 from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
@@ -57,6 +59,10 @@ class DocumentsProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_list_collections_use_case(self, uow: IUnitOfWork) -> ListCollectionsUseCase:
         return ListCollectionsUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_collection_workspace_use_case(self, uow: IUnitOfWork) -> GetCollectionWorkspaceUseCase:
+        return GetCollectionWorkspaceUseCase(uow)
 
     @provide(scope=Scope.REQUEST)
     def get_update_collection_use_case(self, uow: IUnitOfWork) -> UpdateCollectionUseCase:
@@ -102,6 +108,10 @@ class DocumentsProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_get_document_chunk_use_case(self, uow: IUnitOfWork) -> GetDocumentChunkUseCase:
         return GetDocumentChunkUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_document_question_history_use_case(self, uow: IUnitOfWork) -> GetDocumentQuestionHistoryUseCase:
+        return GetDocumentQuestionHistoryUseCase(uow)
 
     @provide(scope=Scope.REQUEST)
     def get_delete_document_use_case(self, uow: IUnitOfWork, file_storage: IFileStorage) -> DeleteDocumentUseCase:

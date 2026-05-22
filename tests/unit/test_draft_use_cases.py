@@ -82,12 +82,29 @@ class _FakeQueryUseCase:
 
 
 class _FakeInsufficientQueryUseCase:
+    def __init__(self, *, include_unused_source: bool = False) -> None:
+        self._include_unused_source = include_unused_source
+
     async def __call__(self, dto):
+        sources = []
+        if self._include_unused_source:
+            sources.append(
+                QuerySourceDTO(
+                    chunk_id=uuid.uuid4(),
+                    document_id=uuid.uuid4(),
+                    document_title="Weak match",
+                    content="Weakly related context.",
+                    page_number=None,
+                    chunk_index=0,
+                    score=0.1,
+                    used_in_answer=False,
+                )
+            )
         return QueryResultDTO(
             conversation_id=uuid.uuid4(),
             query=dto.query,
             answer="The provided context does not contain enough relevant information.",
-            sources=[],
+            sources=sources,
             refrag_context=RefragContextPackage(
                 query=dto.query,
                 full_text_chunks=[],
@@ -142,6 +159,20 @@ async def test_generate_draft_falls_back_to_document_content_when_query_abstains
     assert result.markdown == "# Fallback draft"
     assert result.sources[0].document_id == document.id
     assert result.gaps == []
+
+
+async def test_generate_draft_falls_back_when_sources_are_not_used_in_answer() -> None:
+    document = _make_document()
+    use_case = GenerateDraftUseCase(
+        cast("QueryUseCase", _FakeInsufficientQueryUseCase(include_unused_source=True)),
+        cast("IUnitOfWork", _FakeUnitOfWork([document])),
+        cast("ILLMService", _FakeLLMService()),
+    )
+
+    result = await use_case(DraftGenerateDTO(user_id=document.user_id, prompt="Write from saved docs"))
+
+    assert result.markdown == "# Fallback draft"
+    assert result.sources[0].document_id == document.id
 
 
 async def test_generate_draft_rejects_empty_prompt() -> None:

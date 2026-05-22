@@ -183,11 +183,12 @@ class RankLearningGoalResourcesUseCase:
                 url=resource.url,
                 excerpt=fetched.excerpt if fetched else None,
                 score=resource_score(resource, fetched is not None),
+                warning=None if fetched else "Resource metadata unavailable.",
             )
 
         ranked = await asyncio.gather(*(rank(resource) for resource in resources), return_exceptions=True)
         return [
-            result if isinstance(result, RankedLearningResourceDTO) else unfetched_ranked_resource(resource)
+            result if isinstance(result, RankedLearningResourceDTO) else unfetched_ranked_resource(resource, result)
             for resource, result in zip(resources, ranked, strict=True)
         ]
 
@@ -226,6 +227,7 @@ def ranked_resource_from_record(record: LearningGoalResourceRecordDTO) -> Ranked
         url=record.url,
         excerpt=record.excerpt,
         score=record.score,
+        warning=None,
         cached=True,
         refreshed_at=record.refreshed_at,
     )
@@ -283,7 +285,7 @@ def resource_score(resource: SuggestedLearningResourceDTO, fetched: bool) -> flo
     return min(score, 1.0)
 
 
-def unfetched_ranked_resource(resource: SuggestedLearningResourceDTO) -> RankedLearningResourceDTO:
+def unfetched_ranked_resource(resource: SuggestedLearningResourceDTO, exc: BaseException | None = None) -> RankedLearningResourceDTO:
     return RankedLearningResourceDTO(
         area=resource.area,
         title=resource.title,
@@ -292,6 +294,7 @@ def unfetched_ranked_resource(resource: SuggestedLearningResourceDTO) -> RankedL
         url=resource.url,
         excerpt=None,
         score=resource_score(resource, fetched=False),
+        warning="Resource refresh failed." if exc else "Resource metadata unavailable.",
     )
 
 

@@ -176,3 +176,20 @@ class DocumentSearchDTO:
     query: str
     total: int
     limit: int
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class DocumentQuestionHistoryItemDTO:
+    query_text: str
+    answer_text: str | None
+    result_count: int
+    created_at: datetime
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class DocumentQuestionHistoryDTO:
+    items: list[DocumentQuestionHistoryItemDTO]
+    document_id: UUID
+    limit: int

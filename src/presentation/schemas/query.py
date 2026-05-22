@@ -10,6 +10,7 @@ class QueryRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     conversation_id: UUID | None = None
     collection_id: UUID | None = None
+    document_id: UUID | None = None
     tag_names: list[str] | None = Field(default=None, max_length=20)
     document_types: list[DocumentType] | None = None
     limit: int = Field(default=5, ge=1, le=20)

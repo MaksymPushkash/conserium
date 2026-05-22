@@ -8,6 +8,8 @@ class CreateRepoSyncRequest(BaseModel):
     collection_id: UUID
     repo_url: str = Field(min_length=1, max_length=500)
     branch: str = Field(default="main", min_length=1, max_length=120)
+    include_paths: list[str] | None = None
+    exclude_paths: list[str] | None = None
 
 
 class RunRepoSyncRequest(BaseModel):
@@ -21,6 +23,8 @@ class RepoSyncResponse(BaseModel):
     owner: str
     repo: str
     branch: str
+    include_paths: list[str]
+    exclude_paths: list[str]
     status: str
     last_error: str | None
     last_synced_at: datetime | None

@@ -11,7 +11,7 @@ from src.infrastructure.database.models.knowledge_edge import KnowledgeEdgeModel
 from src.infrastructure.database.models.knowledge_graph_concern import KnowledgeGraphConcernModel
 from src.infrastructure.database.models.learning_goal import LearningGoalModel, LearningGoalResourceModel
 from src.infrastructure.database.models.note_version import NoteVersionModel
-from src.infrastructure.database.models.repo_sync import RepoSyncItemModel, RepoSyncModel
+from src.infrastructure.database.models.repo_sync import RepoSyncItemModel, RepoSyncModel, RepoSyncOutboxModel
 from src.infrastructure.database.models.search_query import SearchQueryModel
 from src.infrastructure.database.models.tag import TagModel
 from src.infrastructure.database.models.topic import TopicModel
@@ -36,6 +36,7 @@ __all__ = [
     "NoteVersionModel",
     "RepoSyncItemModel",
     "RepoSyncModel",
+    "RepoSyncOutboxModel",
     "SearchQueryModel",
     "TagModel",
     "TopicModel",

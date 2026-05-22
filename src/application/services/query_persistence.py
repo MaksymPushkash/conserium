@@ -78,6 +78,7 @@ class QueryPersistenceService:
             QueryEvaluationRecordDTO(
                 user_id=dto.user_id,
                 collection_id=dto.collection_id,
+                document_ids=_query_document_ids(dto, state),
                 query_text=query,
                 query_type=state.query_type.value,
                 result_count=len(state.sources),
@@ -89,3 +90,15 @@ class QueryPersistenceService:
                 langfuse_trace_id=state.trace_id,
             )
         )
+
+
+def _query_document_ids(dto: QueryDTO, state: CortexQueryState) -> tuple[UUID, ...]:
+    if dto.document_ids:
+        return dto.document_ids
+    seen: set[UUID] = set()
+    document_ids: list[UUID] = []
+    for source in state.sources:
+        if source.document_id not in seen:
+            seen.add(source.document_id)
+            document_ids.append(source.document_id)
+    return tuple(document_ids)

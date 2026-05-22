@@ -130,8 +130,8 @@ async def test_compare_documents_scopes_query_to_selected_documents() -> None:
     assert result.right_title == "Django Notes"
     assert result.markdown.startswith("## Direct comparison")
     assert {source.document_title for source in result.sources} == {"FastAPI Notes", "Django Notes"}
-    assert query_use_case.received_document_ids == (left_document.id, right_document.id)
-    assert query_use_case.received_relevance_query == ""
+    assert query_use_case.received_document_ids is None
+    assert query_use_case.received_relevance_query is None
 
 
 async def test_compare_documents_falls_back_to_direct_document_content() -> None:

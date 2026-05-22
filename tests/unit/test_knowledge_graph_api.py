@@ -63,10 +63,30 @@ class _FakeUnitOfWork:
 class _ReturningGraphUseCase:
     def __init__(self, result: KnowledgeGraphDTO) -> None:
         self._result = result
-        self.received: tuple[uuid.UUID, int, int] | None = None
+        self.received: dict[str, object] | None = None
 
-    async def __call__(self, *, user_id: uuid.UUID, document_limit: int = 80, topic_limit: int = 20) -> KnowledgeGraphDTO:
-        self.received = (user_id, document_limit, topic_limit)
+    async def __call__(
+        self,
+        *,
+        user_id: uuid.UUID,
+        document_limit: int = 80,
+        topic_limit: int = 20,
+        collection_id: uuid.UUID | None = None,
+        tag_name: str | None = None,
+        topic_name: str | None = None,
+        document_type: object | None = None,
+        recency_days: int | None = None,
+    ) -> KnowledgeGraphDTO:
+        self.received = {
+            "user_id": user_id,
+            "document_limit": document_limit,
+            "topic_limit": topic_limit,
+            "collection_id": collection_id,
+            "tag_name": tag_name,
+            "topic_name": topic_name,
+            "document_type": document_type,
+            "recency_days": recency_days,
+        }
         return self._result
 
 
@@ -76,7 +96,14 @@ def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
         KnowledgeGraphDTO(
             nodes=[
                 KnowledgeGraphNodeDTO(id="topic:python", kind="topic", label="python"),
-                KnowledgeGraphNodeDTO(id="document:1", kind="document", label="FastAPI Notes", detail="TEXT"),
+                KnowledgeGraphNodeDTO(
+                    id="document:1",
+                    kind="document",
+                    label="FastAPI Notes",
+                    detail="TEXT",
+                    summary="FastAPI summary",
+                    suggested_questions=["How does FastAPI work?"],
+                ),
             ],
             edges=[
                 KnowledgeGraphEdgeDTO(
@@ -104,7 +131,7 @@ def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
 
     try:
         response = client.get(
-            "/api/v1/knowledge-graph?document_limit=50&topic_limit=10",
+            "/api/v1/knowledge-graph?document_limit=50&topic_limit=10&tag=python&topic=api&document_type=TEXT&recency_days=30",
             headers={"Authorization": "Bearer access-token"},
         )
     finally:
@@ -112,8 +139,15 @@ def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
 
     assert response.status_code == 200
     assert response.json()["nodes"][0]["id"] == "topic:python"
+    assert response.json()["nodes"][1]["summary"] == "FastAPI summary"
     assert response.json()["edges"][0]["relation_type"] == "same_topic"
-    assert use_case.received == (user.id, 50, 10)
+    assert use_case.received is not None
+    assert use_case.received["user_id"] == user.id
+    assert use_case.received["document_limit"] == 50
+    assert use_case.received["topic_limit"] == 10
+    assert use_case.received["tag_name"] == "python"
+    assert use_case.received["topic_name"] == "api"
+    assert use_case.received["recency_days"] == 30
 
 
 def _make_user() -> UserEntity:

@@ -37,6 +37,7 @@ class RankedLearningResourceResponse(BaseModel):
     url: str | None
     excerpt: str | None
     score: float
+    warning: str | None = None
     cached: bool
     refreshed_at: datetime | None
 

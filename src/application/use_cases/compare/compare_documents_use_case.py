@@ -29,31 +29,10 @@ class CompareDocumentsUseCase:
             right_document,
             limit=max(dto.limit, 8),
         )
-        retrieval_query = compare_retrieval_query(left_document, right_document, dto.prompt)
-        try:
-            result = await self._query_use_case(
-                QueryDTO(
-                    user_id=dto.user_id,
-                    query=prompt,
-                    retrieval_query=retrieval_query,
-                    relevance_query="",
-                    document_ids=(dto.left_document_id, dto.right_document_id),
-                    limit=dto.limit,
-                )
-            )
-            used_sources = [source for source in result.sources if source.used_in_answer]
-            sources = used_sources or result.sources or direct_sources
-            fallback_answer = result.answer
-        except Exception:
-            if not direct_sources:
-                raise
-            sources = direct_sources
-            fallback_answer = ""
         if direct_sources:
-            context_sources = _rank_direct_sources(direct_sources, sources)
             answer = await self._llm_service.synthesize_answer(
                 query=prompt,
-                context=refrag_context_from_sources(prompt, context_sources),
+                context=refrag_context_from_sources(prompt, direct_sources),
             )
             return CompareResultDTO(
                 left_document_id=dto.left_document_id,
@@ -61,14 +40,28 @@ class CompareDocumentsUseCase:
                 left_title=left_document.title,
                 right_title=right_document.title,
                 markdown=answer,
-                sources=context_sources,
+                sources=direct_sources,
             )
+
+        retrieval_query = compare_retrieval_query(left_document, right_document, dto.prompt)
+        result = await self._query_use_case(
+            QueryDTO(
+                user_id=dto.user_id,
+                query=prompt,
+                retrieval_query=retrieval_query,
+                relevance_query="",
+                document_ids=(dto.left_document_id, dto.right_document_id),
+                limit=dto.limit,
+            )
+        )
+        used_sources = [source for source in result.sources if source.used_in_answer]
+        sources = used_sources or result.sources
         return CompareResultDTO(
             left_document_id=dto.left_document_id,
             right_document_id=dto.right_document_id,
             left_title=left_document.title,
             right_title=right_document.title,
-            markdown=fallback_answer,
+            markdown=result.answer,
             sources=sources,
         )
 
@@ -129,14 +122,6 @@ def compare_retrieval_query(left_document: DocumentEntity, right_document: Docum
         prompt or "",
     ]
     return " ".join(part for part in parts if part.strip())
-
-
-def _rank_direct_sources(direct_sources: list[QuerySourceDTO], ranked_sources: list[QuerySourceDTO]) -> list[QuerySourceDTO]:
-    direct_by_id = {source.chunk_id: source for source in direct_sources}
-    ordered = [direct_by_id[source.chunk_id] for source in ranked_sources if source.chunk_id in direct_by_id]
-    seen = {source.chunk_id for source in ordered}
-    ordered.extend(source for source in direct_sources if source.chunk_id not in seen)
-    return ordered
 
 
 def sources_from_chunks(document: DocumentEntity, chunks: list[ChunkEntity], *, limit: int) -> list[QuerySourceDTO]:

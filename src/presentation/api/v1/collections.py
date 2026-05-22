@@ -11,11 +11,16 @@ from src.application.use_cases.collection_shares import (
 from src.application.use_cases.documents.collection_use_cases import (
     CreateCollectionUseCase,
     DeleteCollectionUseCase,
+    GetCollectionWorkspaceUseCase,
     ListCollectionsUseCase,
     UpdateCollectionUseCase,
 )
 from src.presentation.dependencies.auth import CurrentUser
-from src.presentation.mappers.collection_mapper import to_collection_list_response, to_collection_response
+from src.presentation.mappers.collection_mapper import (
+    to_collection_list_response,
+    to_collection_response,
+    to_collection_workspace_response,
+)
 from src.presentation.mappers.collection_request_mapper import (
     to_create_collection_dto,
     to_delete_collection_dto,
@@ -23,7 +28,12 @@ from src.presentation.mappers.collection_request_mapper import (
     to_update_collection_dto,
 )
 from src.presentation.mappers.collection_share_mapper import to_collection_share_response
-from src.presentation.schemas.collection import CollectionListResponse, CollectionRequest, CollectionResponse
+from src.presentation.schemas.collection import (
+    CollectionListResponse,
+    CollectionRequest,
+    CollectionResponse,
+    CollectionWorkspaceResponse,
+)
 from src.presentation.schemas.collection_share import CollectionShareResponse
 
 router = APIRouter(prefix="/collections", tags=["collections"])
@@ -50,6 +60,17 @@ async def list_collections(
 ) -> CollectionListResponse:
     result = await use_case(to_list_collections_dto(current_user.id, limit, offset))
     return to_collection_list_response(result)
+
+
+@router.get("/{collection_id}/workspace", response_model=CollectionWorkspaceResponse)
+@inject
+async def get_collection_workspace(
+    collection_id: UUID,
+    current_user: CurrentUser,
+    use_case: FromDishka[GetCollectionWorkspaceUseCase],
+) -> CollectionWorkspaceResponse:
+    result = await use_case(user_id=current_user.id, collection_id=collection_id)
+    return to_collection_workspace_response(result)
 
 
 @router.patch("/{collection_id}", response_model=CollectionResponse)

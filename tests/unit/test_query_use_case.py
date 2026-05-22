@@ -34,6 +34,7 @@ from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
     from src.application.agents.query.eval_agent import EvalAgent
+    from src.application.dtos.evaluation_dtos import QueryEvaluationRecordDTO
 
 
 class _FakeEmbeddingProvider:
@@ -54,6 +55,7 @@ class _FakeChunkRepository:
         self._chunks = chunks
         self.received_embedding: list[float] | None = None
         self.received_user_id: uuid.UUID | None = None
+        self.received_document_ids: tuple[uuid.UUID, ...] | None = None
 
     async def hybrid_search(
         self,
@@ -69,6 +71,7 @@ class _FakeChunkRepository:
     ) -> list[ChunkSearchResult]:
         self.received_embedding = embedding
         self.received_user_id = user_id
+        self.received_document_ids = document_ids
         return [
             ChunkSearchResult(chunk=chunk, document_title="Architecture Notes", score=0.5)
             for chunk in self._chunks[:limit]
@@ -134,6 +137,12 @@ class _FakeSearchQueryRepository:
 
     async def record_query(self, record: object) -> None:
         self.records.append(record)
+
+    async def list_recent_by_document(self, *, user_id: uuid.UUID, document_id: uuid.UUID, limit: int) -> list[object]:
+        return []
+
+    async def list_recent_by_collection(self, *, user_id: uuid.UUID, collection_id: uuid.UUID, limit: int) -> list[object]:
+        return []
 
 
 class _FakeChatRepository:
@@ -312,6 +321,33 @@ async def test_query_use_case_embeds_query_and_returns_sources() -> None:
     assert conversation_store.appended_turn is not None
     assert conversation_store.appended_turn.answer == "Synthesized answer [1]"
     assert len(uow.search_query_repo.records) == 1
+
+
+async def test_query_use_case_scopes_retrieval_to_document_id() -> None:
+    user_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    chunk = ChunkEntity.create(
+        id=uuid.uuid4(),
+        document_id=document_id,
+        content="Scoped document content explains vector search.",
+        embedding=[0.2] * ChunkEntity.EMBEDDING_DIMENSIONS,
+        chunk_index=0,
+    )
+    chunk_repo = _FakeChunkRepository([chunk])
+    graph_runner = _make_graph_runner(
+        chunk_repo,
+        _FakeEmbeddingProvider(),
+        HeuristicRefragContextBuilder(),
+        _FakeLLMService(),
+    )
+    uow = _FakeUnitOfWork(chunk_repo)
+    use_case = QueryUseCase(graph_runner, _as_conversation_store(_FakeConversationStore()), _as_uow(uow))
+
+    await use_case(QueryDTO(user_id=user_id, query="Explain this", document_ids=(document_id,), limit=5))
+
+    record = cast("QueryEvaluationRecordDTO", uow.search_query_repo.records[0])
+    assert chunk_repo.received_document_ids == (document_id,)
+    assert record.document_ids == (document_id,)
 
 
 async def test_query_use_case_rejects_blank_query() -> None:
