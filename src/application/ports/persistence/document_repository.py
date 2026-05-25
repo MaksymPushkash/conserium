@@ -45,3 +45,20 @@ class IDocumentRepository(ABC):
         collection_id: UUID | None = None,
         status: "DocumentStatus | None" = None,
     ) -> int: ...
+
+    @abstractmethod
+    async def count_by_status(
+        self,
+        user_id: UUID,
+        *,
+        collection_id: UUID | None = None,
+    ) -> "dict[DocumentStatus, int]": ...
+
+    @abstractmethod
+    async def get_collection_documents_with_status_counts(
+        self,
+        user_id: UUID,
+        *,
+        collection_id: UUID,
+        limit: int = 200,
+    ) -> "tuple[list[DocumentEntity], dict[DocumentStatus, int]]": ...

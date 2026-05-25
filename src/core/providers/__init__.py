@@ -1,4 +1,5 @@
 from src.core.providers.ai import AIProvider
+from src.core.providers.api_keys import ApiKeysProvider
 from src.core.providers.auth import AuthProvider
 from src.core.providers.cache import CacheProvider
 from src.core.providers.collection_shares import CollectionSharesProvider
@@ -19,6 +20,7 @@ from src.core.providers.topics import TopicsProvider
 
 __all__ = [
     "AIProvider",
+    "ApiKeysProvider",
     "AuthProvider",
     "CacheProvider",
     "CollectionSharesProvider",

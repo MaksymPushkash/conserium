@@ -10,12 +10,13 @@ _DRAIN_REPO_SYNC_OUTBOX_TASK = "src.infrastructure.celery.tasks.repo_sync_tasks.
 
 
 class CeleryTaskDispatcher(ITaskDispatcher):
-    async def dispatch_process_document(self, document_id: str) -> None:
+    async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None:
         celery_app.send_task(
             _PROCESS_DOCUMENT_TASK,
             args=[document_id],
             queue="document_processing",
             routing_key="document_processing",
+            task_id=task_id,
         )
 
     async def dispatch_process_image_document(self, document_id: str) -> None:

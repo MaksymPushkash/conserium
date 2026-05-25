@@ -60,6 +60,23 @@ class _FakeDocumentRepository(IDocumentRepository):
     ) -> int:
         raise NotImplementedError
 
+    async def count_by_status(
+        self,
+        user_id: uuid.UUID,
+        *,
+        collection_id: uuid.UUID | None = None,
+    ) -> dict[DocumentStatus, int]:
+        raise NotImplementedError
+
+    async def get_collection_documents_with_status_counts(
+        self,
+        user_id: uuid.UUID,
+        *,
+        collection_id: uuid.UUID,
+        limit: int = 200,
+    ) -> tuple[list[DocumentEntity], dict[DocumentStatus, int]]:
+        raise NotImplementedError
+
 
 class _FakeChunkRepository(IChunkRepository):
     def __init__(self) -> None:

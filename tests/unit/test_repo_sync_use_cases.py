@@ -25,6 +25,7 @@ from src.application.use_cases.repo_syncs import (
     unique_repo_files,
 )
 from src.domain.exceptions import IntegrationRequestException, ValidationException
+from src.domain.value_objects.document_status import DocumentStatus
 from src.infrastructure.integrations.github_repository_client import GitHubRepositoryClient
 
 
@@ -209,6 +210,7 @@ async def test_outbox_drainer_dispatches_before_marking_document_queued() -> Non
 
     assert result.dispatched == 1
     assert dispatcher.document_ids == [str(outbox.document_id)]
+    assert dispatcher.task_ids == [f"repo-sync-outbox-{outbox.id}"]
     assert document.queued is True
     assert outbox.status == "dispatched"
     assert uow.repo_sync_repo.states == ["completed"]
@@ -235,6 +237,27 @@ async def test_outbox_drainer_does_not_mark_queued_when_dispatch_prerequisite_fa
     assert outbox.status == "pending"
     assert outbox.attempts == 1
     assert outbox.last_error == "cache down"
+
+
+@pytest.mark.asyncio
+async def test_outbox_drainer_marks_already_started_document_without_duplicate_dispatch() -> None:
+    repo_sync = _repo_sync()
+    outbox = _Outbox(repo_sync_id=repo_sync.id, document_id=uuid4(), task_name="process_document")
+    document = _DispatchDocument(outbox.document_id, status=DocumentStatus.PROCESSING)
+    uow = _DrainUow(repo_sync, outbox, document)
+    dispatcher = _RecordingTaskDispatcher()
+    use_case = DrainRepoSyncOutboxUseCase(
+        uow=uow,  # type: ignore[arg-type]
+        status_cache=_RecordingStatusCache(),  # type: ignore[arg-type]
+        task_dispatcher=dispatcher,  # type: ignore[arg-type]
+    )
+
+    result = await use_case(limit=10)
+
+    assert result.dispatched == 1
+    assert dispatcher.document_ids == []
+    assert outbox.status == "dispatched"
+    assert uow.repo_sync_repo.states == ["completed"]
 
 
 @pytest.mark.asyncio
@@ -503,9 +526,11 @@ class _FailingTaskDispatcher:
 class _RecordingTaskDispatcher:
     def __init__(self) -> None:
         self.document_ids: list[str] = []
+        self.task_ids: list[str | None] = []
 
-    async def dispatch_process_document(self, document_id: str) -> None:
+    async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None:
         self.document_ids.append(document_id)
+        self.task_ids.append(task_id)
 
     async def dispatch_repo_sync_outbox(self) -> None:
         return None
@@ -572,11 +597,13 @@ class _DrainDocumentRepo:
 
 
 class _DispatchDocument:
-    def __init__(self, document_id: UUID) -> None:
+    def __init__(self, document_id: UUID, *, status: DocumentStatus = DocumentStatus.PENDING) -> None:
         self.id = document_id
+        self.status = status
         self.queued = False
 
     def mark_queued(self) -> None:
+        self.status = DocumentStatus.QUEUED
         self.queued = True
 
 

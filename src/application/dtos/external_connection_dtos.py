@@ -37,3 +37,10 @@ class NotionConnectionDTO:
 class NotionPageDTO:
     id: str
     title: str
+
+
+@dataclass(frozen=True, slots=True)
+class NotionPageContentDTO:
+    id: str
+    title: str
+    markdown: str

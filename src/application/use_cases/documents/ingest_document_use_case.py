@@ -51,6 +51,7 @@ class IngestDocumentUseCase:
             raw_content=dto.raw_content,
             word_count=len(dto.raw_content.split()) if dto.raw_content else None,
             language=dto.language,
+            tags=dto.tags,
         )
 
         document.mark_queued()

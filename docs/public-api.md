@@ -10,10 +10,216 @@ Interactive OpenAPI docs:
 - `GET /redoc`
 - `GET /openapi.json`
 
-Authentication uses bearer access tokens returned by register, login, refresh, or OAuth callbacks.
+Browser UI authentication uses bearer access tokens returned by register, login, refresh, or OAuth callbacks.
 
 ```http
 Authorization: Bearer <access_token>
+```
+
+Developer and automation authentication uses Cortex API keys created in Settings → Integrations.
+
+```http
+Authorization: Bearer ctx_<api_key>
+```
+
+API keys are shown once at creation time. Store only the token prefix in user-facing logs.
+
+## API Keys
+
+`GET /api/v1/api-keys`
+
+Lists API keys for the current user. The plaintext token is never returned.
+
+`POST /api/v1/api-keys`
+
+```json
+{
+  "name": "n8n webhook",
+  "scopes": ["ingest:write"]
+}
+```
+
+Returns:
+
+```json
+{
+  "api_key": {
+    "id": "...",
+    "name": "n8n webhook",
+    "prefix": "ctx_abc123...",
+    "scopes": ["ingest:write"],
+    "last_used_at": null,
+    "revoked_at": null,
+    "created_at": "2026-05-25T12:00:00Z"
+  },
+  "token": "ctx_full_token_shown_once"
+}
+```
+
+`DELETE /api/v1/api-keys/{api_key_id}`
+
+Revokes a key.
+
+## External Intake
+
+External intake is the normalized ingestion path for API keys, webhooks, browser extensions, Telegram, and automation tools.
+
+Supported document types:
+
+- `TEXT`
+- `MARKDOWN`
+- `URL`
+- `YOUTUBE`
+
+Shared payload fields:
+
+```json
+{
+  "title": "Saved article",
+  "type": "URL",
+  "source_url": "https://example.com/article",
+  "raw_content": null,
+  "collection_id": null,
+  "tags": ["research"],
+  "language": "en",
+  "provider": "webhook",
+  "external_id": "zapier-run-123",
+  "idempotency_key": "zapier-run-123",
+  "metadata": {
+    "source": "zapier"
+  }
+}
+```
+
+Use `idempotency_key` to prevent duplicate ingestion. If omitted, Cortex falls back to `external_id`, then URL hash for URL payloads.
+
+`POST /api/v1/public-api/ingest`
+
+API-key authenticated ingestion for scripts and first-party clients.
+
+`POST /api/v1/webhooks/ingest`
+
+API-key authenticated webhook endpoint for Zapier, Make, n8n, IFTTT, browser extensions, Telegram adapters, and custom automation.
+
+Response:
+
+```json
+{
+  "intake_item": {
+    "id": "...",
+    "provider": "webhook",
+    "external_id": "zapier-run-123",
+    "idempotency_key": "zapier-run-123",
+    "title": "Saved article",
+    "type": "URL",
+    "collection_id": null,
+    "tags": ["research"],
+    "source_url": "https://example.com/article",
+    "status": "QUEUED",
+    "error_reason": null,
+    "document_id": "...",
+    "payload_metadata": {
+      "source": "zapier",
+      "tags": ["research"]
+    },
+    "created_at": "2026-05-25T12:00:00Z",
+    "updated_at": null
+  },
+  "document": {
+    "id": "...",
+    "title": "Saved article",
+    "status": "QUEUED"
+  }
+}
+```
+
+## Notion Import
+
+Notion OAuth must be connected before import.
+
+`GET /api/v1/integrations/notion/pages?query=architecture&limit=10`
+
+Searches accessible Notion pages.
+
+`POST /api/v1/integrations/notion/import`
+
+```json
+{
+  "page_id": "notion-page-id",
+  "collection_id": null,
+  "tags": ["notion"]
+}
+```
+
+Imports the page blocks as Markdown through external intake with provider `notion`.
+
+## Browser Extension MVP
+
+The browser extension scaffold is in `client/extensions/browser`.
+
+Configuration fields:
+
+- API origin: `https://api.cortexx.me/api/v1`
+- API key: a `ctx_...` key with `ingest:write`
+- Collection id: optional
+- Tags: comma-separated
+
+The extension stores credentials in browser-local extension storage and sends current-tab URLs and selected text to:
+
+`POST /api/v1/webhooks/ingest`
+
+## Telegram Bot MVP
+
+The Telegram adapter is in `scripts/telegram_webhook_bot.py`.
+
+Run it separately:
+
+```bash
+CORTEX_API_BASE_URL=https://api.cortexx.me/api/v1 \
+TELEGRAM_BOT_TOKEN=... \
+uvicorn scripts.telegram_webhook_bot:app --host 0.0.0.0 --port 8090
+```
+
+Set the Telegram webhook to:
+
+```text
+https://<bot-host>/telegram/webhook
+```
+
+Pair a Telegram chat by sending:
+
+```text
+/pair ctx_<api_key>
+```
+
+Forwarded URLs become `URL` or `YOUTUBE` documents. Plain text becomes a `TEXT` document. Telegram message id is used as the idempotency key. `CORTEX_API_KEY` remains a fallback for local single-user deployments.
+
+## Anytype Import MVP
+
+Export Anytype notes as Markdown, then import them with:
+
+```bash
+CORTEX_API_BASE_URL=https://api.cortexx.me/api/v1 \
+CORTEX_API_KEY=ctx_... \
+uv run python scripts/import_anytype_export.py /path/to/anytype/export
+```
+
+The script sends each Markdown file through:
+
+`POST /api/v1/webhooks/ingest`
+
+Use:
+
+```json
+{
+  "provider": "anytype",
+  "external_id": "anytype-object-id",
+  "idempotency_key": "anytype-object-id",
+  "title": "Anytype note",
+  "type": "MARKDOWN",
+  "raw_content": "# Note content",
+  "tags": ["anytype"]
+}
 ```
 
 ## Health

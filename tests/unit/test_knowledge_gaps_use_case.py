@@ -91,6 +91,14 @@ async def test_knowledge_gaps_reports_covered_and_missing_areas() -> None:
     assert result.covered_count == 2
     assert result.missing_count == 5
     assert result.coverage_ratio == pytest.approx(2 / 7)
+    assert result.why_detected == "5 rubric area(s) are missing; current coverage is 29%."
+    assert result.missing_source_types == ["article", "example", "reference"]
+    assert result.severity == "medium"
+    missing_area = next(area for area in result.areas if area.name == "Testing")
+    assert missing_area.id == "python--testing"
+    assert missing_area.why_detected == "No saved source matched the Testing rubric keywords."
+    assert missing_area.rationale == "Testing is missing from the current saved context and can weaken retrieval or synthesis."
+    assert missing_area.suggested_actions[0] == "Add a reference source about Python Testing."
     assert uow.topic_repo.received_name == "Python"
     assert uow.topic_repo.received_document_limit == 200
 

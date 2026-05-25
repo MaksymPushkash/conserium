@@ -17,6 +17,9 @@ class KnowledgeGraphRecord:
     created_at: datetime | None = None
     updated_at: datetime | None = None
     suggested_questions: list[str] | None = None
+    source_topic_name: str | None = None
+    topic_pinned: bool = False
+    topic_ignored: bool = False
 
 
 @dataclass(frozen=True, slots=True)

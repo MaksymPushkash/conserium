@@ -7,6 +7,9 @@ class TopicDTO:
     name: str
     document_count: int
     last_document_at: datetime | None
+    source_names: tuple[str, ...] = ()
+    pinned: bool = False
+    ignored: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +31,16 @@ class TopicDocumentDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class TopicEventDTO:
+    action: str
+    topic_name: str
+    display_name: str | None
+    source_names: tuple[str, ...]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class TopicDetailDTO:
     topic: TopicDTO
     documents: list[TopicDocumentDTO]
+    events: tuple[TopicEventDTO, ...] = ()

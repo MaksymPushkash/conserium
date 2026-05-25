@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class KnowledgeGraphNodeResponse(BaseModel):
@@ -14,6 +14,9 @@ class KnowledgeGraphNodeResponse(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     suggested_questions: list[str] | None = None
+    source_names: list[str] = Field(default_factory=list)
+    is_pinned: bool = False
+    is_ignored: bool = False
 
 
 class KnowledgeGraphEdgeResponse(BaseModel):
@@ -28,6 +31,19 @@ class KnowledgeGraphEdgeResponse(BaseModel):
 class KnowledgeGraphResponse(BaseModel):
     nodes: list[KnowledgeGraphNodeResponse]
     edges: list[KnowledgeGraphEdgeResponse]
+
+
+class KnowledgeGraphInsightResponse(BaseModel):
+    kind: str
+    title: str
+    description: str
+    severity: str
+    count: int
+    nodes: list[KnowledgeGraphNodeResponse] = Field(default_factory=list)
+
+
+class KnowledgeGraphInsightsResponse(BaseModel):
+    items: list[KnowledgeGraphInsightResponse]
 
 
 class KnowledgeGraphConcernCreateRequest(BaseModel):

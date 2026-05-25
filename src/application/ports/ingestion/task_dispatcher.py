@@ -4,7 +4,7 @@ from typing import Any
 
 class ITaskDispatcher(ABC):
     @abstractmethod
-    async def dispatch_process_document(self, document_id: str) -> None:
+    async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None:
         """Enqueue the document processing pipeline for the given document ID."""
 
     @abstractmethod

@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from src.application.dtos.topic_dtos import TopicDTO, TopicListDTO
+from src.application.dtos.topic_dtos import TopicListDTO
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
+from src.application.use_cases.topics.topic_mapping import topic_to_dto
 
 
 class ListTopicsUseCase:
@@ -14,14 +15,7 @@ class ListTopicsUseCase:
             total = await self._uow.topic_repo.count_by_user_id(user_id)
 
         return TopicListDTO(
-            items=[
-                TopicDTO(
-                    name=record.name,
-                    document_count=record.document_count,
-                    last_document_at=record.last_document_at,
-                )
-                for record in records
-            ],
+            items=[topic_to_dto(record) for record in records],
             total=total,
             limit=limit,
             offset=offset,

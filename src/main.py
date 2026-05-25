@@ -12,6 +12,7 @@ from src.core.logging import configure_logging
 from src.core.startup_checks import validate_startup_settings
 from src.infrastructure.celery.app import declare_configured_queues
 from src.presentation.api.health import router as health_router
+from src.presentation.api.v1.api_keys import router as api_key_router
 from src.presentation.api.v1.auth import router as auth_router
 from src.presentation.api.v1.chats import router as chat_router
 from src.presentation.api.v1.collections import router as collection_router
@@ -28,11 +29,13 @@ from src.presentation.api.v1.learning_goals import router as learning_goal_route
 from src.presentation.api.v1.notes import router as note_router
 from src.presentation.api.v1.observability import router as observability_router
 from src.presentation.api.v1.public import router as public_router
+from src.presentation.api.v1.public_api import router as public_api_router
 from src.presentation.api.v1.query import router as query_router
 from src.presentation.api.v1.repo_syncs import router as repo_sync_router
 from src.presentation.api.v1.stats import router as stats_router
 from src.presentation.api.v1.topics import router as topic_router
 from src.presentation.api.v1.user import router as user_router
+from src.presentation.api.v1.webhooks import router as webhook_router
 from src.presentation.exception_handlers import setup_exception_handlers
 from src.presentation.middleware.rate_limit import setup_rate_limiting
 
@@ -67,6 +70,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(api_key_router, prefix="/api/v1")
     app.include_router(user_router, prefix="/api/v1")
     app.include_router(collection_router, prefix="/api/v1")
     app.include_router(compare_router, prefix="/api/v1")
@@ -87,6 +91,8 @@ def create_app() -> FastAPI:
     app.include_router(topic_router, prefix="/api/v1")
     app.include_router(observability_router, prefix="/api/v1")
     app.include_router(public_router, prefix="/api/v1")
+    app.include_router(public_api_router, prefix="/api/v1")
+    app.include_router(webhook_router, prefix="/api/v1")
 
     return app
 

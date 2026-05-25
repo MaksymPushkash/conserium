@@ -1,6 +1,8 @@
 import os
 import uuid
+from collections import Counter
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, select, text
@@ -15,11 +17,17 @@ from src.domain.value_objects.document_type import DocumentType
 from src.domain.value_objects.email import Email
 from src.infrastructure.auth.password_hasher import BcryptPasswordHasher
 from src.infrastructure.database.models import Base
+from src.infrastructure.database.models.base import document_tags, document_topics
 from src.infrastructure.database.models.chunk import ChunkModel
+from src.infrastructure.database.models.collection import CollectionModel
 from src.infrastructure.database.models.document import DocumentModel
+from src.infrastructure.database.models.tag import TagModel
+from src.infrastructure.database.models.topic import TopicModel
 from src.infrastructure.database.models.user import UserModel
 from src.infrastructure.database.repositories.chunk_repository import SQLAlchemyChunkRepository
 from src.infrastructure.database.repositories.document_repository import SQLAlchemyDocumentRepository
+from src.infrastructure.database.repositories.knowledge_graph_repository import SQLAlchemyKnowledgeGraphRepository
+from src.infrastructure.database.repositories.topic_repository import SQLAlchemyTopicRepository
 from src.infrastructure.database.repositories.user_repository import SQLAlchemyUserRepository
 
 pytestmark = pytest.mark.skipif(
@@ -130,3 +138,168 @@ async def test_document_and_chunk_repositories_round_trip(db_session: AsyncSessi
     assert loaded_document.title == "Integration Document"
     assert loaded_chunks[0].content == "Hello integration tests"
     assert search_results[0].id == chunk.id
+
+
+async def test_knowledge_graph_repository_applies_combined_filters(db_session: AsyncSession) -> None:
+    user = UserModel(
+        email=f"{uuid.uuid4()}@integration.test",
+        hashed_password=BcryptPasswordHasher().hash("securepass123"),
+        display_name="Graph User",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    collection = CollectionModel(user_id=user.id, name=f"Backend {uuid.uuid4()}", description=None, color=None)
+    other_collection = CollectionModel(user_id=user.id, name=f"Other {uuid.uuid4()}", description=None, color=None)
+    db_session.add_all([collection, other_collection])
+    await db_session.flush()
+
+    backend_tag = TagModel(user_id=user.id, name="backend", auto=False)
+    python_topic = TopicModel(user_id=user.id, name="python")
+    image_topic = TopicModel(user_id=user.id, name="vision")
+    db_session.add_all([backend_tag, python_topic, image_topic])
+    await db_session.flush()
+
+    matching_document = _document_model(
+        user_id=user.id,
+        collection_id=collection.id,
+        title="FastAPI",
+        document_type=DocumentType.MARKDOWN,
+    )
+    wrong_collection = _document_model(
+        user_id=user.id,
+        collection_id=other_collection.id,
+        title="Django",
+        document_type=DocumentType.MARKDOWN,
+    )
+    wrong_type = _document_model(
+        user_id=user.id,
+        collection_id=collection.id,
+        title="Diagram",
+        document_type=DocumentType.IMAGE,
+    )
+    stale_document = _document_model(
+        user_id=user.id,
+        collection_id=collection.id,
+        title="Old API",
+        document_type=DocumentType.MARKDOWN,
+        created_at=datetime.now(UTC) - timedelta(days=90),
+    )
+    db_session.add_all([matching_document, wrong_collection, wrong_type, stale_document])
+    await db_session.flush()
+    await db_session.execute(
+        document_tags.insert(),
+        [
+            {"document_id": matching_document.id, "tag_id": backend_tag.id},
+            {"document_id": wrong_collection.id, "tag_id": backend_tag.id},
+            {"document_id": wrong_type.id, "tag_id": backend_tag.id},
+            {"document_id": stale_document.id, "tag_id": backend_tag.id},
+        ],
+    )
+    await db_session.execute(
+        document_topics.insert(),
+        [
+            {"document_id": matching_document.id, "topic_id": python_topic.id},
+            {"document_id": wrong_collection.id, "topic_id": python_topic.id},
+            {"document_id": wrong_type.id, "topic_id": image_topic.id},
+            {"document_id": stale_document.id, "topic_id": python_topic.id},
+        ],
+    )
+    await db_session.commit()
+
+    repository = SQLAlchemyKnowledgeGraphRepository(db_session)
+    result = await repository.list_topic_document_links(
+        user.id,
+        document_limit=20,
+        topic_limit=10,
+        collection_id=collection.id,
+        tag_name="backend",
+        topic_name="python",
+        document_type=DocumentType.MARKDOWN,
+        recency_days=30,
+    )
+
+    assert [record.document_title for record in result] == ["FastAPI"]
+
+
+async def test_topic_repository_applies_alias_pin_and_ignore_overrides(db_session: AsyncSession) -> None:
+    user = UserModel(
+        email=f"{uuid.uuid4()}@integration.test",
+        hashed_password=BcryptPasswordHasher().hash("securepass123"),
+        display_name="Topic User",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    collection = CollectionModel(user_id=user.id, name=f"Topics {uuid.uuid4()}", description=None, color=None)
+    python_topic = TopicModel(user_id=user.id, name="python")
+    fastapi_topic = TopicModel(user_id=user.id, name="fastapi")
+    db_session.add_all([collection, python_topic, fastapi_topic])
+    await db_session.flush()
+
+    python_document = _document_model(
+        user_id=user.id,
+        collection_id=collection.id,
+        title="Python",
+        document_type=DocumentType.TEXT,
+    )
+    fastapi_document = _document_model(
+        user_id=user.id,
+        collection_id=collection.id,
+        title="FastAPI",
+        document_type=DocumentType.TEXT,
+    )
+    db_session.add_all([python_document, fastapi_document])
+    await db_session.flush()
+    await db_session.execute(
+        document_topics.insert(),
+        [
+            {"document_id": python_document.id, "topic_id": python_topic.id},
+            {"document_id": fastapi_document.id, "topic_id": fastapi_topic.id},
+        ],
+    )
+    await db_session.commit()
+
+    repository = SQLAlchemyTopicRepository(db_session)
+    renamed = await repository.rename_topic(user_id=user.id, source_name="python", display_name="Backend")
+    merged = await repository.merge_topics(user_id=user.id, source_names=["python", "fastapi"], display_name="Backend")
+    pinned = await repository.set_pinned(user_id=user.id, name="Backend", pinned=True)
+    ignored = await repository.set_ignored(user_id=user.id, name="Backend", ignored=True)
+    await db_session.commit()
+
+    listed = await repository.list_by_user_id(user.id, limit=10, offset=0)
+    events = await repository.list_override_events(user_id=user.id, topic_name="Backend", limit=10)
+
+    assert renamed.name == "Backend"
+    assert set(merged.source_names) == {"python", "fastapi"}
+    assert pinned.pinned is True
+    assert ignored.ignored is True
+    assert listed == []
+    assert Counter(event.action for event in events) == Counter(["ignored", "pinned", "merged", "renamed"])
+
+
+def _document_model(
+    *,
+    user_id: uuid.UUID,
+    collection_id: uuid.UUID,
+    title: str,
+    document_type: DocumentType,
+    created_at: datetime | None = None,
+) -> DocumentModel:
+    return DocumentModel(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        collection_id=collection_id,
+        title=title,
+        type=document_type,
+        status=DocumentStatus.READY,
+        raw_content=title,
+        summary=f"{title} summary",
+        word_count=1,
+        language="en",
+        suggested_questions=[],
+        is_duplicate=False,
+        created_at=created_at,
+    )

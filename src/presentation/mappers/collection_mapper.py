@@ -2,7 +2,9 @@ from src.application.dtos.collection_dtos import CollectionDTO, CollectionListDT
 from src.presentation.schemas.collection import (
     CollectionListResponse,
     CollectionResponse,
+    CollectionWorkspaceComparisonResponse,
     CollectionWorkspaceDocumentResponse,
+    CollectionWorkspaceDraftResponse,
     CollectionWorkspaceGapResponse,
     CollectionWorkspaceQuestionResponse,
     CollectionWorkspaceResponse,
@@ -66,7 +68,16 @@ def to_collection_workspace_response(dto: CollectionWorkspaceDTO) -> CollectionW
             for topic in dto.topics
         ],
         gaps=[
-            CollectionWorkspaceGapResponse(title=gap.title, reason=gap.reason, severity=gap.severity)
+            CollectionWorkspaceGapResponse(
+                title=gap.title,
+                reason=gap.reason,
+                severity=gap.severity,
+                id=gap.id,
+                topic=gap.topic,
+                coverage_ratio=gap.coverage_ratio,
+                missing_source_types=gap.missing_source_types or [],
+                suggested_actions=gap.suggested_actions or [],
+            )
             for gap in dto.gaps
         ],
         recent_questions=[
@@ -77,5 +88,31 @@ def to_collection_workspace_response(dto: CollectionWorkspaceDTO) -> CollectionW
                 created_at=question.created_at,
             )
             for question in dto.recent_questions
+        ],
+        recent_drafts=[
+            CollectionWorkspaceDraftResponse(
+                id=draft.id,
+                title=draft.title,
+                prompt=draft.prompt,
+                template_id=draft.template_id,
+                scope_type=draft.scope_type,
+                topic=draft.topic,
+                knowledge_gap_id=draft.knowledge_gap_id,
+                version_number=draft.version_number,
+                created_at=draft.created_at,
+                updated_at=draft.updated_at,
+            )
+            for draft in dto.recent_drafts
+        ],
+        recent_comparisons=[
+            CollectionWorkspaceComparisonResponse(
+                id=comparison.id,
+                left_title=comparison.left_title,
+                right_title=comparison.right_title,
+                summary=comparison.summary,
+                dimensions=comparison.dimensions,
+                created_at=comparison.created_at,
+            )
+            for comparison in dto.recent_comparisons
         ],
     )

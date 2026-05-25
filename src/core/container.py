@@ -2,6 +2,7 @@ from dishka import make_async_container
 
 from src.core.providers import (
     AIProvider,
+    ApiKeysProvider,
     AuthProvider,
     CacheProvider,
     CollectionSharesProvider,
@@ -25,6 +26,7 @@ container = make_async_container(
     DatabaseProvider(),
     CacheProvider(),
     AuthProvider(),
+    ApiKeysProvider(),
     CompareProvider(),
     ConflictsProvider(),
     CollectionSharesProvider(),

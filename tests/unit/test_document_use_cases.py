@@ -257,6 +257,11 @@ class _FakeStatusCache:
         raise NotImplementedError
 
 
+class _FailingStatusCache(_FakeStatusCache):
+    async def set_status(self, document_id: uuid.UUID, status: str, progress: int, message: str) -> None:
+        raise RuntimeError("cache unavailable")
+
+
 class _FailingTaskDispatcher:
     async def dispatch_process_document(self, document_id: str) -> None:
         raise RuntimeError("broker unavailable")
@@ -547,6 +552,32 @@ async def test_ingest_document_use_case_marks_failed_when_dispatch_fails() -> No
     created_document = document_repo.created[0]
     assert created_document.status == DocumentStatus.FAILED
     assert status_cache.calls[-1] == ("FAILED", 0, "Failed to queue document for processing.")
+
+
+async def test_ingest_document_use_case_marks_failed_when_status_cache_fails_before_dispatch() -> None:
+    user_id = uuid.uuid4()
+    document_repo = _FakeDocumentRepository()
+    uow = _FakeUnitOfWork(document_repo)
+    dispatcher = _SuccessfulTaskDispatcher()
+    use_case = IngestDocumentUseCase(
+        _as_uow(uow),
+        cast("IDocumentStatusCache", _FailingStatusCache()),
+        cast("ITaskDispatcher", dispatcher),
+    )
+
+    with pytest.raises(RuntimeError, match="cache unavailable"):
+        await use_case(
+            IngestDocumentDTO(
+                user_id=user_id,
+                title="Queued note",
+                type=DocumentType.TEXT,
+                raw_content="Hello world",
+            )
+        )
+
+    assert document_repo.created
+    assert document_repo.created[0].status == DocumentStatus.FAILED
+    assert dispatcher.processed_document_ids == []
 
 
 async def test_create_note_use_case_creates_markdown_document_and_queues_indexing() -> None:

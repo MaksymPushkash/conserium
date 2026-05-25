@@ -1,6 +1,16 @@
-from uuid import NAMESPACE_URL, UUID, uuid5
+import re
+from dataclasses import dataclass
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from src.application.dtos.compare_dtos import CompareDocumentsDTO, CompareResultDTO
+from src.application.dtos.compare_dtos import (
+    CompareDocumentsDTO,
+    CompareEvidenceRowDTO,
+    CompareListDTO,
+    CompareResultDTO,
+    DeleteCompareResultDTO,
+    GetCompareResultDTO,
+    ListCompareResultsDTO,
+)
 from src.application.dtos.query_dtos import QueryDTO, QuerySourceDTO
 from src.application.ports.ai.llm_service import ILLMService
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
@@ -9,7 +19,17 @@ from src.application.use_cases.documents.base import ensure_document_owner
 from src.application.use_cases.query.query_use_case import QueryUseCase
 from src.domain.entities.chunk_entity import ChunkEntity
 from src.domain.entities.document_entity import DocumentEntity
-from src.domain.exceptions import DocumentNotFoundException, QueryValidationException
+from src.domain.exceptions import DocumentNotFoundException, QueryValidationException, ResourceNotFoundException
+
+DEFAULT_COMPARE_DIMENSIONS = ("claims", "assumptions", "architecture", "tradeoffs", "contradictions", "missing_details")
+COMPARE_DIMENSION_LABELS = {
+    "claims": "Claims",
+    "assumptions": "Assumptions",
+    "architecture": "Architecture",
+    "tradeoffs": "Tradeoffs",
+    "contradictions": "Contradictions",
+    "missing_details": "Missing details",
+}
 
 
 class CompareDocumentsUseCase:
@@ -23,27 +43,9 @@ class CompareDocumentsUseCase:
             raise QueryValidationException("choose two different documents")
 
         left_document, right_document = await self._load_documents(dto)
-        prompt = compare_prompt(left_document, right_document, dto.prompt)
-        direct_sources = await self._load_direct_sources(
-            left_document,
-            right_document,
-            limit=max(dto.limit, 8),
-        )
-        if direct_sources:
-            answer = await self._llm_service.synthesize_answer(
-                query=prompt,
-                context=refrag_context_from_sources(prompt, direct_sources),
-            )
-            return CompareResultDTO(
-                left_document_id=dto.left_document_id,
-                right_document_id=dto.right_document_id,
-                left_title=left_document.title,
-                right_title=right_document.title,
-                markdown=answer,
-                sources=direct_sources,
-            )
-
+        dimensions = normalize_dimensions(dto.dimensions)
         retrieval_query = compare_retrieval_query(left_document, right_document, dto.prompt)
+        prompt = compare_prompt(left_document, right_document, dto.prompt, dimensions)
         result = await self._query_use_case(
             QueryDTO(
                 user_id=dto.user_id,
@@ -56,13 +58,32 @@ class CompareDocumentsUseCase:
         )
         used_sources = [source for source in result.sources if source.used_in_answer]
         sources = used_sources or result.sources
-        return CompareResultDTO(
-            left_document_id=dto.left_document_id,
-            right_document_id=dto.right_document_id,
-            left_title=left_document.title,
-            right_title=right_document.title,
-            markdown=result.answer,
-            sources=sources,
+        if sources:
+            return await self._persist_result(
+                dto=dto,
+                left_document=left_document,
+                right_document=right_document,
+                markdown=result.answer,
+                dimensions=dimensions,
+                sources=sources,
+            )
+
+        direct_sources = await self._load_direct_sources(
+            left_document,
+            right_document,
+            limit=max(dto.limit, 8),
+        )
+        answer = await self._llm_service.synthesize_answer(
+            query=prompt,
+            context=refrag_context_from_sources(prompt, direct_sources),
+        )
+        return await self._persist_result(
+            dto=dto,
+            left_document=left_document,
+            right_document=right_document,
+            markdown=answer,
+            dimensions=dimensions,
+            sources=direct_sources,
         )
 
     async def _load_documents(self, dto: CompareDocumentsDTO) -> tuple[DocumentEntity, DocumentEntity]:
@@ -100,16 +121,103 @@ class CompareDocumentsUseCase:
             if source is not None
         ]
 
+    async def _persist_result(
+        self,
+        *,
+        dto: CompareDocumentsDTO,
+        left_document: DocumentEntity,
+        right_document: DocumentEntity,
+        markdown: str,
+        dimensions: list[str],
+        sources: list[QuerySourceDTO],
+    ) -> CompareResultDTO:
+        result = CompareResultDTO(
+            id=uuid4(),
+            user_id=dto.user_id,
+            collection_id=shared_collection_id(left_document, right_document),
+            left_document_id=left_document.id,
+            right_document_id=right_document.id,
+            left_title=left_document.title,
+            right_title=right_document.title,
+            dimensions=dimensions,
+            markdown=markdown,
+            summary=compare_summary(left_document, right_document, dimensions),
+            evidence_rows=build_evidence_rows(
+                markdown=markdown,
+                dimensions=dimensions,
+                left_document_id=left_document.id,
+                right_document_id=right_document.id,
+                sources=sources,
+            ),
+            sources=sources,
+        )
+        async with self._uow:
+            created = await self._uow.compare_repo.create(result)
+            await self._uow.commit()
+        return created
 
-def compare_prompt(left_document: DocumentEntity, right_document: DocumentEntity, prompt: str | None) -> str:
+
+class ListCompareResultsUseCase:
+    def __init__(self, uow: IUnitOfWork) -> None:
+        self._uow = uow
+
+    async def __call__(self, dto: ListCompareResultsDTO) -> CompareListDTO:
+        async with self._uow:
+            items = await self._uow.compare_repo.list_by_user_id(
+                user_id=dto.user_id,
+                collection_id=dto.collection_id,
+                limit=dto.limit,
+                offset=dto.offset,
+            )
+            total = await self._uow.compare_repo.count_by_user_id(
+                user_id=dto.user_id,
+                collection_id=dto.collection_id,
+            )
+        return CompareListDTO(items=items, total=total)
+
+
+class GetCompareResultUseCase:
+    def __init__(self, uow: IUnitOfWork) -> None:
+        self._uow = uow
+
+    async def __call__(self, dto: GetCompareResultDTO) -> CompareResultDTO:
+        async with self._uow:
+            result = await self._uow.compare_repo.get_by_id(dto.comparison_id)
+        if result is None or result.user_id != dto.user_id:
+            raise ResourceNotFoundException("comparison not found")
+        return result
+
+
+class DeleteCompareResultUseCase:
+    def __init__(self, uow: IUnitOfWork) -> None:
+        self._uow = uow
+
+    async def __call__(self, dto: DeleteCompareResultDTO) -> None:
+        async with self._uow:
+            result = await self._uow.compare_repo.get_by_id(dto.comparison_id)
+            if result is None or result.user_id != dto.user_id:
+                raise ResourceNotFoundException("comparison not found")
+            await self._uow.compare_repo.delete(dto.comparison_id)
+            await self._uow.commit()
+
+
+def compare_prompt(
+    left_document: DocumentEntity,
+    right_document: DocumentEntity,
+    prompt: str | None,
+    dimensions: list[str],
+) -> str:
     extra_focus = f"\nFocus: {prompt.strip()}" if prompt and prompt.strip() else ""
+    dimension_text = ", ".join(COMPARE_DIMENSION_LABELS[dimension] for dimension in dimensions)
     return (
         "Compare these two saved Cortex documents using only retrieved saved context.\n"
         f"Left document: {left_document.title}\n"
         f"Right document: {right_document.title}"
         f"{extra_focus}\n"
-        "Return Markdown with these sections: Shared ideas, Key differences, Possible contradictions, Source notes. "
-        "Use inline citations like [1], [2]. If context is insufficient, state the missing context."
+        f"Cover these dimensions: {dimension_text}.\n"
+        "Return Markdown with these sections: Summary, Evidence by dimension, Decision notes, Source notes. "
+        "In Evidence by dimension, include one subsection per requested dimension and cite every row with inline citations like [1], [2]. "
+        "If context is insufficient, state the missing context."
     )
 
 
@@ -159,3 +267,129 @@ def source_from_document(document: DocumentEntity) -> QuerySourceDTO | None:
 
 def stable_document_source_id(document_id: UUID) -> UUID:
     return uuid5(NAMESPACE_URL, f"compare-fallback:{document_id}")
+
+
+def normalize_dimensions(dimensions: tuple[str, ...] | None) -> list[str]:
+    if not dimensions:
+        return list(DEFAULT_COMPARE_DIMENSIONS)
+    normalized = []
+    for dimension in dimensions:
+        key = dimension.strip().lower().replace("-", "_")
+        if key not in COMPARE_DIMENSION_LABELS:
+            raise QueryValidationException(f"unsupported compare dimension: {dimension}")
+        if key not in normalized:
+            normalized.append(key)
+    return normalized or list(DEFAULT_COMPARE_DIMENSIONS)
+
+
+def shared_collection_id(left_document: DocumentEntity, right_document: DocumentEntity) -> UUID | None:
+    if left_document.collection_id and left_document.collection_id == right_document.collection_id:
+        return left_document.collection_id
+    return None
+
+
+def compare_summary(left_document: DocumentEntity, right_document: DocumentEntity, dimensions: list[str]) -> str:
+    labels = ", ".join(COMPARE_DIMENSION_LABELS[dimension].lower() for dimension in dimensions[:3])
+    suffix = " and more" if len(dimensions) > 3 else ""
+    return f"{left_document.title} vs {right_document.title} across {labels}{suffix}."
+
+
+def build_evidence_rows(
+    *,
+    markdown: str,
+    dimensions: list[str],
+    left_document_id: UUID,
+    right_document_id: UUID,
+    sources: list[QuerySourceDTO],
+) -> list[CompareEvidenceRowDTO]:
+    indexed_sources = [
+        IndexedSource(index=index, citation=f"[{index}]", source=source)
+        for index, source in enumerate(sources, start=1)
+    ]
+    return [
+        evidence_row_for_dimension(
+            dimension=dimension,
+            markdown=markdown,
+            left_document_id=left_document_id,
+            right_document_id=right_document_id,
+            sources=indexed_sources,
+        )
+        for dimension in dimensions
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class IndexedSource:
+    index: int
+    citation: str
+    source: QuerySourceDTO
+
+
+def evidence_row_for_dimension(
+    *,
+    dimension: str,
+    markdown: str,
+    left_document_id: UUID,
+    right_document_id: UUID,
+    sources: list[IndexedSource],
+) -> CompareEvidenceRowDTO:
+    cited = cited_sources_for_dimension(markdown, dimension, sources)
+    left = best_cited_evidence(cited, document_id=left_document_id)
+    right = best_cited_evidence(cited, document_id=right_document_id)
+    return CompareEvidenceRowDTO(
+        dimension=dimension,
+        left_evidence=evidence_text(left),
+        right_evidence=evidence_text(right),
+        assessment=evidence_assessment(dimension, left, right),
+        left_source_id=left.source.chunk_id if left is not None else None,
+        right_source_id=right.source.chunk_id if right is not None else None,
+        left_citation=left.citation if left is not None else None,
+        right_citation=right.citation if right is not None else None,
+    )
+
+
+def cited_sources_for_dimension(markdown: str, dimension: str, sources: list[IndexedSource]) -> list[IndexedSource]:
+    window = dimension_window(markdown, dimension)
+    if not window:
+        return []
+    cited_indexes = {int(match) for match in re.findall(r"\[(\d+)\]", window)}
+    return [source for source in sources if source.index in cited_indexes]
+
+
+def dimension_window(markdown: str, dimension: str) -> str:
+    label = COMPARE_DIMENSION_LABELS[dimension].lower()
+    lines = markdown.splitlines()
+    for index, line in enumerate(lines):
+        normalized = line.strip("#*:- ").lower()
+        if label in normalized or dimension.replace("_", " ") in normalized:
+            return "\n".join(lines[index : index + 6])
+    return markdown
+
+
+def best_cited_evidence(sources: list[IndexedSource], *, document_id: UUID) -> IndexedSource | None:
+    sources = [source for source in sources if source.source.document_id == document_id]
+    if not sources:
+        return None
+    ranked = sorted(
+        sources,
+        key=lambda source: source.source.score or 0,
+        reverse=True,
+    )
+    return ranked[0]
+
+
+def evidence_text(source: IndexedSource | None) -> str | None:
+    if source is None:
+        return None
+    return f"{source.citation} {trim_words(source.source.content, 45)}"
+
+
+def evidence_assessment(dimension: str, left_source: IndexedSource | None, right_source: IndexedSource | None) -> str:
+    label = COMPARE_DIMENSION_LABELS[dimension]
+    if left_source and right_source:
+        return f"{label} comparison is grounded in {left_source.citation} and {right_source.citation}."
+    if left_source:
+        return f"{label} has evidence from the left document only: {left_source.citation}."
+    if right_source:
+        return f"{label} has evidence from the right document only: {right_source.citation}."
+    return f"{label} has no direct supporting source."

@@ -61,10 +61,16 @@ def to_learning_goal_response(dto: LearningGoalDTO) -> LearningGoalResponse:
 
 def to_gap_area_response(dto: KnowledgeGapAreaDTO) -> KnowledgeGapAreaResponse:
     return KnowledgeGapAreaResponse(
+        id=dto.id,
         name=dto.name,
         covered=dto.covered,
         evidence_count=dto.evidence_count,
         evidence_titles=dto.evidence_titles,
+        why_detected=dto.why_detected,
+        missing_source_types=dto.missing_source_types,
+        severity=dto.severity,
+        rationale=dto.rationale,
+        suggested_actions=dto.suggested_actions,
     )
 
 

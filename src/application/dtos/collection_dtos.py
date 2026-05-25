@@ -98,6 +98,11 @@ class CollectionWorkspaceGapDTO:
     title: str
     reason: str
     severity: str
+    id: str | None = None
+    topic: str | None = None
+    coverage_ratio: float | None = None
+    missing_source_types: list[str] | None = None
+    suggested_actions: list[str] | None = None
 
 
 @final
@@ -111,6 +116,32 @@ class CollectionWorkspaceQuestionDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
+class CollectionWorkspaceDraftDTO:
+    id: UUID
+    title: str
+    prompt: str
+    template_id: str
+    scope_type: str
+    topic: str | None
+    knowledge_gap_id: str | None
+    version_number: int
+    created_at: datetime
+    updated_at: datetime | None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class CollectionWorkspaceComparisonDTO:
+    id: UUID
+    left_title: str
+    right_title: str
+    summary: str
+    dimensions: list[str]
+    created_at: datetime | None
+
+
+@final
+@dataclass(frozen=True, slots=True)
 class CollectionWorkspaceDTO:
     collection: CollectionDTO
     stats: CollectionWorkspaceStatsDTO
@@ -118,3 +149,5 @@ class CollectionWorkspaceDTO:
     topics: list[CollectionWorkspaceTopicDTO]
     gaps: list[CollectionWorkspaceGapDTO]
     recent_questions: list[CollectionWorkspaceQuestionDTO]
+    recent_drafts: list[CollectionWorkspaceDraftDTO]
+    recent_comparisons: list[CollectionWorkspaceComparisonDTO]

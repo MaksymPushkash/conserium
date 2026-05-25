@@ -7,18 +7,22 @@ from src.application.use_cases.integrations import (
     CreateNotionConnectUrlUseCase,
     DisconnectNotionUseCase,
     GetNotionConnectionUseCase,
+    ImportNotionPageUseCase,
     SearchNotionPagesUseCase,
     UpdateNotionConnectionSettingsUseCase,
     notion_settings_redirect,
 )
 from src.domain.exceptions import DomainException
 from src.presentation.dependencies.auth import CurrentUser
+from src.presentation.mappers.external_intake_mapper import to_external_ingest_response
 from src.presentation.mappers.integration_mapper import to_notion_connection_response, to_notion_page_response
 from src.presentation.oauth_redirects import build_callback_uri
 from src.presentation.schemas.integration import (
     IntegrationConnectUrlResponse,
     NotionConnectionResponse,
     NotionConnectionSettingsRequest,
+    NotionImportRequest,
+    NotionImportResponse,
     NotionPageResponse,
 )
 
@@ -59,6 +63,24 @@ async def search_notion_pages(
 ) -> list[NotionPageResponse]:
     result = await use_case(user_id=current_user.id, query=query, limit=limit)
     return [to_notion_page_response(page) for page in result]
+
+
+@router.post("/notion/import", response_model=NotionImportResponse, status_code=status.HTTP_202_ACCEPTED)
+@inject
+async def import_notion_page(
+    body: NotionImportRequest,
+    current_user: CurrentUser,
+    use_case: FromDishka[ImportNotionPageUseCase],
+) -> NotionImportResponse:
+    response = to_external_ingest_response(
+        await use_case(
+            user_id=current_user.id,
+            page_id=body.page_id,
+            collection_id=body.collection_id,
+            tags=body.tags,
+        )
+    )
+    return NotionImportResponse(intake_item=response.intake_item, document=response.document)
 
 
 @router.post("/notion/connect-url", response_model=IntegrationConnectUrlResponse)

@@ -8,7 +8,14 @@ from fastapi.testclient import TestClient
 from src.application.dtos.topic_dtos import TopicDetailDTO, TopicDocumentDTO, TopicDTO, TopicListDTO
 from src.application.ports.auth.jwt_service import IJWTService
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.topics import GetTopicDetailUseCase, ListTopicsUseCase
+from src.application.use_cases.topics import (
+    GetTopicDetailUseCase,
+    IgnoreTopicUseCase,
+    ListTopicsUseCase,
+    MergeTopicsUseCase,
+    PinTopicUseCase,
+    RenameTopicUseCase,
+)
 from src.domain.entities.user_entity import UserEntity
 from src.domain.value_objects.email import Email
 from src.main import create_app
@@ -77,6 +84,16 @@ class _ReturningDetailUseCase:
 
     async def __call__(self, *, user_id: uuid.UUID, name: str, document_limit: int = 10) -> TopicDetailDTO:
         self.received = (user_id, name, document_limit)
+        return self._result
+
+
+class _ReturningTopicUseCase:
+    def __init__(self, result: TopicDTO) -> None:
+        self._result = result
+        self.received: dict[str, object] = {}
+
+    async def __call__(self, **kwargs: object) -> TopicDTO:
+        self.received = kwargs
         return self._result
 
 
@@ -169,3 +186,67 @@ def test_get_topic_detail_route_returns_representative_documents() -> None:
     assert response.json()["documents"][0]["id"] == str(document_id)
     assert response.json()["documents"][0]["title"] == "Python Async"
     assert use_case.received == (user.id, "python", 12)
+
+
+def test_topic_management_routes_forward_authenticated_user_and_payloads() -> None:
+    user = _make_user()
+    renamed = _ReturningTopicUseCase(
+        TopicDTO(
+            name="Backend",
+            document_count=2,
+            last_document_at=datetime(2026, 5, 1, tzinfo=UTC),
+            source_names=("python", "fastapi"),
+            pinned=True,
+        )
+    )
+    merged = _ReturningTopicUseCase(renamed._result)
+    pinned = _ReturningTopicUseCase(renamed._result)
+    ignored = _ReturningTopicUseCase(TopicDTO(name="Backend", document_count=2, last_document_at=None, ignored=True))
+    jwt_service = MagicMock()
+    jwt_service.verify_access_token.return_value = user.id
+    app = create_app()
+    app.state.dishka_container = _FakeRootContainer(
+        {
+            IJWTService: jwt_service,
+            IUnitOfWork: _FakeUnitOfWork(user),
+            RenameTopicUseCase: renamed,
+            MergeTopicsUseCase: merged,
+            PinTopicUseCase: pinned,
+            IgnoreTopicUseCase: ignored,
+        }
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    try:
+        rename_response = client.patch(
+            "/api/v1/topics/python",
+            json={"display_name": "Backend"},
+            headers={"Authorization": "Bearer access-token"},
+        )
+        merge_response = client.post(
+            "/api/v1/topics/Backend/merge",
+            json={"source_names": ["python", "fastapi"]},
+            headers={"Authorization": "Bearer access-token"},
+        )
+        pin_response = client.post(
+            "/api/v1/topics/Backend/pin",
+            json={"pinned": False},
+            headers={"Authorization": "Bearer access-token"},
+        )
+        ignore_response = client.post(
+            "/api/v1/topics/Backend/ignore",
+            json={"ignored": True},
+            headers={"Authorization": "Bearer access-token"},
+        )
+    finally:
+        client.close()
+
+    assert rename_response.status_code == 200
+    assert rename_response.json()["source_names"] == ["python", "fastapi"]
+    assert merge_response.status_code == 200
+    assert pin_response.status_code == 200
+    assert ignore_response.status_code == 200
+    assert renamed.received == {"user_id": user.id, "name": "python", "display_name": "Backend"}
+    assert merged.received == {"user_id": user.id, "name": "Backend", "source_names": ["python", "fastapi"]}
+    assert pinned.received == {"user_id": user.id, "name": "Backend", "pinned": False}
+    assert ignored.received == {"user_id": user.id, "name": "Backend", "ignored": True}
