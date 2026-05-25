@@ -5,10 +5,16 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.application.dtos.knowledge_graph_dtos import KnowledgeGraphDTO, KnowledgeGraphEdgeDTO, KnowledgeGraphNodeDTO
+from src.application.dtos.knowledge_graph_dtos import (
+    KnowledgeGraphDTO,
+    KnowledgeGraphEdgeDTO,
+    KnowledgeGraphInsightDTO,
+    KnowledgeGraphInsightsDTO,
+    KnowledgeGraphNodeDTO,
+)
 from src.application.ports.auth.jwt_service import IJWTService
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.knowledge_graph import GetKnowledgeGraphUseCase
+from src.application.use_cases.knowledge_graph import GetKnowledgeGraphInsightsUseCase, GetKnowledgeGraphUseCase
 from src.domain.entities.user_entity import UserEntity
 from src.domain.value_objects.email import Email
 from src.main import create_app
@@ -90,6 +96,36 @@ class _ReturningGraphUseCase:
         return self._result
 
 
+class _ReturningGraphInsightsUseCase:
+    def __init__(self, result: KnowledgeGraphInsightsDTO) -> None:
+        self._result = result
+        self.received: dict[str, object] | None = None
+
+    async def __call__(
+        self,
+        *,
+        user_id: uuid.UUID,
+        document_limit: int = 120,
+        topic_limit: int = 40,
+        collection_id: uuid.UUID | None = None,
+        tag_name: str | None = None,
+        topic_name: str | None = None,
+        document_type: object | None = None,
+        recency_days: int | None = None,
+    ) -> KnowledgeGraphInsightsDTO:
+        self.received = {
+            "user_id": user_id,
+            "document_limit": document_limit,
+            "topic_limit": topic_limit,
+            "collection_id": collection_id,
+            "tag_name": tag_name,
+            "topic_name": topic_name,
+            "document_type": document_type,
+            "recency_days": recency_days,
+        }
+        return self._result
+
+
 def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
     user = _make_user()
     use_case = _ReturningGraphUseCase(
@@ -148,6 +184,52 @@ def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
     assert use_case.received["tag_name"] == "python"
     assert use_case.received["topic_name"] == "api"
     assert use_case.received["recency_days"] == 30
+
+
+def test_get_knowledge_graph_insights_route_returns_backend_signals() -> None:
+    user = _make_user()
+    use_case = _ReturningGraphInsightsUseCase(
+        KnowledgeGraphInsightsDTO(
+            items=[
+                KnowledgeGraphInsightDTO(
+                    kind="pinned_topics",
+                    title="Pinned topics",
+                    description="Topics manually marked as important.",
+                    severity="info",
+                    count=1,
+                    nodes=[KnowledgeGraphNodeDTO(id="topic:python", kind="topic", label="python", is_pinned=True)],
+                )
+            ]
+        )
+    )
+    jwt_service = MagicMock()
+    jwt_service.verify_access_token.return_value = user.id
+    app = create_app()
+    app.state.dishka_container = _FakeRootContainer(
+        {
+            IJWTService: jwt_service,
+            IUnitOfWork: _FakeUnitOfWork(user),
+            GetKnowledgeGraphInsightsUseCase: use_case,
+        }
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    try:
+        response = client.get(
+            "/api/v1/knowledge-graph/insights?document_limit=70&topic_limit=30&topic=python",
+            headers={"Authorization": "Bearer access-token"},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["kind"] == "pinned_topics"
+    assert response.json()["items"][0]["nodes"][0]["is_pinned"] is True
+    assert use_case.received is not None
+    assert use_case.received["user_id"] == user.id
+    assert use_case.received["document_limit"] == 70
+    assert use_case.received["topic_limit"] == 30
+    assert use_case.received["topic_name"] == "python"
 
 
 def _make_user() -> UserEntity:

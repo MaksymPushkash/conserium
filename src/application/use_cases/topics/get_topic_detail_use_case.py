@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from src.application.dtos.topic_dtos import TopicDetailDTO, TopicDocumentDTO, TopicDTO
+from src.application.dtos.topic_dtos import TopicDetailDTO, TopicDocumentDTO, TopicEventDTO
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
+from src.application.use_cases.topics.topic_mapping import topic_to_dto
 from src.domain.exceptions import ResourceNotFoundException
 
 
@@ -17,15 +18,16 @@ class GetTopicDetailUseCase:
                 name=normalized_name,
                 document_limit=document_limit,
             )
-        if record is None:
-            raise ResourceNotFoundException("topic not found")
+            if record is None:
+                raise ResourceNotFoundException("topic not found")
+            events = await self._uow.topic_repo.list_override_events(
+                user_id=user_id,
+                topic_name=normalized_name,
+                limit=10,
+            )
 
         return TopicDetailDTO(
-            topic=TopicDTO(
-                name=record.topic.name,
-                document_count=record.topic.document_count,
-                last_document_at=record.topic.last_document_at,
-            ),
+            topic=topic_to_dto(record.topic),
             documents=[
                 TopicDocumentDTO(
                     id=str(document.id),
@@ -37,4 +39,14 @@ class GetTopicDetailUseCase:
                 )
                 for document in record.documents
             ],
+            events=tuple(
+                TopicEventDTO(
+                    action=event.action,
+                    topic_name=event.topic_name,
+                    display_name=event.display_name,
+                    source_names=event.source_names,
+                    created_at=event.created_at,
+                )
+                for event in events
+            ),
         )

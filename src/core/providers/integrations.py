@@ -4,11 +4,13 @@ from src.application.ports.integrations.notion_oauth_client import INotionOAuthC
 from src.application.ports.integrations.notion_workspace_client import INotionWorkspaceClient
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.ports.security.token_cipher import ITokenCipher
+from src.application.use_cases.external_intake import IngestExternalItemUseCase
 from src.application.use_cases.integrations import (
     CompleteNotionConnectionUseCase,
     CreateNotionConnectUrlUseCase,
     DisconnectNotionUseCase,
     GetNotionConnectionUseCase,
+    ImportNotionPageUseCase,
     SearchNotionPagesUseCase,
     UpdateNotionConnectionSettingsUseCase,
 )
@@ -74,3 +76,13 @@ class IntegrationsProvider(Provider):
         token_cipher: ITokenCipher,
     ) -> SearchNotionPagesUseCase:
         return SearchNotionPagesUseCase(uow, workspace_client, token_cipher)
+
+    @provide(scope=Scope.REQUEST)
+    def get_import_notion_page_use_case(
+        self,
+        uow: IUnitOfWork,
+        workspace_client: INotionWorkspaceClient,
+        token_cipher: ITokenCipher,
+        ingest_external_item: IngestExternalItemUseCase,
+    ) -> ImportNotionPageUseCase:
+        return ImportNotionPageUseCase(uow, workspace_client, token_cipher, ingest_external_item)

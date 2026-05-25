@@ -88,3 +88,5 @@ docker-compose.dev.yaml
 
 # Misc
 .notes.txt
+
+celerybeat-schedule

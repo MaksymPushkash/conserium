@@ -1,20 +1,28 @@
-from src.application.dtos.topic_dtos import TopicDetailDTO, TopicListDTO
+from src.application.dtos.topic_dtos import TopicDetailDTO, TopicDTO, TopicListDTO
 from src.presentation.schemas.topic import (
     TopicDetailResponse,
     TopicDocumentResponse,
+    TopicEventResponse,
     TopicListResponse,
     TopicResponse,
 )
 
 
+def to_topic_response(dto: TopicDTO) -> TopicResponse:
+    return TopicResponse(
+        name=dto.name,
+        document_count=dto.document_count,
+        last_document_at=dto.last_document_at,
+        source_names=list(dto.source_names),
+        pinned=dto.pinned,
+        ignored=dto.ignored,
+    )
+
+
 def to_topic_list_response(dto: TopicListDTO) -> TopicListResponse:
     return TopicListResponse(
         items=[
-            TopicResponse(
-                name=item.name,
-                document_count=item.document_count,
-                last_document_at=item.last_document_at,
-            )
+            to_topic_response(item)
             for item in dto.items
         ],
         total=dto.total,
@@ -25,11 +33,7 @@ def to_topic_list_response(dto: TopicListDTO) -> TopicListResponse:
 
 def to_topic_detail_response(dto: TopicDetailDTO) -> TopicDetailResponse:
     return TopicDetailResponse(
-        topic=TopicResponse(
-            name=dto.topic.name,
-            document_count=dto.topic.document_count,
-            last_document_at=dto.topic.last_document_at,
-        ),
+        topic=to_topic_response(dto.topic),
         documents=[
             TopicDocumentResponse(
                 id=document.id,
@@ -40,5 +44,15 @@ def to_topic_detail_response(dto: TopicDetailDTO) -> TopicDetailResponse:
                 created_at=document.created_at,
             )
             for document in dto.documents
+        ],
+        events=[
+            TopicEventResponse(
+                action=event.action,
+                topic_name=event.topic_name,
+                display_name=event.display_name,
+                source_names=list(event.source_names),
+                created_at=event.created_at,
+            )
+            for event in dto.events
         ],
     )

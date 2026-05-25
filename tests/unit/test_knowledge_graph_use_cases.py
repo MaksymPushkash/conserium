@@ -7,8 +7,10 @@ from src.application.ports.persistence.knowledge_graph_repository import (
     KnowledgeGraphConcernRecord,
     KnowledgeGraphRecord,
 )
+from src.application.ports.persistence.topic_repository import TopicOverrideRecord
 from src.application.use_cases.knowledge_graph import (
     CreateKnowledgeGraphConcernUseCase,
+    GetKnowledgeGraphInsightsUseCase,
     GetKnowledgeGraphUseCase,
     RecomputeKnowledgeGraphUseCase,
 )
@@ -87,9 +89,18 @@ class _FakeKnowledgeGraphRepository:
         return self.concern
 
 
+class _FakeTopicRepository:
+    def __init__(self) -> None:
+        self.overrides: list[TopicOverrideRecord] = []
+
+    async def list_overrides(self, user_id: uuid.UUID) -> list[TopicOverrideRecord]:
+        return self.overrides
+
+
 class _FakeUnitOfWork:
     def __init__(self) -> None:
         self.knowledge_graph_repo = _FakeKnowledgeGraphRepository()
+        self.topic_repo = _FakeTopicRepository()
         self.committed = False
 
     async def __aenter__(self) -> "_FakeUnitOfWork":
@@ -122,6 +133,55 @@ async def test_get_knowledge_graph_returns_topic_document_nodes_and_edges() -> N
     fastapi_node = next(node for node in result.nodes if node.id == "document:00000000-0000-0000-0000-000000000001")
     assert fastapi_node.summary == "FastAPI summary"
     assert fastapi_node.suggested_questions == ["How does FastAPI work?"]
+
+
+async def test_get_knowledge_graph_applies_topic_overrides() -> None:
+    uow = _FakeUnitOfWork()
+    uow.topic_repo.overrides = [
+        TopicOverrideRecord(source_name="python", display_name="Backend", pinned=True, ignored=False),
+    ]
+    use_case = GetKnowledgeGraphUseCase(cast("IUnitOfWork", uow))
+
+    result = await use_case(user_id=uuid.uuid4(), document_limit=80, topic_limit=20)
+
+    topic_node = next(node for node in result.nodes if node.kind == "topic")
+    assert topic_node.id == "topic:Backend"
+    assert topic_node.label == "Backend"
+    assert topic_node.source_names == ("python",)
+    assert topic_node.is_pinned is True
+
+
+async def test_get_knowledge_graph_filters_by_effective_topic_name() -> None:
+    uow = _FakeUnitOfWork()
+    uow.topic_repo.overrides = [
+        TopicOverrideRecord(source_name="python", display_name="Backend", pinned=False, ignored=False),
+    ]
+    use_case = GetKnowledgeGraphUseCase(cast("IUnitOfWork", uow))
+
+    result = await use_case(user_id=uuid.uuid4(), document_limit=80, topic_limit=20, topic_name="Backend")
+
+    assert {node.id for node in result.nodes} == {
+        "topic:Backend",
+        "document:00000000-0000-0000-0000-000000000001",
+        "document:00000000-0000-0000-0000-000000000002",
+    }
+
+
+async def test_get_knowledge_graph_insights_uses_overrides_and_graph_signals() -> None:
+    uow = _FakeUnitOfWork()
+    uow.topic_repo.overrides = [
+        TopicOverrideRecord(source_name="python", display_name="Backend", pinned=True, ignored=False),
+        TopicOverrideRecord(source_name="legacy", display_name="Legacy", pinned=False, ignored=True),
+    ]
+    use_case = GetKnowledgeGraphInsightsUseCase(cast("IUnitOfWork", uow))
+
+    result = await use_case(user_id=uuid.uuid4(), document_limit=80, topic_limit=20)
+
+    insights = {item.kind: item for item in result.items}
+    assert insights["pinned_topics"].count == 1
+    assert insights["pinned_topics"].nodes[0].label == "Backend"
+    assert insights["ignored_topics"].count == 1
+    assert insights["ignored_topics"].nodes[0].label == "Legacy"
 
 
 async def test_recompute_knowledge_graph_persists_document_edges() -> None:

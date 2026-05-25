@@ -4,14 +4,17 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from src.application.dtos.external_connection_dtos import NotionConnectionDTO, NotionPageDTO
+from src.application.dtos.external_intake_dtos import ExternalIngestDTO, ExternalIngestResultDTO
 from src.core.config import settings
 from src.domain.exceptions import InvalidTokenException, ResourceNotFoundException, ValidationException
+from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
     from src.application.ports.integrations.notion_oauth_client import INotionOAuthClient
     from src.application.ports.integrations.notion_workspace_client import INotionWorkspaceClient
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
     from src.application.ports.security.token_cipher import ITokenCipher
+    from src.application.use_cases.external_intake import IngestExternalItemUseCase
     from src.infrastructure.security.signed_state import SignedState
 
 
@@ -138,6 +141,56 @@ class SearchNotionPagesUseCase:
             access_token=access_token,
             query=normalize_optional_text(query),
             limit=max(1, min(limit, 25)),
+        )
+
+
+class ImportNotionPageUseCase:
+    def __init__(
+        self,
+        uow: IUnitOfWork,
+        workspace_client: INotionWorkspaceClient,
+        token_cipher: ITokenCipher,
+        ingest_external_item: IngestExternalItemUseCase,
+    ) -> None:
+        self._uow = uow
+        self._workspace_client = workspace_client
+        self._token_cipher = token_cipher
+        self._ingest_external_item = ingest_external_item
+
+    async def __call__(
+        self,
+        *,
+        user_id: UUID,
+        page_id: str,
+        collection_id: UUID | None,
+        tags: list[str],
+    ) -> ExternalIngestResultDTO:
+        notion_page_id = normalize_notion_parent_page_id(page_id)
+        if notion_page_id is None:
+            raise ValidationException("notion page id is required")
+        async with self._uow:
+            connection = await self._uow.external_connection_repo.get_by_provider(user_id=user_id, provider="notion")
+        if connection is None:
+            raise ResourceNotFoundException("notion connection not found")
+        try:
+            access_token = self._token_cipher.decrypt(connection.access_token_encrypted)
+        except ValueError as exc:
+            raise ValidationException("reconnect Notion before importing pages") from exc
+        page = await self._workspace_client.get_page_markdown(access_token=access_token, page_id=notion_page_id)
+        return await self._ingest_external_item(
+            ExternalIngestDTO(
+                user_id=user_id,
+                api_key_id=None,
+                provider="notion",
+                external_id=page.id,
+                idempotency_key=f"notion:{page.id}",
+                title=page.title,
+                type=DocumentType.MARKDOWN,
+                collection_id=collection_id,
+                tags=tags,
+                raw_content=page.markdown,
+                payload_metadata={"notion_page_id": page.id, "notion_workspace_id": connection.workspace_id or ""},
+            )
         )
 
 

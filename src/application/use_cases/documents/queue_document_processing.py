@@ -23,14 +23,13 @@ async def queue_document_processing(
         await uow.document_repo.update(document)
         await uow.commit()
 
-    await status_cache.set_status(
-        document.id,
-        status="QUEUED",
-        progress=0,
-        message=message,
-    )
-
     try:
+        await status_cache.set_status(
+            document.id,
+            status="QUEUED",
+            progress=0,
+            message=message,
+        )
         await task_dispatcher.dispatch_process_document(str(document.id))
     except Exception:
         document.mark_failed()

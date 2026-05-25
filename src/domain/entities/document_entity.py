@@ -208,6 +208,7 @@ class DocumentEntity:
         summary: str | None = None,
         word_count: int | None = None,
         language: str | None = None,
+        tags: list[str] | None = None,
         doc_embedding: list[float] | None = None,
     ) -> "DocumentEntity":
         return cls(
@@ -233,7 +234,7 @@ class DocumentEntity:
             updated_at=None,
             visual_metadata=None,
             suggested_questions=[],
-            tags=[],
+            tags=list(tags or []),
         )
 
     def rename(self, title: str) -> None:

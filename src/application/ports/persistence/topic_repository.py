@@ -9,6 +9,26 @@ class TopicRecord:
     name: str
     document_count: int
     last_document_at: datetime | None
+    source_names: tuple[str, ...] = ()
+    pinned: bool = False
+    ignored: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class TopicOverrideRecord:
+    source_name: str
+    display_name: str
+    pinned: bool
+    ignored: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TopicOverrideEventRecord:
+    action: str
+    topic_name: str
+    display_name: str | None
+    source_names: tuple[str, ...]
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,3 +71,21 @@ class ITopicRepository(ABC):
         names: set[str],
         document_limit: int,
     ) -> dict[str, TopicDetailRecord]: ...
+
+    @abstractmethod
+    async def list_overrides(self, user_id: UUID) -> list[TopicOverrideRecord]: ...
+
+    @abstractmethod
+    async def rename_topic(self, *, user_id: UUID, source_name: str, display_name: str) -> TopicRecord: ...
+
+    @abstractmethod
+    async def merge_topics(self, *, user_id: UUID, source_names: list[str], display_name: str) -> TopicRecord: ...
+
+    @abstractmethod
+    async def set_pinned(self, *, user_id: UUID, name: str, pinned: bool) -> TopicRecord: ...
+
+    @abstractmethod
+    async def set_ignored(self, *, user_id: UUID, name: str, ignored: bool) -> TopicRecord: ...
+
+    @abstractmethod
+    async def list_override_events(self, *, user_id: UUID, topic_name: str, limit: int) -> list[TopicOverrideEventRecord]: ...

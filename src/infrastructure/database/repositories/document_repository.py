@@ -9,6 +9,7 @@ from src.domain.entities.document_entity import DocumentEntity
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 from src.infrastructure.database.models.document import DocumentModel
+from src.infrastructure.database.models.tag import TagModel
 
 
 class SQLAlchemyDocumentRepository(IDocumentRepository):
@@ -51,7 +52,11 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
         return [self._to_entity(model) for model in result.scalars().all()]
 
     async def create(self, document: DocumentEntity) -> None:
-        self._session.add(self._to_model(document))
+        model = self._to_model(document)
+        self._session.add(model)
+        if document.tags:
+            await self._session.flush()
+            await self._sync_initial_tags(model, document.user_id, document.tags)
 
     async def update(self, document: DocumentEntity) -> None:
         result = await self._session.execute(select(DocumentModel).where(DocumentModel.id == document.id))
@@ -83,6 +88,39 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
             select(func.count()).select_from(DocumentModel).where(*conditions)
         )
         return result.scalar_one()
+
+    async def count_by_status(
+        self,
+        user_id: UUID,
+        *,
+        collection_id: UUID | None = None,
+    ) -> dict[DocumentStatus, int]:
+        conditions = self._document_conditions(
+            user_id,
+            document_type=None,
+            collection_id=collection_id,
+            status=None,
+        )
+        result = await self._session.execute(
+            select(DocumentModel.status, func.count())
+            .where(*conditions)
+            .group_by(DocumentModel.status)
+        )
+        counts: dict[DocumentStatus, int] = {}
+        for status, count in result.all():
+            counts[status] = count
+        return counts
+
+    async def get_collection_documents_with_status_counts(
+        self,
+        user_id: UUID,
+        *,
+        collection_id: UUID,
+        limit: int = 200,
+    ) -> tuple[list[DocumentEntity], dict[DocumentStatus, int]]:
+        documents = await self.get_by_user_id(user_id, collection_id=collection_id, limit=limit)
+        counts = await self.count_by_status(user_id, collection_id=collection_id)
+        return documents, counts
 
     @staticmethod
     def _document_conditions(
@@ -175,6 +213,22 @@ class SQLAlchemyDocumentRepository(IDocumentRepository):
         model.is_duplicate = entity.is_duplicate
         model.duplicate_of_id = entity.duplicate_of_id
         model.updated_at = entity.updated_at
+
+    async def _sync_initial_tags(self, model: DocumentModel, user_id: UUID, tag_names: list[str]) -> None:
+        normalized_names = sorted({name.strip().lower() for name in tag_names if name.strip()})
+        if not normalized_names:
+            return
+        existing_tags = await self._session.scalars(
+            select(TagModel).where(TagModel.user_id == user_id, TagModel.name.in_(normalized_names))
+        )
+        tags_by_name = {tag.name: tag for tag in existing_tags}
+        for name in normalized_names:
+            if name not in tags_by_name:
+                tag = TagModel(user_id=user_id, name=name, auto=False)
+                self._session.add(tag)
+                await self._session.flush()
+                tags_by_name[name] = tag
+        model.tags = [tags_by_name[name] for name in normalized_names]
 
 
 def _suggested_questions(

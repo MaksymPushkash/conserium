@@ -44,6 +44,7 @@ class IngestDocumentDTO:
     title: str
     type: DocumentType
     collection_id: UUID | None = None
+    tags: list[str] | None = None
     source_url: str | None = None
     file_path: str | None = None
     file_size_bytes: int | None = None

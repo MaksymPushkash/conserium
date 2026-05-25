@@ -1,7 +1,14 @@
-from src.application.dtos.knowledge_graph_dtos import KnowledgeGraphConcernDTO, KnowledgeGraphDTO
+from src.application.dtos.knowledge_graph_dtos import (
+    KnowledgeGraphConcernDTO,
+    KnowledgeGraphDTO,
+    KnowledgeGraphInsightsDTO,
+    KnowledgeGraphNodeDTO,
+)
 from src.presentation.schemas.knowledge_graph import (
     KnowledgeGraphConcernResponse,
     KnowledgeGraphEdgeResponse,
+    KnowledgeGraphInsightResponse,
+    KnowledgeGraphInsightsResponse,
     KnowledgeGraphNodeResponse,
     KnowledgeGraphResponse,
 )
@@ -9,20 +16,7 @@ from src.presentation.schemas.knowledge_graph import (
 
 def to_knowledge_graph_response(dto: KnowledgeGraphDTO) -> KnowledgeGraphResponse:
     return KnowledgeGraphResponse(
-        nodes=[
-            KnowledgeGraphNodeResponse(
-                id=node.id,
-                kind=node.kind,
-                label=node.label,
-                detail=node.detail,
-                collection_id=node.collection_id,
-                summary=node.summary,
-                created_at=node.created_at,
-                updated_at=node.updated_at,
-                suggested_questions=node.suggested_questions,
-            )
-            for node in dto.nodes
-        ],
+        nodes=[to_knowledge_graph_node_response(node) for node in dto.nodes],
         edges=[
             KnowledgeGraphEdgeResponse(
                 id=edge.id,
@@ -34,6 +28,39 @@ def to_knowledge_graph_response(dto: KnowledgeGraphDTO) -> KnowledgeGraphRespons
             )
             for edge in dto.edges
         ],
+    )
+
+
+def to_knowledge_graph_insights_response(dto: KnowledgeGraphInsightsDTO) -> KnowledgeGraphInsightsResponse:
+    return KnowledgeGraphInsightsResponse(
+        items=[
+            KnowledgeGraphInsightResponse(
+                kind=item.kind,
+                title=item.title,
+                description=item.description,
+                severity=item.severity,
+                count=item.count,
+                nodes=[to_knowledge_graph_node_response(node) for node in item.nodes],
+            )
+            for item in dto.items
+        ]
+    )
+
+
+def to_knowledge_graph_node_response(node: KnowledgeGraphNodeDTO) -> KnowledgeGraphNodeResponse:
+    return KnowledgeGraphNodeResponse(
+        id=node.id,
+        kind=node.kind,
+        label=node.label,
+        detail=node.detail,
+        collection_id=node.collection_id,
+        summary=node.summary,
+        created_at=node.created_at,
+        updated_at=node.updated_at,
+        suggested_questions=node.suggested_questions,
+        source_names=list(node.source_names),
+        is_pinned=node.is_pinned,
+        is_ignored=node.is_ignored,
     )
 
 

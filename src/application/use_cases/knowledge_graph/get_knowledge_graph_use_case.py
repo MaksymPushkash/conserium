@@ -1,12 +1,16 @@
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from src.application.dtos.knowledge_graph_dtos import (
     KnowledgeGraphConcernDTO,
     KnowledgeGraphDTO,
     KnowledgeGraphEdgeDTO,
+    KnowledgeGraphInsightDTO,
+    KnowledgeGraphInsightsDTO,
     KnowledgeGraphNodeDTO,
 )
 from src.application.ports.persistence.knowledge_graph_repository import KnowledgeEdgeRecord, KnowledgeGraphRecord
+from src.application.ports.persistence.topic_repository import TopicOverrideRecord
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.domain.exceptions import ValidationException
 from src.domain.value_objects.document_type import DocumentType
@@ -32,12 +36,17 @@ class GetKnowledgeGraphUseCase:
             links = await self._uow.knowledge_graph_repo.list_topic_document_links(
                 user_id,
                 document_limit=document_limit,
-                topic_limit=topic_limit,
+                topic_limit=effective_topic_limit(topic_limit, topic_name),
                 collection_id=collection_id,
                 tag_name=normalize_optional_text(tag_name),
-                topic_name=normalize_optional_text(topic_name),
+                topic_name=None,
                 document_type=document_type,
                 recency_days=recency_days,
+            )
+            links = apply_topic_overrides(
+                links,
+                await self._uow.topic_repo.list_overrides(user_id),
+                topic_name=normalize_optional_text(topic_name),
             )
             document_edges = await self._uow.knowledge_graph_repo.list_edges(user_id)
 
@@ -64,18 +73,58 @@ class RecomputeKnowledgeGraphUseCase:
             links = await self._uow.knowledge_graph_repo.list_topic_document_links(
                 user_id,
                 document_limit=document_limit,
-                topic_limit=topic_limit,
+                topic_limit=effective_topic_limit(topic_limit, topic_name),
                 collection_id=collection_id,
                 tag_name=normalize_optional_text(tag_name),
-                topic_name=normalize_optional_text(topic_name),
+                topic_name=None,
                 document_type=document_type,
                 recency_days=recency_days,
+            )
+            links = apply_topic_overrides(
+                links,
+                await self._uow.topic_repo.list_overrides(user_id),
+                topic_name=normalize_optional_text(topic_name),
             )
             document_edges = document_relation_edges(links)
             await self._uow.knowledge_graph_repo.replace_edges(user_id, document_edges)
             await self._uow.commit()
 
         return knowledge_graph_from_records(links, document_edges)
+
+
+class GetKnowledgeGraphInsightsUseCase:
+    def __init__(self, uow: IUnitOfWork) -> None:
+        self._uow = uow
+
+    async def __call__(
+        self,
+        *,
+        user_id: UUID,
+        document_limit: int = 120,
+        topic_limit: int = 40,
+        collection_id: UUID | None = None,
+        tag_name: str | None = None,
+        topic_name: str | None = None,
+        document_type: DocumentType | None = None,
+        recency_days: int | None = None,
+    ) -> KnowledgeGraphInsightsDTO:
+        async with self._uow:
+            overrides = await self._uow.topic_repo.list_overrides(user_id)
+            links = await self._uow.knowledge_graph_repo.list_topic_document_links(
+                user_id,
+                document_limit=document_limit,
+                topic_limit=effective_topic_limit(topic_limit, topic_name),
+                collection_id=collection_id,
+                tag_name=normalize_optional_text(tag_name),
+                topic_name=None,
+                document_type=document_type,
+                recency_days=recency_days,
+            )
+            links = apply_topic_overrides(links, overrides, topic_name=normalize_optional_text(topic_name))
+            document_edges = await self._uow.knowledge_graph_repo.list_edges(user_id)
+
+        graph = knowledge_graph_from_records(links, document_edges_for_links(document_edges, links))
+        return graph_insights(graph, overrides)
 
 
 class CreateKnowledgeGraphConcernUseCase:
@@ -125,7 +174,16 @@ def knowledge_graph_from_records(
     for link in links:
         topic_id = topic_node_id(link.topic_name)
         document_id = document_node_id(str(link.document_id))
-        nodes[topic_id] = KnowledgeGraphNodeDTO(id=topic_id, kind="topic", label=link.topic_name)
+        current_topic_node = nodes.get(topic_id)
+        source_names = tuple(dict.fromkeys([*(current_topic_node.source_names if current_topic_node else ()), link.source_topic_name or link.topic_name]))
+        nodes[topic_id] = KnowledgeGraphNodeDTO(
+            id=topic_id,
+            kind="topic",
+            label=link.topic_name,
+            source_names=source_names,
+            is_pinned=(current_topic_node.is_pinned if current_topic_node else False) or link.topic_pinned,
+            is_ignored=False,
+        )
         nodes[document_id] = KnowledgeGraphNodeDTO(
             id=document_id,
             kind="document",
@@ -174,6 +232,168 @@ def document_edges_for_links(
     ]
 
 
+def graph_insights(graph: KnowledgeGraphDTO, overrides: list[TopicOverrideRecord]) -> KnowledgeGraphInsightsDTO:
+    nodes_by_id = {node.id: node for node in graph.nodes}
+    degree_by_id: dict[str, int] = {node.id: 0 for node in graph.nodes}
+    for edge in graph.edges:
+        degree_by_id[edge.source_id] = degree_by_id.get(edge.source_id, 0) + 1
+        degree_by_id[edge.target_id] = degree_by_id.get(edge.target_id, 0) + 1
+
+    topic_documents: dict[str, list[KnowledgeGraphNodeDTO]] = {
+        node.id: [] for node in graph.nodes if node.kind == "topic"
+    }
+    for edge in graph.edges:
+        source = nodes_by_id.get(edge.source_id)
+        target = nodes_by_id.get(edge.target_id)
+        if source is None or target is None:
+            continue
+        if source.kind == "topic" and target.kind == "document":
+            topic_documents.setdefault(source.id, []).append(target)
+        elif target.kind == "topic" and source.kind == "document":
+            topic_documents.setdefault(target.id, []).append(source)
+
+    isolated_topics = [node for node in graph.nodes if node.kind == "topic" and degree_by_id.get(node.id, 0) == 0]
+    thin_topics = [
+        nodes_by_id[topic_id]
+        for topic_id, documents in topic_documents.items()
+        if topic_id in nodes_by_id and 0 < len(documents) < 2
+    ]
+    stale_cutoff = datetime.now(UTC) - timedelta(days=180)
+    stale_topics = [
+        nodes_by_id[topic_id]
+        for topic_id, documents in topic_documents.items()
+        if topic_id in nodes_by_id and documents and all(node_is_stale(document, stale_cutoff) for document in documents)
+    ]
+    over_connected_documents = [
+        node
+        for node in graph.nodes
+        if node.kind == "document" and degree_by_id.get(node.id, 0) >= 4
+    ]
+    pinned_topics = [node for node in graph.nodes if node.kind == "topic" and node.is_pinned]
+    ignored_topics = ignored_topic_nodes(overrides)
+
+    return KnowledgeGraphInsightsDTO(
+        items=[
+            insight(
+                kind="isolated_topics",
+                title="Isolated topics",
+                description="Topics with no visible source documents in the current graph scope.",
+                severity="medium",
+                nodes=isolated_topics,
+            ),
+            insight(
+                kind="thin_clusters",
+                title="Thin clusters",
+                description="Topics backed by only one visible document.",
+                severity="low",
+                nodes=thin_topics,
+            ),
+            insight(
+                kind="stale_clusters",
+                title="Stale clusters",
+                description="Topics whose visible documents have not changed in more than 180 days.",
+                severity="medium",
+                nodes=stale_topics,
+            ),
+            insight(
+                kind="over_connected_documents",
+                title="Over-connected documents",
+                description="Documents connected to many graph edges and likely acting as broad hubs.",
+                severity="low",
+                nodes=over_connected_documents,
+            ),
+            insight(
+                kind="pinned_topics",
+                title="Pinned topics",
+                description="Topics manually marked as important.",
+                severity="info",
+                nodes=pinned_topics,
+            ),
+            insight(
+                kind="ignored_topics",
+                title="Ignored topics",
+                description="Topics hidden by topic management rules.",
+                severity="info",
+                nodes=ignored_topics,
+            ),
+        ]
+    )
+
+
+def insight(
+    *,
+    kind: str,
+    title: str,
+    description: str,
+    severity: str,
+    nodes: list[KnowledgeGraphNodeDTO],
+) -> KnowledgeGraphInsightDTO:
+    return KnowledgeGraphInsightDTO(
+        kind=kind,
+        title=title,
+        description=description,
+        severity=severity,
+        count=len(nodes),
+        nodes=nodes[:8],
+    )
+
+
+def node_is_stale(node: KnowledgeGraphNodeDTO, stale_cutoff: datetime) -> bool:
+    timestamp = node.updated_at or node.created_at
+    return timestamp is not None and timestamp < stale_cutoff
+
+
+def ignored_topic_nodes(overrides: list[TopicOverrideRecord]) -> list[KnowledgeGraphNodeDTO]:
+    ignored: dict[str, list[str]] = {}
+    for override in overrides:
+        if override.ignored:
+            ignored.setdefault(override.display_name, []).append(override.source_name)
+    return [
+        KnowledgeGraphNodeDTO(
+            id=topic_node_id(display_name),
+            kind="topic",
+            label=display_name,
+            source_names=tuple(source_names),
+            is_ignored=True,
+        )
+        for display_name, source_names in sorted(ignored.items())
+    ]
+
+
+def apply_topic_overrides(
+    links: list[KnowledgeGraphRecord],
+    overrides: list[TopicOverrideRecord],
+    *,
+    topic_name: str | None,
+) -> list[KnowledgeGraphRecord]:
+    overrides_by_source = {override.source_name.casefold(): override for override in overrides}
+    effective_links: list[KnowledgeGraphRecord] = []
+    for link in links:
+        override = overrides_by_source.get(link.topic_name.casefold())
+        if override is not None and override.ignored:
+            continue
+        display_name = override.display_name if override is not None else link.topic_name
+        if topic_name is not None and display_name.casefold() != topic_name.casefold():
+            continue
+        effective_links.append(
+            KnowledgeGraphRecord(
+                document_id=link.document_id,
+                document_title=link.document_title,
+                document_type=link.document_type,
+                topic_name=display_name,
+                collection_id=link.collection_id,
+                summary=link.summary,
+                created_at=link.created_at,
+                updated_at=link.updated_at,
+                suggested_questions=link.suggested_questions,
+                source_topic_name=link.topic_name,
+                topic_pinned=override.pinned if override is not None else False,
+                topic_ignored=override.ignored if override is not None else False,
+            )
+        )
+    return effective_links
+
+
 def topic_node_id(name: str) -> str:
     return f"topic:{name}"
 
@@ -213,3 +433,7 @@ def normalize_optional_text(value: str | None) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def effective_topic_limit(topic_limit: int, topic_name: str | None) -> int:
+    return max(topic_limit, 500) if normalize_optional_text(topic_name) is not None else topic_limit

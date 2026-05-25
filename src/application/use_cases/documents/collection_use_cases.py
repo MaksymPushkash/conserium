@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING
 from src.application.dtos.collection_dtos import (
     CollectionDTO,
     CollectionListDTO,
+    CollectionWorkspaceComparisonDTO,
     CollectionWorkspaceDocumentDTO,
+    CollectionWorkspaceDraftDTO,
     CollectionWorkspaceDTO,
     CollectionWorkspaceGapDTO,
     CollectionWorkspaceQuestionDTO,
@@ -19,6 +21,7 @@ from src.application.dtos.collection_dtos import (
     UpdateCollectionDTO,
 )
 from src.application.use_cases.documents.base import document_to_dto
+from src.application.use_cases.knowledge_gaps import collection_topic_gaps
 from src.domain.entities.collection_entity import CollectionEntity
 from src.domain.exceptions import ResourceNotFoundException
 from src.domain.value_objects.document_status import DocumentStatus
@@ -75,38 +78,44 @@ class GetCollectionWorkspaceUseCase:
             collection = await self._uow.collection_repo.get_by_id(collection_id)
             if collection is None or collection.user_id != user_id:
                 raise ResourceNotFoundException("collection not found")
-            documents = await self._uow.document_repo.get_by_user_id(
-                user_id,
-                collection_id=collection_id,
-                limit=12,
-            )
-            topic_documents = await self._uow.document_repo.get_by_user_id(
+            topic_documents, status_counts = await self._uow.document_repo.get_collection_documents_with_status_counts(
                 user_id,
                 collection_id=collection_id,
                 limit=200,
             )
+            documents = topic_documents[:12]
             activity = await self._uow.document_activity_repo.summarize_by_document_ids(
                 user_id=user_id,
                 document_ids=[document.id for document in documents],
             )
-            total_documents = await self._uow.document_repo.count_by_user_id(user_id, collection_id=collection_id)
-            ready_documents = await self._uow.document_repo.count_by_user_id(
-                user_id,
-                collection_id=collection_id,
-                status=DocumentStatus.READY,
-            )
-            failed_documents = await self._uow.document_repo.count_by_user_id(
-                user_id,
-                collection_id=collection_id,
-                status=DocumentStatus.FAILED,
-            )
+            total_documents = sum(status_counts.values())
+            ready_documents = status_counts.get(DocumentStatus.READY, 0)
+            failed_documents = status_counts.get(DocumentStatus.FAILED, 0)
             recent_questions = await self._uow.search_query_repo.list_recent_by_collection(
+                user_id=user_id,
+                collection_id=collection_id,
+                limit=5,
+            )
+            recent_drafts = await self._uow.draft_repo.list_by_user_id(
+                user_id=user_id,
+                collection_id=collection_id,
+                limit=5,
+            )
+            recent_comparisons = await self._uow.compare_repo.list_by_user_id(
                 user_id=user_id,
                 collection_id=collection_id,
                 limit=5,
             )
 
         topics = workspace_topics(topic_documents)
+        ready_topic_documents = [document for document in topic_documents if document.status == DocumentStatus.READY]
+        knowledge_gaps = collection_topic_gaps(ready_topic_documents, collection_id=collection_id)
+        operational_gaps = workspace_gaps(
+            total_documents=total_documents,
+            ready_documents=ready_documents,
+            failed_documents=failed_documents,
+            topic_count=len(topics),
+        )
         return CollectionWorkspaceDTO(
             collection=_collection_to_dto(collection),
             stats=CollectionWorkspaceStatsDTO(
@@ -122,12 +131,19 @@ class GetCollectionWorkspaceUseCase:
                 for document in documents
             ],
             topics=topics[:8],
-            gaps=workspace_gaps(
-                total_documents=total_documents,
-                ready_documents=ready_documents,
-                failed_documents=failed_documents,
-                topic_count=len(topics),
-            ),
+            gaps=operational_gaps + [
+                CollectionWorkspaceGapDTO(
+                    title=f"{gap.topic} coverage",
+                    reason=gap.why_detected,
+                    severity=gap.severity,
+                    id=gap.id,
+                    topic=gap.topic,
+                    coverage_ratio=gap.coverage_ratio,
+                    missing_source_types=gap.missing_source_types,
+                    suggested_actions=gap.suggested_actions,
+                )
+                for gap in knowledge_gaps[:5]
+            ],
             recent_questions=[
                 CollectionWorkspaceQuestionDTO(
                     query_text=record.query_text,
@@ -136,6 +152,33 @@ class GetCollectionWorkspaceUseCase:
                     created_at=record.created_at,
                 )
                 for record in recent_questions
+            ],
+            recent_drafts=[
+                CollectionWorkspaceDraftDTO(
+                    id=draft.id,
+                    title=draft.title,
+                    prompt=draft.prompt,
+                    template_id=draft.template_id,
+                    scope_type=draft.scope_type,
+                    topic=draft.topic,
+                    knowledge_gap_id=draft.knowledge_gap_id,
+                    version_number=draft.version_number,
+                    created_at=draft.created_at,
+                    updated_at=draft.updated_at,
+                )
+                for draft in recent_drafts
+                if draft.created_at is not None
+            ],
+            recent_comparisons=[
+                CollectionWorkspaceComparisonDTO(
+                    id=comparison.id,
+                    left_title=comparison.left_title,
+                    right_title=comparison.right_title,
+                    summary=comparison.summary,
+                    dimensions=comparison.dimensions,
+                    created_at=comparison.created_at,
+                )
+                for comparison in recent_comparisons
             ],
         )
 

@@ -14,6 +14,9 @@ class KnowledgeGraphNodeDTO:
     created_at: datetime | None = None
     updated_at: datetime | None = None
     suggested_questions: list[str] | None = None
+    source_names: tuple[str, ...] = ()
+    is_pinned: bool = False
+    is_ignored: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +33,21 @@ class KnowledgeGraphEdgeDTO:
 class KnowledgeGraphDTO:
     nodes: list[KnowledgeGraphNodeDTO]
     edges: list[KnowledgeGraphEdgeDTO]
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeGraphInsightDTO:
+    kind: str
+    title: str
+    description: str
+    severity: str
+    count: int
+    nodes: list[KnowledgeGraphNodeDTO]
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeGraphInsightsDTO:
+    items: list[KnowledgeGraphInsightDTO]
 
 
 @dataclass(frozen=True, slots=True)
