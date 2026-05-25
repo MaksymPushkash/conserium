@@ -89,6 +89,7 @@ def test_webhook_ingest_authenticates_api_key_and_forwards_tags() -> None:
     assert response.status_code == 202
     assert response.json()["intake_item"]["status"] == "QUEUED"
     assert authenticate.received == ("Bearer ctx_test", "ingest:write")
+    assert ingest.received is not None
     assert ingest.received.user_id == user_id
     assert ingest.received.api_key_id == api_key_id
     assert ingest.received.tags == ["notion", "research"]
@@ -117,6 +118,7 @@ def test_public_api_ingest_defaults_provider() -> None:
         client.close()
 
     assert response.status_code == 202
+    assert ingest.received is not None
     assert ingest.received.provider == "public-api"
     assert ingest.received.source_url == "https://example.com"
 

@@ -222,6 +222,7 @@ def test_generate_draft_route_returns_markdown_and_sources() -> None:
     assert response.json()["scope_type"] == "topic"
     assert response.json()["sources"][0]["document_id"] == str(document_id)
     assert response.json()["gaps"] == []
+    assert use_case.received is not None
     assert use_case.received.prompt == "Write about Python generators"
     assert use_case.received.topic == "Python"
 
@@ -276,6 +277,7 @@ def test_generate_draft_outline_route_forwards_scope() -> None:
 
     assert response.status_code == 200
     assert response.json()["sections"] == ["Context", "Key points"]
+    assert use_case.received is not None
     assert use_case.received.scope_type == "collection"
 
 

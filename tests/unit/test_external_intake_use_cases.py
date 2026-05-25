@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -11,6 +12,10 @@ from src.application.use_cases.external_intake import IngestExternalItemUseCase
 from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 
+if TYPE_CHECKING:
+    from src.application.ports.persistence.unit_of_work import IUnitOfWork
+    from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
+
 
 @pytest.mark.asyncio
 async def test_external_intake_records_queued_document_and_idempotency() -> None:
@@ -18,7 +23,7 @@ async def test_external_intake_records_queued_document_and_idempotency() -> None
     api_key_id = uuid4()
     ingest_document = _FakeIngestDocument(user_id=user_id)
     uow = _ExternalIntakeUow()
-    use_case = IngestExternalItemUseCase(uow, ingest_document)
+    use_case = IngestExternalItemUseCase(cast("IUnitOfWork", uow), cast("IngestDocumentUseCase", ingest_document))
 
     first = await use_case(
         ExternalIngestDTO(
@@ -58,7 +63,7 @@ async def test_external_intake_marks_failure_when_ingestion_fails() -> None:
     api_key_id = uuid4()
     ingest_document = _FailingIngestDocument()
     uow = _ExternalIntakeUow()
-    use_case = IngestExternalItemUseCase(uow, ingest_document)
+    use_case = IngestExternalItemUseCase(cast("IUnitOfWork", uow), cast("IngestDocumentUseCase", ingest_document))
 
     with pytest.raises(RuntimeError, match="GitHub rate limited"):
         await use_case(

@@ -124,7 +124,7 @@ class _FakeTaskDispatcher(ITaskDispatcher):
         self.embed_calls: list[dict[str, Any]] = []
         self.image_calls: list[str] = []
 
-    async def dispatch_process_document(self, document_id: str) -> None:
+    async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None:
         raise NotImplementedError
 
     async def dispatch_process_image_document(self, document_id: str) -> None:

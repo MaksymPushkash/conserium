@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -13,19 +14,23 @@ from src.application.use_cases.api_keys import (
 )
 from src.domain.exceptions import InvalidTokenException
 
+if TYPE_CHECKING:
+    from src.application.ports.persistence.unit_of_work import IUnitOfWork
+
 
 @pytest.mark.asyncio
 async def test_api_key_lifecycle_authenticates_and_revokes_token() -> None:
     user_id = uuid4()
     uow = _ApiKeyUow()
 
-    created = await CreateApiKeyUseCase(uow)(CreateApiKeyDTO(user_id=user_id, name="Telegram bot", scopes=["ingest:write"]))
-    automation_key = await CreateApiKeyUseCase(uow)(
+    typed_uow = cast("IUnitOfWork", uow)
+    created = await CreateApiKeyUseCase(typed_uow)(CreateApiKeyDTO(user_id=user_id, name="Telegram bot", scopes=["ingest:write"]))
+    automation_key = await CreateApiKeyUseCase(typed_uow)(
         CreateApiKeyDTO(user_id=user_id, name="Automation", scopes=["status:read", "collections:read", "query:write"])
     )
-    listed = await ListApiKeysUseCase(uow)(user_id=user_id)
-    principal = await AuthenticateApiKeyUseCase(uow)(created.token, required_scope="ingest:write")
-    automation_principal = await AuthenticateApiKeyUseCase(uow)(automation_key.token, required_scope="query:write")
+    listed = await ListApiKeysUseCase(typed_uow)(user_id=user_id)
+    principal = await AuthenticateApiKeyUseCase(typed_uow)(created.token, required_scope="ingest:write")
+    automation_principal = await AuthenticateApiKeyUseCase(typed_uow)(automation_key.token, required_scope="query:write")
 
     assert created.token.startswith("ctx_")
     assert created.api_key.prefix == created.token[:12]
@@ -34,10 +39,10 @@ async def test_api_key_lifecycle_authenticates_and_revokes_token() -> None:
     assert principal.user_id == user_id
     assert uow.api_key_repo.records[0].last_used_at is not None
 
-    await RevokeApiKeyUseCase(uow)(user_id=user_id, api_key_id=created.api_key.id)
+    await RevokeApiKeyUseCase(typed_uow)(user_id=user_id, api_key_id=created.api_key.id)
 
     with pytest.raises(InvalidTokenException):
-        await AuthenticateApiKeyUseCase(uow)(created.token, required_scope="ingest:write")
+        await AuthenticateApiKeyUseCase(typed_uow)(created.token, required_scope="ingest:write")
 
 
 class _ApiKeyUow:
