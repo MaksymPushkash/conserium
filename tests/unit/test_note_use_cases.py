@@ -14,6 +14,8 @@ from src.domain.value_objects.document_status import DocumentStatus
 from src.domain.value_objects.document_type import DocumentType
 
 if TYPE_CHECKING:
+    from src.application.ports.cache.document_status_cache import IDocumentStatusCache
+    from src.application.ports.ingestion.task_dispatcher import ITaskDispatcher
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
 
 
@@ -24,8 +26,8 @@ async def test_create_empty_note_stays_ready_without_queueing() -> None:
     dispatcher = _RecordingDispatcher()
     use_case = CreateNoteUseCase(
         cast("IUnitOfWork", uow),
-        _RecordingStatusCache(),
-        dispatcher,
+        cast("IDocumentStatusCache", _RecordingStatusCache()),
+        cast("ITaskDispatcher", dispatcher),
     )
 
     result = await use_case(CreateNoteDTO(user_id=user_id, title="", content="   "))
@@ -45,8 +47,8 @@ async def test_update_note_versions_previous_content_and_requeues_processing() -
     dispatcher = _RecordingDispatcher()
     use_case = UpdateNoteUseCase(
         cast("IUnitOfWork", uow),
-        status_cache,
-        dispatcher,
+        cast("IDocumentStatusCache", status_cache),
+        cast("ITaskDispatcher", dispatcher),
     )
 
     result = await use_case(
@@ -87,8 +89,8 @@ async def test_restore_empty_note_version_clears_chunks_without_queueing() -> No
     dispatcher = _RecordingDispatcher()
     use_case = RestoreNoteVersionUseCase(
         cast("IUnitOfWork", uow),
-        _RecordingStatusCache(),
-        dispatcher,
+        cast("IDocumentStatusCache", _RecordingStatusCache()),
+        cast("ITaskDispatcher", dispatcher),
     )
 
     result = await use_case(user_id=user_id, note_id=note.id, version_id=version_id)
