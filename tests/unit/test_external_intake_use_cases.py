@@ -58,6 +58,54 @@ async def test_external_intake_records_queued_document_and_idempotency() -> None
 
 
 @pytest.mark.asyncio
+async def test_external_intake_create_conflict_returns_existing_without_duplicate_document() -> None:
+    user_id = uuid4()
+    api_key_id = uuid4()
+    existing_document_id = uuid4()
+    now = datetime.now(UTC)
+    existing = ExternalIntakeItemRecord(
+        id=uuid4(),
+        user_id=user_id,
+        api_key_id=api_key_id,
+        provider="webhook",
+        external_id="message-1",
+        idempotency_key="message-1",
+        title="Saved URL",
+        type=DocumentType.URL,
+        collection_id=None,
+        tags=[],
+        source_url="https://example.com",
+        raw_content=None,
+        language=None,
+        status="QUEUED",
+        error_reason=None,
+        document_id=existing_document_id,
+        payload_metadata={},
+        created_at=now,
+    )
+    ingest_document = _FakeIngestDocument(user_id=user_id)
+    uow = _ExternalIntakeUow()
+    uow.external_intake_repo.create_conflict_record = existing
+    use_case = IngestExternalItemUseCase(cast("IUnitOfWork", uow), cast("IngestDocumentUseCase", ingest_document))
+
+    result = await use_case(
+        ExternalIngestDTO(
+            user_id=user_id,
+            api_key_id=api_key_id,
+            provider="webhook",
+            external_id="message-1",
+            title="Saved URL",
+            type=DocumentType.URL,
+            source_url="https://example.com",
+        )
+    )
+
+    assert result.intake_item.id == existing.id
+    assert result.intake_item.document_id == existing_document_id
+    assert len(ingest_document.calls) == 0
+
+
+@pytest.mark.asyncio
 async def test_external_intake_marks_failure_when_ingestion_fails() -> None:
     user_id = uuid4()
     api_key_id = uuid4()
@@ -104,8 +152,11 @@ class _ExternalIntakeUow:
 class _ExternalIntakeRepo:
     def __init__(self) -> None:
         self.records: list[ExternalIntakeItemRecord] = []
+        self.create_conflict_record: ExternalIntakeItemRecord | None = None
 
     async def create(self, record: ExternalIntakeItemRecord) -> ExternalIntakeItemRecord:
+        if self.create_conflict_record is not None:
+            return self.create_conflict_record
         self.records.append(record)
         return record
 

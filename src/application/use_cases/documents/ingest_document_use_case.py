@@ -96,10 +96,35 @@ class IngestDocumentUseCase:
                     progress=0,
                     message="Queued for processing.",
                 )
-            with suppress(Exception):
+            direct_dispatch_failed = False
+            try:
                 await self._task_dispatcher.dispatch_process_document(
                     str(document.id),
                     task_id=f"document-processing-direct-{document.id}",
                 )
+            except Exception as direct_exc:
+                direct_dispatch_failed = True
+                logger.exception(
+                    "document_direct_dispatch_failed_after_queue_failure",
+                    extra={
+                        "document_id": str(document.id),
+                        "user_id": str(dto.user_id),
+                        "error_type": type(direct_exc).__name__,
+                    },
+                )
+
+            if direct_dispatch_failed:
+                document.mark_failed()
+                with suppress(Exception):
+                    async with self._uow:
+                        await self._uow.document_repo.update(document)
+                        await self._uow.commit()
+                with suppress(Exception):
+                    await self._status_cache.set_status(
+                        document.id,
+                        status="FAILED",
+                        progress=0,
+                        message="Document processing dispatch failed. Retry processing from the document actions.",
+                    )
 
         return document_to_dto(document)

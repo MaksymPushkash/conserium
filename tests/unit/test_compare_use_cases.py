@@ -199,9 +199,9 @@ async def test_compare_documents_scopes_query_to_selected_documents() -> None:
     assert [row.dimension for row in result.evidence_rows] == result.dimensions
     assert result.evidence_rows[0].left_source_id == result.sources[0].chunk_id
     assert result.evidence_rows[0].left_citation == "[1]"
-    assert result.evidence_rows[0].confidence == 0.35
+    assert result.evidence_rows[0].confidence == 0.0
     assert result.evidence_rows[0].rationale is not None
-    assert result.evidence_rows[0].rationale.startswith("Heuristic fallback")
+    assert result.evidence_rows[0].rationale.startswith("Inferred fallback")
     assert query_use_case.received_document_ids == (left_document.id, right_document.id)
     assert query_use_case.received_relevance_query == ""
 

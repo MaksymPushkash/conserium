@@ -5,8 +5,10 @@ from src.application.use_cases.collection_shares import (
     CreateCollectionShareUseCase,
     GetCollectionShareUseCase,
     GetPublicCollectionUseCase,
+    QueryPublicCollectionUseCase,
     RevokeCollectionShareUseCase,
 )
+from src.application.use_cases.query.query_use_case import QueryUseCase
 
 
 class CollectionSharesProvider(Provider):
@@ -25,3 +27,11 @@ class CollectionSharesProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_public_collection_use_case(self, uow: IUnitOfWork) -> GetPublicCollectionUseCase:
         return GetPublicCollectionUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_query_public_collection_use_case(
+        self,
+        uow: IUnitOfWork,
+        query_use_case: QueryUseCase,
+    ) -> QueryPublicCollectionUseCase:
+        return QueryPublicCollectionUseCase(uow, query_use_case)
