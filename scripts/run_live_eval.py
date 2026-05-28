@@ -109,6 +109,48 @@ class ApiClient:
             ) from exc
 
 
+def _request_with_retry(
+    client: ApiClient,
+    method: str,
+    path: str,
+    *,
+    payload: JsonObject | None = None,
+    attempts: int = 3,
+    timeout: int = 60,
+) -> JsonObject:
+    last_error: RuntimeError | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return client.request(method, path, payload=payload, timeout=timeout)
+        except RuntimeError as exc:
+            last_error = exc
+            if not _is_retryable_live_eval_error(exc) or attempt == attempts:
+                raise
+            delay = min(2 ** (attempt - 1), 8)
+            print(
+                f"[live-eval] retrying {method} {path} after transient error: attempt={attempt} delay={delay}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(delay)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"{method} {path} failed without a response")
+
+
+def _is_retryable_live_eval_error(exc: RuntimeError) -> bool:
+    message = str(exc)
+    return (
+        "HTTP 500" in message
+        or "HTTP 502" in message
+        or "HTTP 503" in message
+        or "HTTP 504" in message
+        or "Connection reset" in message
+        or "Connection refused" in message
+        or "timed out" in message.casefold()
+    )
+
+
 def _normalize_base_url(base_url: str) -> str:
     normalized = base_url.rstrip("/")
     if normalized.endswith("/api/v1"):
@@ -194,7 +236,8 @@ def _ingest_text_document(
         file=sys.stderr,
         flush=True,
     )
-    document = client.request(
+    document = _request_with_retry(
+        client,
         "POST",
         "/ingest",
         payload={
