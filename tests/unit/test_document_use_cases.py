@@ -662,8 +662,8 @@ async def test_ingest_document_use_case_persists_outbox_when_status_cache_fails(
     assert result.status == DocumentStatus.QUEUED
     assert document_repo.created[0].status == DocumentStatus.QUEUED
     assert uow.document_processing_outbox_repo.created == [(document_repo.created[0].id, "process_document")]
-    assert dispatcher.processed_document_ids == []
-    assert dispatcher.document_processing_outbox_dispatches == 1
+    assert dispatcher.processed_document_ids == [str(document_repo.created[0].id)]
+    assert dispatcher.document_processing_outbox_dispatches == 0
 
 
 async def test_ingest_document_use_case_falls_back_to_direct_dispatch_when_outbox_create_fails() -> None:
@@ -722,8 +722,8 @@ async def test_create_note_use_case_creates_markdown_document_and_queues_indexin
     assert document_repo.created[0].type == DocumentType.MARKDOWN
     assert status_cache.calls[-1] == ("QUEUED", 0, "Queued note for memory indexing.")
     assert uow.document_processing_outbox_repo.created == [(result.id, "process_document")]
-    assert dispatcher.processed_document_ids == []
-    assert dispatcher.document_processing_outbox_dispatches == 1
+    assert dispatcher.processed_document_ids == [str(result.id)]
+    assert dispatcher.document_processing_outbox_dispatches == 0
 
 
 async def test_list_notes_use_case_filters_and_counts_notes_in_repository() -> None:
@@ -949,5 +949,5 @@ async def test_restore_note_version_use_case_restores_content_and_queues_process
     assert result.status == DocumentStatus.QUEUED
     assert len(uow.note_version_repo.records) == 2
     assert uow.document_processing_outbox_repo.created == [(note.id, "process_document")]
-    assert dispatcher.processed_document_ids == []
-    assert dispatcher.document_processing_outbox_dispatches == 1
+    assert dispatcher.processed_document_ids == [str(note.id)]
+    assert dispatcher.document_processing_outbox_dispatches == 0
