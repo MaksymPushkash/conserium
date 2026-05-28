@@ -158,6 +158,22 @@ def document_processing_outbox_task_id(outbox_id: UUID) -> str:
     return f"document-processing-outbox-{outbox_id}"
 
 
+async def kick_document_processing_outbox_item(
+    *,
+    outbox_id: UUID,
+    document_id: UUID,
+    uow: IUnitOfWork,
+    task_dispatcher: ITaskDispatcher,
+) -> None:
+    await task_dispatcher.dispatch_process_document(
+        str(document_id),
+        task_id=document_processing_outbox_task_id(outbox_id),
+    )
+    async with uow:
+        await uow.document_processing_outbox_repo.mark_dispatched(outbox_id, datetime.now(UTC))
+        await uow.commit()
+
+
 def _sanitize_outbox_error(exc: Exception) -> str:
     message = str(exc).strip() or type(exc).__name__
     return message[:500]

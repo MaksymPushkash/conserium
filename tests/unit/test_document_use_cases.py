@@ -1,5 +1,5 @@
 import uuid
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -188,10 +188,20 @@ class _FakeDocumentActivityRepository:
 class _FakeDocumentProcessingOutboxRepository:
     def __init__(self) -> None:
         self.created: list[tuple[uuid.UUID, str]] = []
+        self.dispatched: list[uuid.UUID] = []
 
     async def create_outbox(self, *, document_id: uuid.UUID, task_name: str) -> object:
         self.created.append((document_id, task_name))
-        return object()
+        return _OutboxRecord(id=uuid.uuid4())
+
+    async def mark_dispatched(self, outbox_id: uuid.UUID, dispatched_at: object) -> object:
+        self.dispatched.append(outbox_id)
+        return _OutboxRecord(id=outbox_id)
+
+
+@dataclass(frozen=True, slots=True)
+class _OutboxRecord:
+    id: uuid.UUID
 
 
 class _FakeChunkRepository:
@@ -649,8 +659,8 @@ async def test_ingest_document_use_case_persists_outbox_when_status_cache_fails(
     assert result.status == DocumentStatus.QUEUED
     assert document_repo.created[0].status == DocumentStatus.QUEUED
     assert uow.document_processing_outbox_repo.created == [(document_repo.created[0].id, "process_document")]
-    assert dispatcher.processed_document_ids == []
-    assert dispatcher.document_processing_outbox_dispatches == 1
+    assert dispatcher.processed_document_ids == [str(document_repo.created[0].id)]
+    assert dispatcher.document_processing_outbox_dispatches == 0
 
 
 async def test_create_note_use_case_creates_markdown_document_and_queues_indexing() -> None:
@@ -679,7 +689,8 @@ async def test_create_note_use_case_creates_markdown_document_and_queues_indexin
     assert document_repo.created[0].type == DocumentType.MARKDOWN
     assert status_cache.calls[-1] == ("QUEUED", 0, "Queued note for memory indexing.")
     assert uow.document_processing_outbox_repo.created == [(result.id, "process_document")]
-    assert dispatcher.document_processing_outbox_dispatches == 1
+    assert dispatcher.processed_document_ids == [str(result.id)]
+    assert dispatcher.document_processing_outbox_dispatches == 0
 
 
 async def test_list_notes_use_case_filters_and_counts_notes_in_repository() -> None:
@@ -905,4 +916,5 @@ async def test_restore_note_version_use_case_restores_content_and_queues_process
     assert result.status == DocumentStatus.QUEUED
     assert len(uow.note_version_repo.records) == 2
     assert uow.document_processing_outbox_repo.created == [(note.id, "process_document")]
-    assert dispatcher.document_processing_outbox_dispatches == 1
+    assert dispatcher.processed_document_ids == [str(note.id)]
+    assert dispatcher.document_processing_outbox_dispatches == 0

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -66,7 +67,8 @@ async def test_update_note_versions_previous_content_and_requeues_processing() -
     assert uow.note_version_repo.records[0].title == "Old title"
     assert uow.note_version_repo.records[0].content == "Old content"
     assert uow.document_processing_outbox_repo.created == [(note.id, "process_document")]
-    assert dispatcher.document_processing_outbox_dispatches == 1
+    assert dispatcher.document_ids == [str(note.id)]
+    assert dispatcher.document_processing_outbox_dispatches == 0
     assert status_cache.calls[-1] == ("QUEUED", 0, "Queued note for memory indexing.")
 
 
@@ -161,10 +163,20 @@ class _CollectionRepo:
 class _DocumentProcessingOutboxRepo:
     def __init__(self) -> None:
         self.created: list[tuple[uuid.UUID, str]] = []
+        self.dispatched: list[uuid.UUID] = []
 
     async def create_outbox(self, *, document_id: uuid.UUID, task_name: str) -> object:
         self.created.append((document_id, task_name))
-        return object()
+        return _OutboxRecord(id=uuid.uuid4())
+
+    async def mark_dispatched(self, outbox_id: uuid.UUID, dispatched_at: object) -> object:
+        self.dispatched.append(outbox_id)
+        return _OutboxRecord(id=outbox_id)
+
+
+@dataclass(frozen=True, slots=True)
+class _OutboxRecord:
+    id: uuid.UUID
 
 
 class _NoteVersionRepo:

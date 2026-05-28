@@ -9,7 +9,10 @@ from src.application.dtos.note_dtos import NoteDTO, NoteListItemDTO
 from src.application.dtos.note_version_dtos import NoteVersionDTO
 from src.application.ports.persistence.note_version_repository import NoteVersionRecord
 from src.application.use_cases.documents.base import ensure_document_owner
-from src.application.use_cases.documents.document_processing_outbox import DOCUMENT_PROCESSING_TASK_NAME
+from src.application.use_cases.documents.document_processing_outbox import (
+    DOCUMENT_PROCESSING_TASK_NAME,
+    kick_document_processing_outbox_item,
+)
 from src.domain.exceptions import DocumentNotFoundException
 from src.domain.value_objects.document_type import DocumentType
 
@@ -94,7 +97,7 @@ async def queue_note_processing(
     document.mark_queued()
     async with uow:
         await uow.document_repo.update(document)
-        await uow.document_processing_outbox_repo.create_outbox(
+        outbox = await uow.document_processing_outbox_repo.create_outbox(
             document_id=document.id,
             task_name=DOCUMENT_PROCESSING_TASK_NAME,
         )
@@ -108,7 +111,12 @@ async def queue_note_processing(
             message="Queued note for memory indexing.",
         )
     with suppress(Exception):
-        await task_dispatcher.dispatch_document_processing_outbox()
+        await kick_document_processing_outbox_item(
+            outbox_id=outbox.id,
+            document_id=document.id,
+            uow=uow,
+            task_dispatcher=task_dispatcher,
+        )
 
 
 def note_to_dto(document: DocumentEntity) -> NoteDTO:
