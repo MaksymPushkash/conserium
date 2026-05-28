@@ -7,7 +7,7 @@ from src.core.metrics import metrics_registry
 @contextmanager
 def query_latency_timer(mode: str) -> Iterator[None]:
     with metrics_registry.timer(
-        "cortex_query_latency_seconds",
+        "conserium_query_latency_seconds",
         "Latency of query execution in seconds.",
         labels={"mode": mode},
     ):
@@ -16,7 +16,7 @@ def query_latency_timer(mode: str) -> Iterator[None]:
 
 def observe_query_latency(mode: str, value: float) -> None:
     metrics_registry.observe_histogram(
-        "cortex_query_latency_seconds",
+        "conserium_query_latency_seconds",
         "Latency of query execution in seconds.",
         labels={"mode": mode},
         value=value,
@@ -26,7 +26,7 @@ def observe_query_latency(mode: str, value: float) -> None:
 @contextmanager
 def ingestion_latency_timer(endpoint: str) -> Iterator[None]:
     with metrics_registry.timer(
-        "cortex_ingestion_latency_seconds",
+        "conserium_ingestion_latency_seconds",
         "Latency of ingestion HTTP requests in seconds.",
         labels={"endpoint": endpoint},
     ):
@@ -35,7 +35,7 @@ def ingestion_latency_timer(endpoint: str) -> Iterator[None]:
 
 def record_http_request(endpoint: str, *, method: str = "POST", status: str) -> None:
     metrics_registry.inc_counter(
-        "cortex_http_requests_total",
+        "conserium_http_requests_total",
         "HTTP requests handled by selected endpoints.",
         labels={"endpoint": endpoint, "method": method, "status": status},
     )

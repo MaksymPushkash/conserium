@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from src.application.dtos.compare_dtos import CompareResultDTO
+from src.application.ports.persistence.collection_workspace_repository import CollectionWorkspaceRecentActivity
 from src.application.ports.persistence.draft_repository import DraftRecord
 from src.application.ports.persistence.search_query_repository import SearchQuerySummaryRecord
 from src.application.use_cases.documents.collection_use_cases import GetCollectionWorkspaceUseCase
@@ -82,11 +83,12 @@ def _document(*, user_id: UUID, collection_id: UUID, title: str, tags: list[str]
 class _WorkspaceUow:
     def __init__(self, collection: CollectionEntity, documents: list[DocumentEntity]) -> None:
         self.collection_repo = _CollectionRepo(collection)
+        self.collection_workspace_repo = _CollectionWorkspaceRepo()
         self.document_repo = _DocumentRepo(documents)
         self.document_activity_repo = _ActivityRepo()
-        self.search_query_repo = _SearchQueryRepo()
-        self.draft_repo = _DraftRepo()
-        self.compare_repo = _CompareRepo()
+        self.search_query_repo = self.collection_workspace_repo.search_query_repo
+        self.draft_repo = self.collection_workspace_repo.draft_repo
+        self.compare_repo = self.collection_workspace_repo.compare_repo
 
     async def __aenter__(self) -> _WorkspaceUow:
         return self
@@ -194,6 +196,38 @@ class _SearchQueryRepo:
         limit: int,
     ) -> list[SearchQuerySummaryRecord]:
         return self.records[:limit]
+
+
+class _CollectionWorkspaceRepo:
+    def __init__(self) -> None:
+        self.search_query_repo = _SearchQueryRepo()
+        self.draft_repo = _DraftRepo()
+        self.compare_repo = _CompareRepo()
+
+    async def get_recent_activity(
+        self,
+        *,
+        user_id: UUID,
+        collection_id: UUID,
+        limit: int,
+    ) -> CollectionWorkspaceRecentActivity:
+        return CollectionWorkspaceRecentActivity(
+            questions=await self.search_query_repo.list_recent_by_collection(
+                user_id=user_id,
+                collection_id=collection_id,
+                limit=limit,
+            ),
+            drafts=await self.draft_repo.list_by_user_id(
+                user_id=user_id,
+                collection_id=collection_id,
+                limit=limit,
+            ),
+            comparisons=await self.compare_repo.list_by_user_id(
+                user_id=user_id,
+                collection_id=collection_id,
+                limit=limit,
+            ),
+        )
 
 
 class _DraftRepo:

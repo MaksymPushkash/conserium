@@ -15,6 +15,7 @@ from src.core.providers.knowledge_graph import KnowledgeGraphProvider
 from src.core.providers.learning_goals import LearningGoalsProvider
 from src.core.providers.query import QueryProvider
 from src.core.providers.repo_syncs import RepoSyncsProvider
+from src.core.providers.review import ReviewProvider
 from src.core.providers.stats import StatsProvider
 from src.core.providers.topics import TopicsProvider
 
@@ -36,6 +37,7 @@ __all__ = [
     "LearningGoalsProvider",
     "QueryProvider",
     "RepoSyncsProvider",
+    "ReviewProvider",
     "StatsProvider",
     "TopicsProvider",
 ]

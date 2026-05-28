@@ -9,7 +9,7 @@ from src.application.agents.query.graph_runner import QueryGraphRunner
 from src.application.agents.query.refrag_context_agent import RefragContextAgent
 from src.application.agents.query.retrieval_agent import RetrievalAgent
 from src.application.agents.query.router_agent import RouterAgent
-from src.application.agents.query.state import CortexQueryState
+from src.application.agents.query.state import ConseriumQueryState
 from src.application.agents.query.synthesis_agent import SynthesisAgent
 from src.application.dtos.conversation_dtos import ConversationTurnDTO
 from src.application.dtos.query_dtos import QueryDTO
@@ -372,7 +372,7 @@ async def test_query_interaction_persistence_uses_single_commit() -> None:
     conversation_id = uuid.uuid4()
     uow = _FakeUnitOfWork(_FakeChunkRepository([]))
     service = QueryOrchestrationService(_as_conversation_store(_FakeConversationStore()), _as_uow(uow))
-    state = CortexQueryState(query="hello", user_id=user_id, conversation_id=conversation_id, limit=5, answer="answer")
+    state = ConseriumQueryState(query="hello", user_id=user_id, conversation_id=conversation_id, limit=5, answer="answer")
 
     await service.record_interaction(
         QueryDTO(user_id=user_id, query="hello", limit=5),
@@ -394,7 +394,7 @@ async def test_query_interaction_does_not_commit_partial_state_when_chat_write_f
     uow = _FakeUnitOfWork(_FakeChunkRepository([]))
     uow.chat_repo = _FailingChatRepository()
     service = QueryOrchestrationService(_as_conversation_store(_FakeConversationStore()), _as_uow(uow))
-    state = CortexQueryState(query="hello", user_id=user_id, conversation_id=conversation_id, limit=5, answer="answer")
+    state = ConseriumQueryState(query="hello", user_id=user_id, conversation_id=conversation_id, limit=5, answer="answer")
 
     with pytest.raises(RuntimeError, match="chat write failed"):
         await service.record_interaction(

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import final
 from uuid import UUID
 
@@ -59,3 +59,4 @@ class QueryResultDTO:
     sources: list[QuerySourceDTO]
     refrag_context: RefragContextPackage
     debug: QueryDebugDTO | None = None
+    suggested_follow_up_questions: list[str] = field(default_factory=list)

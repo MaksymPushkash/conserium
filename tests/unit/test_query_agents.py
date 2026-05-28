@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 from src.application.agents.query.conversation_context_agent import ConversationContextAgent
 from src.application.agents.query.retrieval_agent import RetrievalAgent
 from src.application.agents.query.router_agent import RouterAgent
-from src.application.agents.query.state import CortexQueryState, QueryType
+from src.application.agents.query.state import ConseriumQueryState, QueryType
 from src.application.agents.query.synthesis_agent import ABSTENTION_ANSWER, SynthesisAgent
 from src.application.dtos.conversation_dtos import ConversationSourceDTO, ConversationTurnDTO
 from src.application.dtos.query_dtos import QuerySourceDTO
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 def test_router_agent_marks_summary_queries() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="Summarize my notes about startup development",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -31,7 +31,7 @@ def test_router_agent_marks_summary_queries() -> None:
 
 
 def test_router_agent_defaults_to_search() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="What did I read about Clean Architecture?",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -44,7 +44,7 @@ def test_router_agent_defaults_to_search() -> None:
 
 
 def test_router_agent_uses_word_boundaries_for_summary_markers() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="Find documents about summary_stats tables",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -57,7 +57,7 @@ def test_router_agent_uses_word_boundaries_for_summary_markers() -> None:
 
 
 def test_router_agent_uses_word_boundaries_for_ukrainian_summary_markers() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="Знайди нотатку про підсумуймо результати",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -70,7 +70,7 @@ def test_router_agent_uses_word_boundaries_for_ukrainian_summary_markers() -> No
 
 
 def test_router_agent_marks_document_qa_queries() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="What does this document say about tests?",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -83,7 +83,7 @@ def test_router_agent_marks_document_qa_queries() -> None:
 
 
 def test_router_agent_does_not_match_pdf_inside_another_token() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="Find notes about pdfium rendering",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -97,7 +97,7 @@ def test_router_agent_does_not_match_pdf_inside_another_token() -> None:
 
 def test_conversation_context_agent_rewrites_follow_up_query_and_promotes_sources() -> None:
     document_id = uuid.uuid4()
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="What about testing?",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -130,7 +130,7 @@ def test_conversation_context_agent_rewrites_follow_up_query_and_promotes_source
 
 
 def test_conversation_context_agent_keeps_standalone_query_unchanged() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="Explain PostgreSQL pgvector indexing for saved PDFs",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -152,7 +152,7 @@ def test_conversation_context_agent_keeps_standalone_query_unchanged() -> None:
 
 
 def test_conversation_context_agent_preserves_explicit_retrieval_query() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="Write a Markdown draft using only saved context about Python generators",
         retrieval_query="Python generators",
         user_id=uuid.uuid4(),
@@ -176,7 +176,7 @@ def test_conversation_context_agent_preserves_explicit_retrieval_query() -> None
 
 def test_conversation_context_agent_does_not_rewrite_short_standalone_query() -> None:
     previous_document_id = uuid.uuid4()
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="PostgreSQL indexes",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -208,7 +208,7 @@ def test_conversation_context_agent_does_not_rewrite_short_standalone_query() ->
 
 def test_conversation_context_agent_does_not_treat_connective_search_as_follow_up() -> None:
     previous_document_id = uuid.uuid4()
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="PostgreSQL and pgvector",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -286,7 +286,7 @@ class _FakeRetrievalService:
 
 async def test_retrieval_agent_uses_contextual_query_and_promotes_previous_documents() -> None:
     promoted_document_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="What about tests?",
         retrieval_query="Current follow-up question: What about tests?",
         user_id=uuid.uuid4(),
@@ -326,8 +326,8 @@ class _DraftRetrievalService:
 
 
 async def test_retrieval_agent_uses_explicit_relevance_query_for_drafts() -> None:
-    state = CortexQueryState(
-        query="Write a Markdown draft using only saved Cortex materials about Python generators.",
+    state = ConseriumQueryState(
+        query="Write a Markdown draft using only saved Conserium materials about Python generators.",
         retrieval_query="Python generators",
         relevance_query="Python generators",
         user_id=uuid.uuid4(),
@@ -341,8 +341,8 @@ async def test_retrieval_agent_uses_explicit_relevance_query_for_drafts() -> Non
 
 
 async def test_retrieval_agent_keeps_ranked_context_when_explicit_relevance_filter_is_too_strict() -> None:
-    state = CortexQueryState(
-        query="Write a Markdown draft using only saved Cortex materials.",
+    state = ConseriumQueryState(
+        query="Write a Markdown draft using only saved Conserium materials.",
         retrieval_query="Python generators",
         relevance_query="article outline",
         user_id=uuid.uuid4(),
@@ -358,7 +358,7 @@ async def test_retrieval_agent_keeps_ranked_context_when_explicit_relevance_filt
 
 async def test_retrieval_agent_filters_to_notes_when_query_requests_notes_only() -> None:
     service = _FakeRetrievalService()
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="from my notes only give me a quote about sql",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -373,7 +373,7 @@ async def test_retrieval_agent_filters_to_notes_when_query_requests_notes_only()
 
 async def test_retrieval_agent_prefers_explicit_document_type_filter() -> None:
     service = _FakeRetrievalService()
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="give me a quote about sql",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -422,7 +422,7 @@ class _NoiseRetrievalService:
 
 
 async def test_retrieval_agent_filters_unrelated_noise_sources() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="What is the Clean Architecture dependency rule?",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -470,7 +470,7 @@ class _AuthNoiseRetrievalService:
 
 
 async def test_retrieval_agent_returns_empty_sources_for_collection_scoped_noise() -> None:
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="Which database storage engine is recommended in this Auth collection?",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -500,7 +500,7 @@ class _RecordingLLMService:
 
 async def test_synthesis_agent_abstains_without_selected_context() -> None:
     llm_service = _RecordingLLMService()
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="Which database storage engine is recommended in this Auth collection?",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -524,7 +524,7 @@ async def test_synthesis_agent_abstains_without_selected_context() -> None:
 
 async def test_synthesis_agent_applies_answer_language_preference() -> None:
     llm_service = _RecordingLLMService()
-    state = CortexQueryState(
+    state = ConseriumQueryState(
         query="Summarize the source",
         user_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),

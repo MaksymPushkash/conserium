@@ -581,7 +581,7 @@ wheels = [
 ]
 
 [[package]]
-name = "cortex"
+name = "conserium"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

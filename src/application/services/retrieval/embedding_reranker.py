@@ -39,7 +39,7 @@ class EmbeddingReranker(IReranker):
 
         scored.sort(key=lambda s: s[0], reverse=True)
         metrics_registry.inc_counter(
-            "cortex_reranker_events_total",
+            "conserium_reranker_events_total",
             "Reranker execution events.",
             labels={"backend": "embedding", "status": "success"},
         )

@@ -67,6 +67,7 @@ def to_query_response(dto: QueryResultDTO) -> QueryResponse:
         sources=[to_query_source_response(source, index) for index, source in enumerate(dto.sources, start=1)],
         refrag_context=to_refrag_context_response(dto.refrag_context),
         debug=to_query_debug_response(dto.debug) if dto.debug else None,
+        suggested_follow_up_questions=dto.suggested_follow_up_questions,
     )
 
 

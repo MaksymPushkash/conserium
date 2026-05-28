@@ -82,7 +82,7 @@
   },
   {
     "id": "refrag-compression",
-    "query": "Why does Cortex use REFRAG?",
+    "query": "Why does Conserium use REFRAG?",
     "expected_source_documents": [
       "00000000-0000-0000-0000-000000000003"
     ],
@@ -95,7 +95,7 @@
       "tokens",
       "retrieval"
     ],
-    "answer": "Cortex uses REFRAG so retrieval context can be compressed before synthesis, reducing tokens while preserving citations. [1]",
+    "answer": "Conserium uses REFRAG so retrieval context can be compressed before synthesis, reducing tokens while preserving citations. [1]",
     "source_chunks": [
       {
         "document_id": "00000000-0000-0000-0000-000000000003",

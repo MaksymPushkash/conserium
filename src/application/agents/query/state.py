@@ -18,7 +18,7 @@ class QueryType(StrEnum):
 
 
 @dataclass(slots=True)
-class CortexQueryState:
+class ConseriumQueryState:
     query: str
     user_id: UUID
     limit: int
@@ -43,12 +43,12 @@ class CortexQueryState:
     trace_id: str | None = None
 
 
-def coerce_cortex_query_state(value: CortexQueryState | Mapping[str, Any]) -> CortexQueryState:
-    if isinstance(value, CortexQueryState):
+def coerce_conserium_query_state(value: ConseriumQueryState | Mapping[str, Any]) -> ConseriumQueryState:
+    if isinstance(value, ConseriumQueryState):
         return value
 
     query_type = value.get("query_type", QueryType.SEARCH)
-    return CortexQueryState(
+    return ConseriumQueryState(
         query=cast("str", value["query"]),
         user_id=cast("UUID", value["user_id"]),
         limit=cast("int", value["limit"]),

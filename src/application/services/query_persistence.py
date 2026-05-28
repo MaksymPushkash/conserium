@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from uuid import UUID
 
-    from src.application.agents.query.state import CortexQueryState
+    from src.application.agents.query.state import ConseriumQueryState
     from src.application.dtos.query_dtos import QueryDTO, QuerySourceDTO
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
 
@@ -19,7 +19,7 @@ class QueryPersistenceService:
     def __init__(self, uow: IUnitOfWork) -> None:
         self._uow = uow
 
-    async def record_query(self, dto: QueryDTO, query: str, state: CortexQueryState, latency_ms: int) -> None:
+    async def record_query(self, dto: QueryDTO, query: str, state: ConseriumQueryState, latency_ms: int) -> None:
         async with self._uow:
             await self._record_query(dto, query, state, latency_ms)
             await self._uow.commit()
@@ -53,7 +53,7 @@ class QueryPersistenceService:
         dto: QueryDTO,
         *,
         query: str,
-        state: CortexQueryState,
+        state: ConseriumQueryState,
         latency_ms: int,
         refrag_context: dict[str, object],
         conversation_id: UUID,
@@ -73,7 +73,7 @@ class QueryPersistenceService:
             await record_document_activity(self._uow, dto.user_id, state.sources)
             await self._uow.commit()
 
-    async def _record_query(self, dto: QueryDTO, query: str, state: CortexQueryState, latency_ms: int) -> None:
+    async def _record_query(self, dto: QueryDTO, query: str, state: ConseriumQueryState, latency_ms: int) -> None:
         await self._uow.search_query_repo.record_query(
             QueryEvaluationRecordDTO(
                 user_id=dto.user_id,
@@ -92,7 +92,7 @@ class QueryPersistenceService:
         )
 
 
-def _query_document_ids(dto: QueryDTO, state: CortexQueryState) -> tuple[UUID, ...]:
+def _query_document_ids(dto: QueryDTO, state: ConseriumQueryState) -> tuple[UUID, ...]:
     if dto.document_ids:
         return dto.document_ids
     seen: set[UUID] = set()

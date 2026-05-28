@@ -1,4 +1,4 @@
-# Cortex Local Development
+# Conserium Local Development
 
 This runbook covers the current backend MVP: FastAPI app, PostgreSQL with pgvector, Redis, RabbitMQ, Celery workers, ingestion, query, metrics, and eval regression.
 
@@ -21,16 +21,16 @@ DEBUG=true
 JWT_SECRET=local-dev-secret-change-me
 FRONTEND_URL=http://localhost:3000
 
-DB_NAME=cortex
-DB_USER=cortex
-DB_PASSWORD=cortex
-DATABASE_URL=postgresql+asyncpg://cortex:cortex@localhost:5432/cortex
+DB_NAME=conserium
+DB_USER=conserium
+DB_PASSWORD=conserium
+DATABASE_URL=postgresql+asyncpg://conserium:conserium@localhost:5432/conserium
 
 REDIS_URL=redis://localhost:6379/0
-CELERY_BROKER_URL=amqp://cortex:cortex@localhost:5672//
+CELERY_BROKER_URL=amqp://conserium:conserium@localhost:5672//
 CELERY_RESULT_BACKEND=redis://localhost:6379/1
-RABBITMQ_USER=cortex
-RABBITMQ_PASSWORD=cortex
+RABBITMQ_USER=conserium
+RABBITMQ_PASSWORD=conserium
 
 OPENAI_API_KEY=
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
@@ -80,7 +80,7 @@ Production should use S3:
 ```env
 FILE_STORAGE_TYPE=s3
 AWS_REGION=eu-central-1
-AWS_S3_BUCKET=cortex-documents
+AWS_S3_BUCKET=conserium-documents
 AWS_S3_PREFIX=uploads
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
@@ -267,7 +267,7 @@ uv run python scripts/run_eval_harness.py --output artifacts/eval-regression-rep
 After the API starts, compare the generated schema with the documented API:
 
 ```bash
-curl -s http://localhost:8000/openapi.json > /tmp/cortex-openapi.json
+curl -s http://localhost:8000/openapi.json > /tmp/conserium-openapi.json
 ```
 
 Expected route groups:

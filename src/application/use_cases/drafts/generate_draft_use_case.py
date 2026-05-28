@@ -424,7 +424,7 @@ def draft_version(record: DraftVersionRecord) -> DraftVersionDTO:
 def draft_query(prompt: str, *, template: DraftTemplateDTO, outline: list[str], scope: DraftGenerateDTO) -> str:
     outline_text = "\n".join(f"- {section}" for section in outline)
     return (
-        "Write a Markdown draft using only my saved Cortex materials.\n"
+        "Write a Markdown draft using only my saved Conserium materials.\n"
         f"Template: {template.name}\n"
         f"Template instructions: {template.prompt}\n"
         f"Scope: {scope_description(scope)}\n"

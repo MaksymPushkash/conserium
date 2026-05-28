@@ -21,7 +21,7 @@ _TRAFILATURA_CONFIG.set("DEFAULT", "SLEEP_TIME", "0")
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 _MAX_REDIRECTS = 5
 _MAX_RESPONSE_BYTES = 2_000_000
-_USER_AGENT = "CortexBot/0.1"
+_USER_AGENT = "ConseriumBot/0.1"
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):

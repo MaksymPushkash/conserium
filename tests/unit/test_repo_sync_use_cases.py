@@ -426,6 +426,9 @@ class _NoopTaskDispatcher:
     async def dispatch_repo_sync_outbox(self) -> None:
         return None
 
+    async def dispatch_document_processing_outbox(self) -> None:
+        return None
+
 
 class _QueueFailureUow:
     def __init__(self, repo_sync: RepoSyncDTO) -> None:
@@ -522,6 +525,9 @@ class _FailingTaskDispatcher:
     async def dispatch_repo_sync_outbox(self) -> None:
         raise RuntimeError("broker down")
 
+    async def dispatch_document_processing_outbox(self) -> None:
+        return None
+
 
 class _RecordingTaskDispatcher:
     def __init__(self) -> None:
@@ -533,6 +539,9 @@ class _RecordingTaskDispatcher:
         self.task_ids.append(task_id)
 
     async def dispatch_repo_sync_outbox(self) -> None:
+        return None
+
+    async def dispatch_document_processing_outbox(self) -> None:
         return None
 
 

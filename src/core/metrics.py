@@ -17,13 +17,13 @@ from src.core.config import settings
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-_COUNTER_HELP_KEY = "cortex:metrics:counter_help"
-_COUNTER_VALUE_KEY = "cortex:metrics:counter_values"
-_GAUGE_HELP_KEY = "cortex:metrics:gauge_help"
-_GAUGE_VALUE_KEY = "cortex:metrics:gauge_values"
-_SUMMARY_HELP_KEY = "cortex:metrics:summary_help"
-_SUMMARY_SUM_KEY = "cortex:metrics:summary_sum"
-_SUMMARY_COUNT_KEY = "cortex:metrics:summary_count"
+_COUNTER_HELP_KEY = "conserium:metrics:counter_help"
+_COUNTER_VALUE_KEY = "conserium:metrics:counter_values"
+_GAUGE_HELP_KEY = "conserium:metrics:gauge_help"
+_GAUGE_VALUE_KEY = "conserium:metrics:gauge_values"
+_SUMMARY_HELP_KEY = "conserium:metrics:summary_help"
+_SUMMARY_SUM_KEY = "conserium:metrics:summary_sum"
+_SUMMARY_COUNT_KEY = "conserium:metrics:summary_count"
 
 
 class MetricsRegistry:
@@ -276,8 +276,8 @@ def _render_snapshot(
 
 def _render_queue_depth_metrics() -> list[str]:
     lines = [
-        "# HELP cortex_queue_depth Number of messages currently waiting in each Celery queue.",
-        "# TYPE cortex_queue_depth gauge",
+        "# HELP conserium_queue_depth Number of messages currently waiting in each Celery queue.",
+        "# TYPE conserium_queue_depth gauge",
     ]
     try:
         from src.infrastructure.celery.app import celery_app
@@ -292,7 +292,7 @@ def _render_queue_depth_metrics() -> list[str]:
                         message_count = int(declare_result.message_count)
                     except AMQPNotFound:
                         continue
-                    lines.append(f'cortex_queue_depth{{queue="{queue_def.name}"}} {message_count}')
+                    lines.append(f'conserium_queue_depth{{queue="{queue_def.name}"}} {message_count}')
             finally:
                 channel.close()
     except (KombuError, OSError, AttributeError):

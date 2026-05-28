@@ -305,7 +305,7 @@
   },
   {
     "id": "deduplication-threshold",
-    "query": "How does Cortex decide duplicate documents?",
+    "query": "How does Conserium decide duplicate documents?",
     "expected_source_documents": [
       "00000000-0000-0000-0000-000000000019"
     ],
@@ -318,7 +318,7 @@
       "similarity",
       "threshold"
     ],
-    "answer": "Cortex compares document embeddings and marks a duplicate when similarity crosses the configured threshold. [1]",
+    "answer": "Conserium compares document embeddings and marks a duplicate when similarity crosses the configured threshold. [1]",
     "source_chunks": [
       {
         "document_id": "00000000-0000-0000-0000-000000000019",

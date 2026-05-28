@@ -46,13 +46,13 @@ class CrossEncoderReranker(IReranker):
 
             scores = await loop.run_in_executor(None, model.predict, pairs)
             metrics_registry.observe_histogram(
-                "cortex_reranker_latency_seconds",
+                "conserium_reranker_latency_seconds",
                 "Reranker latency in seconds.",
                 labels={"backend": "cross_encoder"},
                 value=perf_counter() - started_at,
             )
             metrics_registry.inc_counter(
-                "cortex_reranker_events_total",
+                "conserium_reranker_events_total",
                 "Reranker execution events.",
                 labels={"backend": "cross_encoder", "status": "success"},
             )
@@ -67,7 +67,7 @@ class CrossEncoderReranker(IReranker):
         except Exception as e:
             logger.exception("Failed to rerank sources with CrossEncoder", exc_info=e)
             metrics_registry.inc_counter(
-                "cortex_reranker_events_total",
+                "conserium_reranker_events_total",
                 "Reranker execution events.",
                 labels={"backend": "cross_encoder", "status": "error"},
             )

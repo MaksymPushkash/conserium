@@ -97,6 +97,8 @@ def evidence_to_json(rows: list[CompareEvidenceRowDTO]) -> list[dict[str, object
             "right_source_id": str(row.right_source_id) if row.right_source_id is not None else None,
             "left_citation": row.left_citation,
             "right_citation": row.right_citation,
+            "confidence": row.confidence,
+            "rationale": row.rationale,
         }
         for row in rows
     ]
@@ -113,6 +115,14 @@ def evidence_from_json(rows: list[dict[str, object]]) -> list[CompareEvidenceRow
             right_source_id=UUID(str(row["right_source_id"])) if row.get("right_source_id") is not None else None,
             left_citation=str(row["left_citation"]) if row.get("left_citation") is not None else None,
             right_citation=str(row["right_citation"]) if row.get("right_citation") is not None else None,
+            confidence=_float_or_none(row.get("confidence")),
+            rationale=str(row["rationale"]) if row.get("rationale") is not None else None,
         )
         for row in rows
     ]
+
+
+def _float_or_none(value: object) -> float | None:
+    if isinstance(value, int | float | str):
+        return float(value)
+    return None

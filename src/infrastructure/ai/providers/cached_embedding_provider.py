@@ -33,14 +33,14 @@ class CachedEmbeddingProvider(IEmbeddingProvider):
             cached = await self._cache.get(key)
             if cached is None:
                 metrics_registry.inc_counter(
-                    "cortex_embedding_cache_events_total",
+                    "conserium_embedding_cache_events_total",
                     "Embedding cache hit/miss events.",
                     labels={"result": "miss"},
                 )
                 misses.append((index, key, text))
                 continue
             metrics_registry.inc_counter(
-                "cortex_embedding_cache_events_total",
+                "conserium_embedding_cache_events_total",
                 "Embedding cache hit/miss events.",
                 labels={"result": "hit"},
             )

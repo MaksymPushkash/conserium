@@ -1,5 +1,6 @@
 from src.application.dtos.document_dtos import (
     DocumentChunkDTO,
+    DocumentConnectionsDTO,
     DocumentDTO,
     DocumentListDTO,
     DocumentQuestionHistoryDTO,
@@ -8,6 +9,8 @@ from src.application.dtos.document_dtos import (
 from src.application.ports.cache.document_status_cache import DocumentStatusDTO
 from src.presentation.schemas.document import (
     DocumentChunkResponse,
+    DocumentConnectionResponse,
+    DocumentConnectionsResponse,
     DocumentListItemResponse,
     DocumentListResponse,
     DocumentProcessingStepResponse,
@@ -142,6 +145,22 @@ def to_document_question_history_response(dto: DocumentQuestionHistoryDTO) -> Do
                 answer_text=item.answer_text,
                 result_count=item.result_count,
                 created_at=item.created_at,
+            )
+            for item in dto.items
+        ],
+    )
+
+
+def to_document_connections_response(dto: DocumentConnectionsDTO) -> DocumentConnectionsResponse:
+    return DocumentConnectionsResponse(
+        document_id=dto.document_id,
+        total=dto.total,
+        limit=dto.limit,
+        items=[
+            DocumentConnectionResponse(
+                document=to_document_list_item_response(item.document),
+                reasons=item.reasons,
+                relationship_score=item.relationship_score,
             )
             for item in dto.items
         ],

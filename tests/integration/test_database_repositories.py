@@ -31,8 +31,8 @@ from src.infrastructure.database.repositories.topic_repository import SQLAlchemy
 from src.infrastructure.database.repositories.user_repository import SQLAlchemyUserRepository
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("CORTEX_RUN_DB_TESTS") != "1",
-    reason="set CORTEX_RUN_DB_TESTS=1 to run database integration tests against DATABASE_URL",
+    os.environ.get("CONSERIUM_RUN_DB_TESTS") != "1",
+    reason="set CONSERIUM_RUN_DB_TESTS=1 to run database integration tests against DATABASE_URL",
 )
 
 

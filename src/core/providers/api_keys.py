@@ -8,7 +8,12 @@ from src.application.use_cases.api_keys import (
     RevokeApiKeyUseCase,
 )
 from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
-from src.application.use_cases.external_intake import IngestExternalItemUseCase
+from src.application.use_cases.external_intake import (
+    GetExternalIntakeItemUseCase,
+    IngestExternalItemUseCase,
+    ListExternalIntakeItemsUseCase,
+    RetryExternalIntakeItemUseCase,
+)
 
 
 class ApiKeysProvider(Provider):
@@ -35,3 +40,19 @@ class ApiKeysProvider(Provider):
         ingest_document: IngestDocumentUseCase,
     ) -> IngestExternalItemUseCase:
         return IngestExternalItemUseCase(uow, ingest_document)
+
+    @provide(scope=Scope.REQUEST)
+    def get_external_intake_item_use_case(self, uow: IUnitOfWork) -> GetExternalIntakeItemUseCase:
+        return GetExternalIntakeItemUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_list_external_intake_items_use_case(self, uow: IUnitOfWork) -> ListExternalIntakeItemsUseCase:
+        return ListExternalIntakeItemsUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_retry_external_intake_item_use_case(
+        self,
+        uow: IUnitOfWork,
+        ingest_document: IngestDocumentUseCase,
+    ) -> RetryExternalIntakeItemUseCase:
+        return RetryExternalIntakeItemUseCase(uow, ingest_document)

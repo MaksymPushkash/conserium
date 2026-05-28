@@ -7,7 +7,7 @@
         {
           "key": "clean_architecture_boundaries",
           "title": "Live Eval - Clean Architecture Boundaries",
-          "content": "Clean Architecture in Cortex separates presentation adapters, application use cases, domain entities, and infrastructure providers. The key rule is that dependencies point inward. Presentation maps HTTP input into DTOs, application use cases orchestrate work, domain objects hold business invariants, and infrastructure implements ports. Tests should verify boundaries without importing framework details into the domain."
+          "content": "Clean Architecture in Conserium separates presentation adapters, application use cases, domain entities, and infrastructure providers. The key rule is that dependencies point inward. Presentation maps HTTP input into DTOs, application use cases orchestrate work, domain objects hold business invariants, and infrastructure implements ports. Tests should verify boundaries without importing framework details into the domain."
         },
         {
           "key": "celery_composition",

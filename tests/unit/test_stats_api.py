@@ -5,10 +5,17 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.application.dtos.stats_dtos import StatsOverviewDTO, StatsTimelineBucketDTO, StatsTimelineDTO
+from src.application.dtos.stats_dtos import (
+    DailyDigestDTO,
+    DailyDigestItemDTO,
+    StatsOverviewDTO,
+    StatsTimelineBucketDTO,
+    StatsTimelineDTO,
+    WeeklyReportDTO,
+)
 from src.application.ports.auth.jwt_service import IJWTService
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.stats import GetStatsOverviewUseCase
+from src.application.use_cases.stats import GetDailyDigestUseCase, GetStatsOverviewUseCase, GetWeeklyReportUseCase
 from src.application.use_cases.stats.get_stats_timeline_use_case import GetStatsTimelineUseCase
 from src.domain.entities.user_entity import UserEntity
 from src.domain.value_objects.email import Email
@@ -80,6 +87,28 @@ class _ReturningTimelineUseCase:
     async def __call__(self, user_id: uuid.UUID, *, months: int = 6) -> StatsTimelineDTO:
         self.received_user_id = user_id
         self.received_months = months
+        return self._result
+
+
+class _ReturningDailyDigestUseCase:
+    def __init__(self, result: DailyDigestDTO) -> None:
+        self._result = result
+        self.received_user_id: uuid.UUID | None = None
+        self.received_limit: int | None = None
+
+    async def __call__(self, user_id: uuid.UUID, *, limit: int = 3) -> DailyDigestDTO:
+        self.received_user_id = user_id
+        self.received_limit = limit
+        return self._result
+
+
+class _ReturningWeeklyReportUseCase:
+    def __init__(self, result: WeeklyReportDTO) -> None:
+        self._result = result
+        self.received_user_id: uuid.UUID | None = None
+
+    async def __call__(self, user_id: uuid.UUID) -> WeeklyReportDTO:
+        self.received_user_id = user_id
         return self._result
 
 
@@ -174,3 +203,84 @@ def test_stats_timeline_route_returns_monthly_activity() -> None:
     assert response.json()["months"] == 6
     assert use_case.received_user_id == user.id
     assert use_case.received_months == 6
+
+
+def test_daily_digest_route_returns_stale_document_questions() -> None:
+    user = _make_user()
+    document_id = uuid.uuid4()
+    last_used_at = datetime(2026, 5, 1, tzinfo=UTC)
+    use_case = _ReturningDailyDigestUseCase(
+        DailyDigestDTO(
+            items=[
+                DailyDigestItemDTO(
+                    document_id=document_id,
+                    title="Clean Architecture",
+                    summary="Architecture notes",
+                    question="How do boundaries work?",
+                    reason="No activity for 12 days.",
+                    last_used_at=last_used_at,
+                    days_since_activity=12,
+                )
+            ]
+        )
+    )
+    jwt_service = MagicMock()
+    jwt_service.verify_access_token.return_value = user.id
+    app = create_app()
+    app.state.dishka_container = _FakeRootContainer(
+        {
+            IJWTService: jwt_service,
+            IUnitOfWork: _FakeUnitOfWork(user),
+            GetDailyDigestUseCase: use_case,
+        }
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    try:
+        response = client.get("/api/v1/stats/daily-digest?limit=2", headers={"Authorization": "Bearer access-token"})
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["document_id"] == str(document_id)
+    assert response.json()["items"][0]["question"] == "How do boundaries work?"
+    assert use_case.received_user_id == user.id
+    assert use_case.received_limit == 2
+
+
+def test_weekly_report_route_returns_actionable_summary() -> None:
+    user = _make_user()
+    use_case = _ReturningWeeklyReportUseCase(
+        WeeklyReportDTO(
+            saved_documents=4,
+            active_documents=3,
+            query_count=2,
+            citation_count=5,
+            ready_documents=9,
+            failed_documents=1,
+            stale_documents=6,
+            summary="4 sources saved, 3 sources revisited, 2 queries asked in the last 7 days.",
+            recommended_actions=["Retry failed processing jobs."],
+        )
+    )
+    jwt_service = MagicMock()
+    jwt_service.verify_access_token.return_value = user.id
+    app = create_app()
+    app.state.dishka_container = _FakeRootContainer(
+        {
+            IJWTService: jwt_service,
+            IUnitOfWork: _FakeUnitOfWork(user),
+            GetWeeklyReportUseCase: use_case,
+        }
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    try:
+        response = client.get("/api/v1/stats/weekly-report", headers={"Authorization": "Bearer access-token"})
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["stale_documents"] == 6
+    assert response.json()["recommended_actions"] == ["Retry failed processing jobs."]
+    assert use_case.received_user_id == user.id

@@ -7,7 +7,7 @@ from src.application.agents.query.eval_agent import EvalAgent
 from src.application.agents.query.refrag_context_agent import RefragContextAgent
 from src.application.agents.query.retrieval_agent import RetrievalAgent
 from src.application.agents.query.router_agent import RouterAgent
-from src.application.agents.query.state import CortexQueryState, coerce_cortex_query_state
+from src.application.agents.query.state import ConseriumQueryState, coerce_conserium_query_state
 from src.application.agents.query.synthesis_agent import SynthesisAgent
 
 
@@ -29,12 +29,12 @@ class QueryGraphRunner:
         self._eval_agent = eval_agent
         self._graph = self._build_graph()
 
-    async def run(self, state: CortexQueryState) -> CortexQueryState:
+    async def run(self, state: ConseriumQueryState) -> ConseriumQueryState:
         result = await self._graph.ainvoke(state)
-        return coerce_cortex_query_state(result)
+        return coerce_conserium_query_state(result)
 
     def _build_graph(self) -> Any:
-        graph = StateGraph(CortexQueryState)
+        graph = StateGraph(ConseriumQueryState)
         graph.add_node("conversation_context", self._apply_conversation_context)
         graph.add_node("router", self._route)
         graph.add_node("retrieval", self._retrieve)
@@ -50,20 +50,20 @@ class QueryGraphRunner:
         graph.add_edge("eval", END)
         return graph.compile()
 
-    def _apply_conversation_context(self, state: CortexQueryState) -> CortexQueryState:
+    def _apply_conversation_context(self, state: ConseriumQueryState) -> ConseriumQueryState:
         return self._conversation_context_agent.apply(state)
 
-    def _route(self, state: CortexQueryState) -> CortexQueryState:
+    def _route(self, state: ConseriumQueryState) -> ConseriumQueryState:
         return self._router_agent.route(state)
 
-    async def _retrieve(self, state: CortexQueryState) -> CortexQueryState:
+    async def _retrieve(self, state: ConseriumQueryState) -> ConseriumQueryState:
         return await self._retrieval_agent.retrieve(state)
 
-    def _build_refrag_context(self, state: CortexQueryState) -> CortexQueryState:
+    def _build_refrag_context(self, state: ConseriumQueryState) -> ConseriumQueryState:
         return self._refrag_context_agent.build_context(state)
 
-    async def _synthesize(self, state: CortexQueryState) -> CortexQueryState:
+    async def _synthesize(self, state: ConseriumQueryState) -> ConseriumQueryState:
         return await self._synthesis_agent.synthesize(state)
 
-    async def _evaluate(self, state: CortexQueryState) -> CortexQueryState:
+    async def _evaluate(self, state: ConseriumQueryState) -> ConseriumQueryState:
         return await self._eval_agent.evaluate(state)

@@ -28,7 +28,7 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
       VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-      VPS_APP_DIR: ${{ vars.VPS_APP_DIR || '/opt/cortex' }}
+      VPS_APP_DIR: ${{ vars.VPS_APP_DIR || '/opt/conserium' }}
       DEPLOY_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
       PRODUCTION_API_BASE_URL: ${{ vars.PRODUCTION_API_BASE_URL }}
       LIVE_EVAL_EMAIL: ${{ secrets.LIVE_EVAL_EMAIL }}
@@ -97,8 +97,8 @@ jobs:
           getent hosts "$api_host" || true
 
           for attempt in $(seq 1 30); do
-            status="$(curl --silent --show-error --location --output /tmp/cortex-health-body --write-out '%{http_code}' "${api_base}/health" || true)"
-            body="$(head -c 300 /tmp/cortex-health-body 2>/dev/null || true)"
+            status="$(curl --silent --show-error --location --output /tmp/conserium-health-body --write-out '%{http_code}' "${api_base}/health" || true)"
+            body="$(head -c 300 /tmp/conserium-health-body 2>/dev/null || true)"
             if [ "$status" = "200" ] && printf '%s' "$body" | grep -q '"status"'; then
               echo "Public API is healthy."
               exit 0

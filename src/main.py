@@ -32,6 +32,7 @@ from src.presentation.api.v1.public import router as public_router
 from src.presentation.api.v1.public_api import router as public_api_router
 from src.presentation.api.v1.query import router as query_router
 from src.presentation.api.v1.repo_syncs import router as repo_sync_router
+from src.presentation.api.v1.review import router as review_router
 from src.presentation.api.v1.stats import router as stats_router
 from src.presentation.api.v1.topics import router as topic_router
 from src.presentation.api.v1.user import router as user_router
@@ -55,7 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(lifespan=lifespan, title="cortex")
+    app = FastAPI(lifespan=lifespan, title="conserium")
     setup_dishka(container, app)
     setup_rate_limiting(app)
     setup_exception_handlers(app)
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(query_router, prefix="/api/v1")
     app.include_router(repo_sync_router, prefix="/api/v1")
+    app.include_router(review_router, prefix="/api/v1")
     app.include_router(stats_router, prefix="/api/v1")
     app.include_router(topic_router, prefix="/api/v1")
     app.include_router(observability_router, prefix="/api/v1")

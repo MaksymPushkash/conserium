@@ -60,6 +60,32 @@ class SQLAlchemyExternalIntakeRepository(IExternalIntakeRepository):
             model = await self._get_model(record.id)
         return self._to_record(model)
 
+    async def get_by_id(self, *, user_id: UUID, intake_item_id: UUID) -> ExternalIntakeItemRecord | None:
+        result = await self._session.execute(
+            select(ExternalIntakeItemModel).where(
+                ExternalIntakeItemModel.id == intake_item_id,
+                ExternalIntakeItemModel.user_id == user_id,
+            )
+        )
+        model = result.scalar_one_or_none()
+        return self._to_record(model) if model is not None else None
+
+    async def list_by_user_id(
+        self,
+        *,
+        user_id: UUID,
+        limit: int,
+        offset: int,
+    ) -> list[ExternalIntakeItemRecord]:
+        result = await self._session.execute(
+            select(ExternalIntakeItemModel)
+            .where(ExternalIntakeItemModel.user_id == user_id)
+            .order_by(ExternalIntakeItemModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return [self._to_record(model) for model in result.scalars().all()]
+
     async def get_by_idempotency_key(
         self,
         *,

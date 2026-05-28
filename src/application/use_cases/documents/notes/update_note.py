@@ -55,9 +55,7 @@ class UpdateNoteUseCase:
             word_count=len(content.split()),
             language=dto.language,
         )
-        if has_content:
-            document.mark_queued()
-        else:
+        if not has_content:
             document.mark_ready()
 
         async with self._uow:

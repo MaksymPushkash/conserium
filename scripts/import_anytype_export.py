@@ -1,9 +1,9 @@
-"""Import an Anytype Markdown export directory into Cortex through webhooks.
+"""Import an Anytype Markdown export directory into Conserium through webhooks.
 
 Usage:
 
-    CORTEX_API_BASE_URL=https://api.cortexx.me/api/v1 \
-    CORTEX_API_KEY=ctx_... \
+    CONSERIUM_API_BASE_URL=https://api.conserium.app/api/v1 \
+    CONSERIUM_API_KEY=ctx_... \
     uv run python scripts/import_anytype_export.py /path/to/anytype/export
 """
 
@@ -25,8 +25,8 @@ async def main() -> None:
     if not root.is_dir():
         raise SystemExit(f"not a directory: {root}")
 
-    api_base = os.environ["CORTEX_API_BASE_URL"].rstrip("/")
-    api_key = os.environ["CORTEX_API_KEY"]
+    api_base = os.environ["CONSERIUM_API_BASE_URL"].rstrip("/")
+    api_key = os.environ["CONSERIUM_API_KEY"]
     markdown_files = sorted(path for path in root.rglob("*.md") if path.is_file())
     async with httpx.AsyncClient(timeout=30) as client:
         for path in markdown_files:

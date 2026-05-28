@@ -9,7 +9,7 @@ from src.application.dtos.external_intake_dtos import ExternalIngestDTO, Externa
 from src.application.dtos.ingestion_dtos import IngestDocumentDTO
 from src.application.ports.persistence.external_intake_repository import ExternalIntakeItemRecord
 from src.application.use_cases.documents.base import document_to_dto
-from src.domain.exceptions import ValidationException
+from src.domain.exceptions import ResourceNotFoundException, ValidationException
 
 if TYPE_CHECKING:
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
@@ -136,6 +136,76 @@ class IngestExternalItemUseCase:
         return failed
 
 
+class GetExternalIntakeItemUseCase:
+    def __init__(self, uow: IUnitOfWork) -> None:
+        self._uow = uow
+
+    async def __call__(self, *, user_id: UUID, intake_item_id: UUID) -> ExternalIngestResultDTO:
+        async with self._uow:
+            record = await self._uow.external_intake_repo.get_by_id(user_id=user_id, intake_item_id=intake_item_id)
+        if record is None:
+            raise ResourceNotFoundException("intake item not found")
+        return await _intake_result(self._uow, record)
+
+
+class ListExternalIntakeItemsUseCase:
+    def __init__(self, uow: IUnitOfWork) -> None:
+        self._uow = uow
+
+    async def __call__(self, *, user_id: UUID, limit: int = 20, offset: int = 0) -> list[ExternalIntakeItemDTO]:
+        async with self._uow:
+            records = await self._uow.external_intake_repo.list_by_user_id(
+                user_id=user_id,
+                limit=limit,
+                offset=offset,
+            )
+        return [external_intake_dto(record) for record in records]
+
+
+class RetryExternalIntakeItemUseCase:
+    def __init__(self, uow: IUnitOfWork, ingest_document: IngestDocumentUseCase) -> None:
+        self._uow = uow
+        self._ingest_document = ingest_document
+
+    async def __call__(self, *, user_id: UUID, intake_item_id: UUID) -> ExternalIngestResultDTO:
+        async with self._uow:
+            record = await self._uow.external_intake_repo.get_by_id(user_id=user_id, intake_item_id=intake_item_id)
+        if record is None:
+            raise ResourceNotFoundException("intake item not found")
+        if record.status != INTAKE_STATUS_FAILED:
+            return await _intake_result(self._uow, record)
+
+        try:
+            document = await self._ingest_document(
+                IngestDocumentDTO(
+                    user_id=record.user_id,
+                    title=record.title,
+                    type=record.type,
+                    collection_id=record.collection_id,
+                    tags=record.tags,
+                    source_url=record.source_url,
+                    raw_content=record.raw_content,
+                    language=record.language,
+                )
+            )
+        except Exception as exc:
+            async with self._uow:
+                await self._uow.external_intake_repo.mark_failed(
+                    intake_item_id=record.id,
+                    error_reason=sanitize_error(exc),
+                )
+                await self._uow.commit()
+            raise
+
+        async with self._uow:
+            queued = await self._uow.external_intake_repo.mark_queued(
+                intake_item_id=record.id,
+                document_id=document.id,
+            )
+            await self._uow.commit()
+        return ExternalIngestResultDTO(intake_item=external_intake_dto(queued), document=document)
+
+
 def normalize_provider(provider: str) -> str:
     normalized = provider.strip().lower()
     if not normalized:
@@ -201,3 +271,13 @@ def external_intake_dto(record: ExternalIntakeItemRecord) -> ExternalIntakeItemD
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
+
+
+async def _intake_result(uow: IUnitOfWork, record: ExternalIntakeItemRecord) -> ExternalIngestResultDTO:
+    document = None
+    if record.document_id is not None:
+        async with uow:
+            entity = await uow.document_repo.get_by_id(record.document_id)
+            if entity is not None and entity.user_id == record.user_id:
+                document = document_to_dto(entity)
+    return ExternalIngestResultDTO(intake_item=external_intake_dto(record), document=document)

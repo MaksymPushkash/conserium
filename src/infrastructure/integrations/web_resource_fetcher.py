@@ -35,7 +35,7 @@ class HTTPWebResourceFetcher(IWebResourceFetcher):
     async def fetch(self, url: str) -> FetchedWebResource | None:
         try:
             async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-                response = await client.get(url, headers={"User-Agent": "cortex-learning-resources/1.0"})
+                response = await client.get(url, headers={"User-Agent": "conserium-learning-resources/1.0"})
             response.raise_for_status()
         except httpx.HTTPError:
             return None

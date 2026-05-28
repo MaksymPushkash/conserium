@@ -18,6 +18,7 @@ from src.core.providers import (
     LearningGoalsProvider,
     QueryProvider,
     RepoSyncsProvider,
+    ReviewProvider,
     StatsProvider,
     TopicsProvider,
 )
@@ -40,6 +41,7 @@ container = make_async_container(
     KnowledgeGapsProvider(),
     LearningGoalsProvider(),
     RepoSyncsProvider(),
+    ReviewProvider(),
     StatsProvider(),
     TopicsProvider(),
 )

@@ -1,6 +1,6 @@
 {
-  "title": "Cortex Backend",
-  "uid": "cortex-backend",
+  "title": "Conserium Backend",
+  "uid": "conserium-backend",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
@@ -10,7 +10,7 @@
       "title": "Query Latency",
       "targets": [
         {
-          "expr": "rate(cortex_query_latency_seconds_sum[5m]) / clamp_min(rate(cortex_query_latency_seconds_count[5m]), 1e-9)"
+          "expr": "rate(conserium_query_latency_seconds_sum[5m]) / clamp_min(rate(conserium_query_latency_seconds_count[5m]), 1e-9)"
         }
       ],
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}
@@ -20,7 +20,7 @@
       "title": "Ingestion Latency",
       "targets": [
         {
-          "expr": "rate(cortex_ingestion_latency_seconds_sum[5m]) / clamp_min(rate(cortex_ingestion_latency_seconds_count[5m]), 1e-9)"
+          "expr": "rate(conserium_ingestion_latency_seconds_sum[5m]) / clamp_min(rate(conserium_ingestion_latency_seconds_count[5m]), 1e-9)"
         }
       ],
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}
@@ -30,7 +30,7 @@
       "title": "Embedding Cache Events",
       "targets": [
         {
-          "expr": "sum by (status) (cortex_embedding_cache_events_total)"
+          "expr": "sum by (status) (conserium_embedding_cache_events_total)"
         }
       ],
       "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
@@ -40,7 +40,7 @@
       "title": "Reranker Events",
       "targets": [
         {
-          "expr": "sum by (backend, status) (cortex_reranker_events_total)"
+          "expr": "sum by (backend, status) (conserium_reranker_events_total)"
         }
       ],
       "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
@@ -50,7 +50,7 @@
       "title": "Eval Scores",
       "targets": [
         {
-          "expr": "sum by (score) (cortex_query_eval_score_sum) / clamp_min(sum by (score) (cortex_query_eval_score_count), 1)"
+          "expr": "sum by (score) (conserium_query_eval_score_sum) / clamp_min(sum by (score) (conserium_query_eval_score_count), 1)"
         }
       ],
       "gridPos": {"x": 0, "y": 16, "w": 24, "h": 8}
@@ -60,7 +60,7 @@
       "title": "Queue Depth",
       "targets": [
         {
-          "expr": "cortex_queue_depth"
+          "expr": "conserium_queue_depth"
         }
       ],
       "gridPos": {"x": 0, "y": 24, "w": 24, "h": 8}

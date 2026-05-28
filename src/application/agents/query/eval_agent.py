@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from src.core.metrics import metrics_registry
 
 if TYPE_CHECKING:
-    from src.application.agents.query.state import CortexQueryState
+    from src.application.agents.query.state import ConseriumQueryState
     from src.application.ports.evaluation.eval_scorer import IEvalScorer
     from src.application.ports.observability.query_trace import IQueryTracer
 
@@ -18,7 +18,7 @@ class EvalAgent:
         self._eval_scorer = eval_scorer
         self._query_tracer = query_tracer
 
-    async def evaluate(self, state: CortexQueryState) -> CortexQueryState:
+    async def evaluate(self, state: ConseriumQueryState) -> ConseriumQueryState:
         if state.refrag_context is None:
             raise ValueError("refrag_context is required before evaluation")
 
@@ -30,7 +30,7 @@ class EvalAgent:
             )
             for score_name, score_value in state.eval_scores.items():
                 metrics_registry.observe_histogram(
-                    "cortex_query_eval_score",
+                    "conserium_query_eval_score",
                     "Query evaluation score values.",
                     labels={"score": score_name, "query_type": state.query_type.value},
                     value=score_value,

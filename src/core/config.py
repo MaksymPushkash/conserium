@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     NOTION_CLIENT_SECRET: str = ""
     TOKEN_ENCRYPTION_KEY: str = ""
     TOKEN_ENCRYPTION_KEY_VERSION: str = "v1"
+    TELEGRAM_BOT_SECRET: str = ""
 
     FRONTEND_URL: str
     OAUTH_INCLUDE_REFRESH_TOKEN_IN_FRAGMENT: bool = False
