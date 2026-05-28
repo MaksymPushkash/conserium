@@ -3,7 +3,10 @@ from __future__ import annotations
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
-from src.application.use_cases.documents.document_processing_outbox import DOCUMENT_PROCESSING_TASK_NAME
+from src.application.use_cases.documents.document_processing_outbox import (
+    DOCUMENT_PROCESSING_TASK_NAME,
+    kick_document_processing_outbox_item,
+)
 
 if TYPE_CHECKING:
     from src.application.ports.cache.document_status_cache import IDocumentStatusCache
@@ -23,7 +26,7 @@ async def queue_document_processing(
     document.mark_queued()
     async with uow:
         await uow.document_repo.update(document)
-        await uow.document_processing_outbox_repo.create_outbox(
+        outbox = await uow.document_processing_outbox_repo.create_outbox(
             document_id=document.id,
             task_name=DOCUMENT_PROCESSING_TASK_NAME,
         )
@@ -38,4 +41,9 @@ async def queue_document_processing(
         )
 
     with suppress(Exception):
-        await task_dispatcher.dispatch_document_processing_outbox()
+        await kick_document_processing_outbox_item(
+            outbox_id=outbox.id,
+            document_id=document.id,
+            uow=uow,
+            task_dispatcher=task_dispatcher,
+        )

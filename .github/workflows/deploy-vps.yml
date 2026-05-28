@@ -197,7 +197,6 @@ jobs:
           git fetch origin main
           git reset --hard "$PREVIOUS_DEPLOY_REF"
           docker compose --env-file .env.prod up -d --build --remove-orphans
-          docker compose --env-file .env.prod exec -T app uv run alembic upgrade head
           docker compose --env-file .env.prod ps
           curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
           if [ -n "${PRODUCTION_API_BASE_URL:-}" ]; then
