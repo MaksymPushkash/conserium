@@ -166,8 +166,24 @@ async def kick_document_processing_outbox_item(
     uow: IUnitOfWork,
     task_dispatcher: ITaskDispatcher,
 ) -> None:
-    _ = (outbox_id, document_id, uow)
-    await task_dispatcher.dispatch_document_processing_outbox()
+    async with uow:
+        await uow.document_processing_outbox_repo.mark_dispatched(outbox_id, datetime.now(UTC))
+        await uow.commit()
+
+    try:
+        await task_dispatcher.dispatch_process_document(
+            str(document_id),
+            task_id=document_processing_outbox_task_id(outbox_id),
+        )
+    except Exception as exc:
+        async with uow:
+            await uow.document_processing_outbox_repo.mark_failed(
+                outbox_id,
+                last_error=_sanitize_outbox_error(exc),
+                retryable=True,
+            )
+            await uow.commit()
+        raise
 
 
 def _sanitize_outbox_error(exc: Exception) -> str:
