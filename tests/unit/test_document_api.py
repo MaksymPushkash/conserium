@@ -8,7 +8,16 @@ from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
 from src.application.dtos.chat_dtos import ChatDetailDTO, ChatMessageDTO, ChatSessionDTO
-from src.application.dtos.document_dtos import DocumentDTO, DocumentListDTO, DocumentSearchDTO, DocumentSearchResultDTO
+from src.application.dtos.document_dtos import (
+    BulkAddDocumentTagsDTO,
+    BulkMoveDocumentsDTO,
+    DocumentConnectionDTO,
+    DocumentConnectionsDTO,
+    DocumentDTO,
+    DocumentListDTO,
+    DocumentSearchDTO,
+    DocumentSearchResultDTO,
+)
 from src.application.dtos.note_dtos import NoteDTO, NoteListDTO, NoteListItemDTO
 from src.application.dtos.query_dtos import QueryDTO, QueryResultDTO, QuerySourceDTO
 from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStreamEventType
@@ -19,10 +28,15 @@ from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
+from src.application.use_cases.documents.get_document_connections_use_case import GetDocumentConnectionsUseCase
 from src.application.use_cases.documents.get_document_status_use_case import GetDocumentStatusUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
 from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
+from src.application.use_cases.documents.manage_document_use_cases import (
+    BulkAddDocumentTagsUseCase,
+    BulkMoveDocumentsUseCase,
+)
 from src.application.use_cases.documents.note_use_cases import (
     CreateNoteUseCase,
     DeleteNoteUseCase,
@@ -93,9 +107,11 @@ class _ReturningUseCase:
     def __init__(self, result: object) -> None:
         self._result = result
         self.received_dto: object | None = None
+        self.received_kwargs: dict[str, object] = {}
 
-    async def __call__(self, *args: object) -> object:
+    async def __call__(self, *args: object, **kwargs: object) -> object:
         self.received_dto = args[0] if len(args) == 1 else args
+        self.received_kwargs = kwargs
         return self._result
 
 
@@ -433,10 +449,10 @@ def test_metrics_endpoint_returns_prometheus_text() -> None:
 
     body = response.text
     assert response.status_code == 200
-    assert "# HELP cortex_http_requests_total" in body
-    assert "# HELP cortex_ingestion_latency_seconds" in body
-    assert "# HELP cortex_queue_depth" in body
-    assert "cortex_http_requests_total" in body
+    assert "# HELP conserium_http_requests_total" in body
+    assert "# HELP conserium_ingestion_latency_seconds" in body
+    assert "# HELP conserium_queue_depth" in body
+    assert "conserium_http_requests_total" in body
     assert metrics_registry.render_prometheus() == body
 
 
@@ -610,6 +626,41 @@ def test_get_document_route_returns_document() -> None:
     assert response.json()["id"] == str(document.id)
 
 
+def test_get_document_connections_route_returns_related_documents() -> None:
+    user = _make_user()
+    document = _make_document_dto(user_id=user.id)
+    related = _make_document_dto(user_id=user.id)
+    result = DocumentConnectionsDTO(
+        document_id=document.id,
+        total=1,
+        limit=3,
+        items=[
+            DocumentConnectionDTO(
+                document=related,
+                reasons=["Shared tags: python", "Same collection"],
+                relationship_score=5,
+            )
+        ],
+    )
+    use_case = _ReturningUseCase(result)
+    client = _make_client(user, {GetDocumentConnectionsUseCase: use_case})
+
+    try:
+        response = client.get(
+            f"/api/v1/documents/{document.id}/connections?limit=3",
+            headers={"Authorization": "Bearer access-token"},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["document_id"] == str(document.id)
+    assert response.json()["items"][0]["document"]["id"] == str(related.id)
+    assert response.json()["items"][0]["reasons"] == ["Shared tags: python", "Same collection"]
+    assert response.json()["items"][0]["relationship_score"] == 5
+    assert use_case.received_kwargs == {"limit": 3}
+
+
 def test_get_document_status_route_returns_cached_status() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
@@ -664,6 +715,49 @@ def test_delete_document_route_returns_no_content() -> None:
     assert response.status_code == 204
     assert response.content == b""
     assert use_case.received_dto is not None
+
+
+def test_bulk_move_documents_route_passes_collection_scope() -> None:
+    user = _make_user()
+    collection_id = uuid.uuid4()
+    document_ids = [uuid.uuid4(), uuid.uuid4()]
+    use_case = _NoneUseCase()
+    client = _make_client(user, {BulkMoveDocumentsUseCase: use_case})
+
+    try:
+        response = client.post(
+            "/api/v1/documents/bulk/move",
+            headers={"Authorization": "Bearer access-token"},
+            json={"document_ids": [str(document_id) for document_id in document_ids], "collection_id": str(collection_id)},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 204
+    assert isinstance(use_case.received_dto, BulkMoveDocumentsDTO)
+    assert use_case.received_dto.document_ids == document_ids
+    assert use_case.received_dto.collection_id == collection_id
+
+
+def test_bulk_add_document_tags_route_passes_tags() -> None:
+    user = _make_user()
+    document_ids = [uuid.uuid4()]
+    use_case = _NoneUseCase()
+    client = _make_client(user, {BulkAddDocumentTagsUseCase: use_case})
+
+    try:
+        response = client.post(
+            "/api/v1/documents/bulk/tags",
+            headers={"Authorization": "Bearer access-token"},
+            json={"document_ids": [str(document_ids[0])], "tags": ["python", "architecture"]},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 204
+    assert isinstance(use_case.received_dto, BulkAddDocumentTagsDTO)
+    assert use_case.received_dto.document_ids == document_ids
+    assert use_case.received_dto.tags == ["python", "architecture"]
 
 
 def test_create_note_route_returns_note() -> None:

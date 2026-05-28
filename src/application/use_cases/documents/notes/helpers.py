@@ -9,6 +9,7 @@ from src.application.dtos.note_dtos import NoteDTO, NoteListItemDTO
 from src.application.dtos.note_version_dtos import NoteVersionDTO
 from src.application.ports.persistence.note_version_repository import NoteVersionRecord
 from src.application.use_cases.documents.base import ensure_document_owner
+from src.application.use_cases.documents.document_processing_outbox import DOCUMENT_PROCESSING_TASK_NAME
 from src.domain.exceptions import DocumentNotFoundException
 from src.domain.value_objects.document_type import DocumentType
 
@@ -90,29 +91,24 @@ async def queue_note_processing(
     task_dispatcher: ITaskDispatcher,
     uow: IUnitOfWork,
 ) -> None:
-    await status_cache.set_status(
-        document.id,
-        status="QUEUED",
-        progress=0,
-        message="Queued note for memory indexing.",
-    )
-    try:
-        await task_dispatcher.dispatch_process_document(str(document.id))
-    except Exception:
-        document.mark_failed()
-        try:
-            async with uow:
-                await uow.document_repo.update(document)
-                await uow.commit()
-        finally:
-            with suppress(Exception):
-                await status_cache.set_status(
-                    document.id,
-                    status="FAILED",
-                    progress=0,
-                    message="Failed to queue note for memory indexing.",
-                )
-        raise
+    document.mark_queued()
+    async with uow:
+        await uow.document_repo.update(document)
+        await uow.document_processing_outbox_repo.create_outbox(
+            document_id=document.id,
+            task_name=DOCUMENT_PROCESSING_TASK_NAME,
+        )
+        await uow.commit()
+
+    with suppress(Exception):
+        await status_cache.set_status(
+            document.id,
+            status="QUEUED",
+            progress=0,
+            message="Queued note for memory indexing.",
+        )
+    with suppress(Exception):
+        await task_dispatcher.dispatch_document_processing_outbox()
 
 
 def note_to_dto(document: DocumentEntity) -> NoteDTO:

@@ -8,7 +8,7 @@ from src.application.services.query_persistence import QueryPersistenceService
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from src.application.agents.query.state import CortexQueryState
+    from src.application.agents.query.state import ConseriumQueryState
     from src.application.dtos.conversation_dtos import ConversationTurnDTO
     from src.application.dtos.query_dtos import QueryDTO, QuerySourceDTO
     from src.application.ports.conversations.conversation_store import IConversationStore
@@ -40,7 +40,7 @@ class QueryOrchestrationService:
             sources=sources,
         )
 
-    async def record_query(self, dto: QueryDTO, query: str, state: CortexQueryState, latency_ms: int) -> None:
+    async def record_query(self, dto: QueryDTO, query: str, state: ConseriumQueryState, latency_ms: int) -> None:
         await self._persistence.record_query(dto, query, state, latency_ms)
 
     async def record_interaction(
@@ -48,7 +48,7 @@ class QueryOrchestrationService:
         dto: QueryDTO,
         *,
         query: str,
-        state: CortexQueryState,
+        state: ConseriumQueryState,
         latency_ms: int,
         refrag_context: dict[str, object],
         conversation_id: UUID,

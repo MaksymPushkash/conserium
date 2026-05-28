@@ -7,6 +7,7 @@ from uuid import UUID
 
 from src.application.dtos.repo_sync_dtos import RepoSyncDTO, RunRepoSyncDTO
 from src.application.services.enrichment.enrichment_service import EnrichmentService
+from src.application.use_cases.documents.document_processing_outbox import DrainDocumentProcessingOutboxUseCase
 from src.application.use_cases.documents.enrich_document_use_case import EnrichDocumentUseCase
 from src.application.use_cases.documents.process_document_embeddings_use_case import (
     ProcessDocumentEmbeddingsUseCase,
@@ -185,6 +186,27 @@ async def drain_repo_sync_outbox(*, limit: int = 100) -> dict[str, int]:
     try:
         async with factory() as session:
             use_case = DrainRepoSyncOutboxUseCase(
+                uow=SQLAlchemyUnitOfWork(session),
+                status_cache=RedisDocumentStatusCache(redis),
+                task_dispatcher=CeleryTaskDispatcher(),
+            )
+            result = await use_case(limit=limit)
+            return {
+                "claimed": result.claimed,
+                "dispatched": result.dispatched,
+                "failed": result.failed,
+                "permanently_failed": result.permanently_failed,
+            }
+    finally:
+        await redis.aclose()
+
+
+async def drain_document_processing_outbox(*, limit: int = 100) -> dict[str, int]:
+    factory = get_worker_session_factory()
+    redis = get_worker_redis(decode_responses=True)
+    try:
+        async with factory() as session:
+            use_case = DrainDocumentProcessingOutboxUseCase(
                 uow=SQLAlchemyUnitOfWork(session),
                 status_cache=RedisDocumentStatusCache(redis),
                 task_dispatcher=CeleryTaskDispatcher(),

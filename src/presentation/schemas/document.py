@@ -120,6 +120,14 @@ class BulkDocumentOperationRequest(BaseModel):
     document_ids: list[UUID] = Field(min_length=1, max_length=100)
 
 
+class BulkMoveDocumentsRequest(BulkDocumentOperationRequest):
+    collection_id: UUID | None = None
+
+
+class BulkAddDocumentTagsRequest(BulkDocumentOperationRequest):
+    tags: list[str] = Field(min_length=1, max_length=20)
+
+
 class DocumentListItemResponse(BaseModel):
     id: UUID
     user_id: UUID
@@ -177,6 +185,19 @@ class DocumentQuestionHistoryItemResponse(BaseModel):
 class DocumentQuestionHistoryResponse(BaseModel):
     items: list[DocumentQuestionHistoryItemResponse]
     document_id: UUID
+    limit: int
+
+
+class DocumentConnectionResponse(BaseModel):
+    document: DocumentListItemResponse
+    reasons: list[str]
+    relationship_score: int
+
+
+class DocumentConnectionsResponse(BaseModel):
+    items: list[DocumentConnectionResponse]
+    document_id: UUID
+    total: int
     limit: int
 
 

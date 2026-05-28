@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from src.application.agents.query.state import CortexQueryState
+from src.application.agents.query.state import ConseriumQueryState
 from src.application.dtos.conversation_dtos import ConversationTurnDTO
 
 _FOLLOW_UP_EXACT_MARKERS = frozenset(
@@ -60,7 +60,7 @@ _FOLLOW_UP_PREFIX_MARKERS = frozenset(
 class ConversationContextAgent:
     RECENT_CONTEXT_LIMIT = 3
 
-    def apply(self, state: CortexQueryState) -> CortexQueryState:
+    def apply(self, state: ConseriumQueryState) -> ConseriumQueryState:
         state.promoted_document_ids = []
         if state.retrieval_query:
             return state

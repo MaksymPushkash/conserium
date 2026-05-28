@@ -34,7 +34,7 @@ async def test_create_empty_note_stays_ready_without_queueing() -> None:
 
     assert result.title == "Untitled"
     assert result.status == DocumentStatus.READY
-    assert dispatcher.document_ids == []
+    assert dispatcher.document_processing_outbox_dispatches == 0
     assert uow.document_repo.created[0].raw_content is None
 
 
@@ -65,7 +65,8 @@ async def test_update_note_versions_previous_content_and_requeues_processing() -
     assert result.status == DocumentStatus.QUEUED
     assert uow.note_version_repo.records[0].title == "Old title"
     assert uow.note_version_repo.records[0].content == "Old content"
-    assert dispatcher.document_ids == [str(note.id)]
+    assert uow.document_processing_outbox_repo.created == [(note.id, "process_document")]
+    assert dispatcher.document_processing_outbox_dispatches == 1
     assert status_cache.calls[-1] == ("QUEUED", 0, "Queued note for memory indexing.")
 
 
@@ -99,7 +100,7 @@ async def test_restore_empty_note_version_clears_chunks_without_queueing() -> No
     assert result.content == ""
     assert result.status == DocumentStatus.READY
     assert uow.chunk_repo.deleted_document_ids == [note.id]
-    assert dispatcher.document_ids == []
+    assert dispatcher.document_processing_outbox_dispatches == 0
 
 
 def _note(*, user_id: uuid.UUID, title: str, content: str) -> DocumentEntity:
@@ -121,6 +122,7 @@ class _NoteUow:
     def __init__(self, documents: list[DocumentEntity] | None = None) -> None:
         self.document_repo = _NoteDocumentRepo(documents or [])
         self.collection_repo = _CollectionRepo()
+        self.document_processing_outbox_repo = _DocumentProcessingOutboxRepo()
         self.note_version_repo = _NoteVersionRepo()
         self.chunk_repo = _ChunkRepo()
         self.commits = 0
@@ -154,6 +156,15 @@ class _NoteDocumentRepo:
 class _CollectionRepo:
     async def get_by_id(self, collection_id: uuid.UUID) -> None:
         return None
+
+
+class _DocumentProcessingOutboxRepo:
+    def __init__(self) -> None:
+        self.created: list[tuple[uuid.UUID, str]] = []
+
+    async def create_outbox(self, *, document_id: uuid.UUID, task_name: str) -> object:
+        self.created.append((document_id, task_name))
+        return object()
 
 
 class _NoteVersionRepo:
@@ -205,6 +216,10 @@ class _RecordingStatusCache:
 class _RecordingDispatcher:
     def __init__(self) -> None:
         self.document_ids: list[str] = []
+        self.document_processing_outbox_dispatches = 0
 
-    async def dispatch_process_document(self, document_id: str) -> None:
+    async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None:
         self.document_ids.append(document_id)
+
+    async def dispatch_document_processing_outbox(self) -> None:
+        self.document_processing_outbox_dispatches += 1

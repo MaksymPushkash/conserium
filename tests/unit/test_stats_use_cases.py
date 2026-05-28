@@ -1,8 +1,14 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
-from src.application.ports.persistence.stats_repository import StatsOverviewRecord, StatsTimelineBucket
-from src.application.use_cases.stats import GetStatsOverviewUseCase
+from src.application.ports.persistence.stats_repository import (
+    DailyDigestItemRecord,
+    StatsOverviewRecord,
+    StatsTimelineBucket,
+    WeeklyReportRecord,
+)
+from src.application.use_cases.stats import GetDailyDigestUseCase, GetStatsOverviewUseCase, GetWeeklyReportUseCase
 from src.application.use_cases.stats.get_stats_timeline_use_case import GetStatsTimelineUseCase
 
 if TYPE_CHECKING:
@@ -70,6 +76,30 @@ class _FakeStatsRepository:
             ),
         ]
 
+    async def get_daily_digest_items(self, *, user_id: uuid.UUID, limit: int = 3) -> list[DailyDigestItemRecord]:
+        return [
+            DailyDigestItemRecord(
+                document_id=uuid.uuid4(),
+                title="Clean Architecture",
+                summary="Architecture notes",
+                question="How do boundaries work?",
+                reason="No activity for 12 days.",
+                last_used_at=datetime.now(UTC) - timedelta(days=12),
+                days_since_activity=12,
+            )
+        ][:limit]
+
+    async def get_weekly_report(self, *, user_id: uuid.UUID) -> WeeklyReportRecord:
+        return WeeklyReportRecord(
+            saved_documents=4,
+            active_documents=3,
+            query_count=2,
+            citation_count=5,
+            ready_documents=9,
+            failed_documents=1,
+            stale_documents=6,
+        )
+
 
 async def test_stats_timeline_returns_monthly_buckets() -> None:
     use_case = GetStatsTimelineUseCase(cast("IUnitOfWork", _FakeUnitOfWork()))
@@ -80,3 +110,23 @@ async def test_stats_timeline_returns_monthly_buckets() -> None:
     assert [item.month for item in result.items] == ["2026-04", "2026-05"]
     assert result.items[0].saved_documents == 2
     assert result.items[1].query_count == 5
+
+
+async def test_daily_digest_returns_stale_document_questions() -> None:
+    use_case = GetDailyDigestUseCase(cast("IUnitOfWork", _FakeUnitOfWork()))
+
+    result = await use_case(uuid.uuid4(), limit=3)
+
+    assert result.items[0].title == "Clean Architecture"
+    assert result.items[0].question == "How do boundaries work?"
+    assert result.items[0].days_since_activity == 12
+
+
+async def test_weekly_report_adds_recommended_actions() -> None:
+    use_case = GetWeeklyReportUseCase(cast("IUnitOfWork", _FakeUnitOfWork()))
+
+    result = await use_case(uuid.uuid4())
+
+    assert result.saved_documents == 4
+    assert result.summary == "4 sources saved, 3 sources revisited, 2 queries asked in the last 7 days."
+    assert "Retry failed processing jobs." in result.recommended_actions

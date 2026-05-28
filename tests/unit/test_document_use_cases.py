@@ -20,10 +20,12 @@ from src.application.ports.persistence.document_activity_repository import (
     DocumentActivityEventType,
     DocumentActivitySummary,
 )
+from src.application.ports.persistence.document_repository import RelatedDocumentRecord
 from src.application.ports.persistence.note_version_repository import NoteVersionRecord
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.create_document_use_case import CreateDocumentUseCase
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
+from src.application.use_cases.documents.get_document_connections_use_case import GetDocumentConnectionsUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
 from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
@@ -108,11 +110,39 @@ class _FakeDocumentRepository:
             documents = [document for document in documents if document.status == status]
         return len(documents)
 
+    async def get_related_documents(
+        self,
+        *,
+        user_id: uuid.UUID,
+        document_id: uuid.UUID,
+        limit: int = 5,
+    ) -> list[RelatedDocumentRecord]:
+        target = self.documents.get(document_id)
+        if target is None or target.user_id != user_id:
+            return []
+        records: list[RelatedDocumentRecord] = []
+        target_tags = set(target.tags)
+        for document in self.documents.values():
+            if document.id == document_id or document.user_id != user_id:
+                continue
+            shared_tags = sorted(target_tags.intersection(document.tags))
+            if not shared_tags:
+                continue
+            records.append(
+                RelatedDocumentRecord(
+                    document=document,
+                    reasons=[f"Shared tags: {', '.join(shared_tags)}"],
+                    relationship_score=len(shared_tags) * 3,
+                )
+            )
+        return records[:limit]
+
 
 class _FakeUnitOfWork:
     def __init__(self, document_repo: _FakeDocumentRepository) -> None:
         self.document_repo = document_repo
         self.document_activity_repo = _FakeDocumentActivityRepository()
+        self.document_processing_outbox_repo = _FakeDocumentProcessingOutboxRepository()
         self.chunk_repo = _FakeChunkRepository()
         self.note_version_repo = _FakeNoteVersionRepository()
         self.committed = False
@@ -153,6 +183,15 @@ class _FakeDocumentActivityRepository:
         document_ids: list[uuid.UUID],
     ) -> dict[uuid.UUID, DocumentActivitySummary]:
         return {document_id: self.summaries[document_id] for document_id in document_ids if document_id in self.summaries}
+
+
+class _FakeDocumentProcessingOutboxRepository:
+    def __init__(self) -> None:
+        self.created: list[tuple[uuid.UUID, str]] = []
+
+    async def create_outbox(self, *, document_id: uuid.UUID, task_name: str) -> object:
+        self.created.append((document_id, task_name))
+        return object()
 
 
 class _FakeChunkRepository:
@@ -263,7 +302,7 @@ class _FailingStatusCache(_FakeStatusCache):
 
 
 class _FailingTaskDispatcher:
-    async def dispatch_process_document(self, document_id: str) -> None:
+    async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None:
         raise RuntimeError("broker unavailable")
 
     async def dispatch_process_image_document(self, document_id: str) -> None:
@@ -271,6 +310,9 @@ class _FailingTaskDispatcher:
 
     async def dispatch_repo_sync_outbox(self) -> None:
         raise NotImplementedError
+
+    async def dispatch_document_processing_outbox(self) -> None:
+        raise RuntimeError("broker unavailable")
 
     async def dispatch_embed_and_finalize_document(
         self,
@@ -286,8 +328,9 @@ class _FailingTaskDispatcher:
 class _SuccessfulTaskDispatcher:
     def __init__(self) -> None:
         self.processed_document_ids: list[str] = []
+        self.document_processing_outbox_dispatches = 0
 
-    async def dispatch_process_document(self, document_id: str) -> None:
+    async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None:
         self.processed_document_ids.append(document_id)
 
     async def dispatch_process_image_document(self, document_id: str) -> None:
@@ -295,6 +338,9 @@ class _SuccessfulTaskDispatcher:
 
     async def dispatch_repo_sync_outbox(self) -> None:
         raise NotImplementedError
+
+    async def dispatch_document_processing_outbox(self) -> None:
+        self.document_processing_outbox_dispatches += 1
 
     async def dispatch_embed_and_finalize_document(
         self,
@@ -316,6 +362,7 @@ def _make_document(
     user_id: uuid.UUID | None = None,
     title: str = "Saved note",
     status: DocumentStatus = DocumentStatus.PENDING,
+    tags: list[str] | None = None,
 ) -> DocumentEntity:
     return DocumentEntity(
         id=uuid.uuid4(),
@@ -336,6 +383,7 @@ def _make_document(
         duplicate_of_id=None,
         created_at=datetime.now(UTC),
         updated_at=None,
+        tags=tags,
     )
 
 
@@ -477,6 +525,28 @@ async def test_get_document_use_case_raises_for_foreign_document() -> None:
         await use_case(GetDocumentDTO(user_id=uuid.uuid4(), document_id=document.id))
 
 
+async def test_get_document_connections_returns_related_documents_with_activity() -> None:
+    user_id = uuid.uuid4()
+    target = _make_document(user_id=user_id, title="Python asyncio", tags=["python", "asyncio"])
+    related = _make_document(user_id=user_id, title="Asyncio gather", status=DocumentStatus.READY, tags=["asyncio"])
+    unrelated = _make_document(user_id=user_id, title="Cooking", status=DocumentStatus.READY, tags=["food"])
+    uow = _FakeUnitOfWork(_FakeDocumentRepository([target, related, unrelated]))
+    uow.document_activity_repo.summaries[related.id] = DocumentActivitySummary(
+        document_id=related.id,
+        last_used_at=datetime.now(UTC),
+        query_count=3,
+        citation_count=1,
+    )
+    use_case = GetDocumentConnectionsUseCase(_as_uow(uow))
+
+    result = await use_case(GetDocumentDTO(user_id=user_id, document_id=target.id), limit=5)
+
+    assert result.total == 1
+    assert result.items[0].document.id == related.id
+    assert result.items[0].reasons == ["Shared tags: asyncio"]
+    assert result.items[0].document.query_count == 3
+
+
 async def test_delete_document_use_case_deletes_owned_document() -> None:
     user_id = uuid.uuid4()
     document = _make_document(user_id=user_id)
@@ -527,7 +597,7 @@ async def test_delete_document_use_case_raises_for_foreign_document() -> None:
     assert uow.committed is False
 
 
-async def test_ingest_document_use_case_marks_failed_when_dispatch_fails() -> None:
+async def test_ingest_document_use_case_persists_outbox_when_drainer_dispatch_fails() -> None:
     user_id = uuid.uuid4()
     document_repo = _FakeDocumentRepository()
     uow = _FakeUnitOfWork(document_repo)
@@ -538,23 +608,24 @@ async def test_ingest_document_use_case_marks_failed_when_dispatch_fails() -> No
         cast("ITaskDispatcher", _FailingTaskDispatcher()),
     )
 
-    with pytest.raises(RuntimeError, match="broker unavailable"):
-        await use_case(
-            IngestDocumentDTO(
-                user_id=user_id,
-                title="Queued note",
-                type=DocumentType.TEXT,
-                raw_content="Hello world",
-            )
+    result = await use_case(
+        IngestDocumentDTO(
+            user_id=user_id,
+            title="Queued note",
+            type=DocumentType.TEXT,
+            raw_content="Hello world",
         )
+    )
 
     assert document_repo.created
     created_document = document_repo.created[0]
-    assert created_document.status == DocumentStatus.FAILED
-    assert status_cache.calls[-1] == ("FAILED", 0, "Failed to queue document for processing.")
+    assert result.status == DocumentStatus.QUEUED
+    assert created_document.status == DocumentStatus.QUEUED
+    assert uow.document_processing_outbox_repo.created == [(created_document.id, "process_document")]
+    assert status_cache.calls[-1] == ("QUEUED", 0, "Queued for processing.")
 
 
-async def test_ingest_document_use_case_marks_failed_when_status_cache_fails_before_dispatch() -> None:
+async def test_ingest_document_use_case_persists_outbox_when_status_cache_fails() -> None:
     user_id = uuid.uuid4()
     document_repo = _FakeDocumentRepository()
     uow = _FakeUnitOfWork(document_repo)
@@ -565,19 +636,21 @@ async def test_ingest_document_use_case_marks_failed_when_status_cache_fails_bef
         cast("ITaskDispatcher", dispatcher),
     )
 
-    with pytest.raises(RuntimeError, match="cache unavailable"):
-        await use_case(
-            IngestDocumentDTO(
-                user_id=user_id,
-                title="Queued note",
-                type=DocumentType.TEXT,
-                raw_content="Hello world",
-            )
+    result = await use_case(
+        IngestDocumentDTO(
+            user_id=user_id,
+            title="Queued note",
+            type=DocumentType.TEXT,
+            raw_content="Hello world",
         )
+    )
 
     assert document_repo.created
-    assert document_repo.created[0].status == DocumentStatus.FAILED
+    assert result.status == DocumentStatus.QUEUED
+    assert document_repo.created[0].status == DocumentStatus.QUEUED
+    assert uow.document_processing_outbox_repo.created == [(document_repo.created[0].id, "process_document")]
     assert dispatcher.processed_document_ids == []
+    assert dispatcher.document_processing_outbox_dispatches == 1
 
 
 async def test_create_note_use_case_creates_markdown_document_and_queues_indexing() -> None:
@@ -605,7 +678,8 @@ async def test_create_note_use_case_creates_markdown_document_and_queues_indexin
     assert result.status == DocumentStatus.QUEUED
     assert document_repo.created[0].type == DocumentType.MARKDOWN
     assert status_cache.calls[-1] == ("QUEUED", 0, "Queued note for memory indexing.")
-    assert dispatcher.processed_document_ids == [str(result.id)]
+    assert uow.document_processing_outbox_repo.created == [(result.id, "process_document")]
+    assert dispatcher.document_processing_outbox_dispatches == 1
 
 
 async def test_list_notes_use_case_filters_and_counts_notes_in_repository() -> None:
@@ -702,7 +776,7 @@ async def test_update_note_use_case_clears_chunks_for_empty_note() -> None:
 
     assert result.status == DocumentStatus.READY
     assert uow.chunk_repo.deleted_document_ids == [note.id]
-    assert dispatcher.processed_document_ids == []
+    assert dispatcher.document_processing_outbox_dispatches == 0
 
 
 async def test_update_note_use_case_does_not_version_noop_update() -> None:
@@ -830,4 +904,5 @@ async def test_restore_note_version_use_case_restores_content_and_queues_process
     assert result.content == "Restored content"
     assert result.status == DocumentStatus.QUEUED
     assert len(uow.note_version_repo.records) == 2
-    assert dispatcher.processed_document_ids == [str(note.id)]
+    assert uow.document_processing_outbox_repo.created == [(note.id, "process_document")]
+    assert dispatcher.document_processing_outbox_dispatches == 1

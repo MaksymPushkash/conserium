@@ -7,7 +7,7 @@ import pytest
 from src.application.ports.ai.embedding_provider import IEmbeddingProvider
 from src.application.ports.cache.document_status_cache import IDocumentStatusCache
 from src.application.ports.persistence.chunk_repository import ChunkSearchResult, IChunkRepository
-from src.application.ports.persistence.document_repository import IDocumentRepository
+from src.application.ports.persistence.document_repository import IDocumentRepository, RelatedDocumentRecord
 from src.application.ports.persistence.unit_of_work import IUnitOfWork
 from src.application.use_cases.documents.process_document_embeddings_use_case import (
     ProcessDocumentEmbeddingsUseCase,
@@ -47,6 +47,9 @@ class _FakeDocumentRepository(IDocumentRepository):
     async def delete(self, document_id: uuid.UUID) -> None:
         raise NotImplementedError
 
+    async def add_manual_tags(self, *, document_id: uuid.UUID, user_id: uuid.UUID, tag_names: list[str]) -> None:
+        raise NotImplementedError
+
     async def exists(self, document_id: uuid.UUID) -> bool:
         raise NotImplementedError
 
@@ -75,6 +78,15 @@ class _FakeDocumentRepository(IDocumentRepository):
         collection_id: uuid.UUID,
         limit: int = 200,
     ) -> tuple[list[DocumentEntity], dict[DocumentStatus, int]]:
+        raise NotImplementedError
+
+    async def get_related_documents(
+        self,
+        *,
+        user_id: uuid.UUID,
+        document_id: uuid.UUID,
+        limit: int = 5,
+    ) -> list[RelatedDocumentRecord]:
         raise NotImplementedError
 
 

@@ -6,9 +6,11 @@ from sqlalchemy import case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.ports.persistence.stats_repository import (
+    DailyDigestItemRecord,
     IStatsRepository,
     StatsOverviewRecord,
     StatsTimelineBucket,
+    WeeklyReportRecord,
 )
 from src.domain.value_objects.document_status import DocumentStatus
 from src.infrastructure.database.models.document import DocumentModel
@@ -121,6 +123,117 @@ class SQLAlchemyStatsRepository(IStatsRepository):
             for month, values in buckets.items()
         ]
 
+    async def get_daily_digest_items(self, *, user_id: UUID, limit: int = 3) -> list[DailyDigestItemRecord]:
+        item_limit = max(1, min(limit, 10))
+        now = datetime.now(UTC)
+        last_used = (
+            select(
+                DocumentModel.id.label("document_id"),
+                func.coalesce(func.max(DocumentActivityModel.created_at), DocumentModel.created_at).label("last_used_at"),
+            )
+            .select_from(DocumentModel)
+            .outerjoin(
+                DocumentActivityModel,
+                (DocumentActivityModel.document_id == DocumentModel.id)
+                & (DocumentActivityModel.user_id == user_id),
+            )
+            .where(DocumentModel.user_id == user_id)
+            .where(DocumentModel.status == DocumentStatus.READY)
+            .group_by(DocumentModel.id, DocumentModel.created_at)
+            .subquery()
+        )
+        statement = (
+            select(
+                DocumentModel.id,
+                DocumentModel.title,
+                DocumentModel.summary,
+                DocumentModel.suggested_questions,
+                last_used.c.last_used_at,
+            )
+            .join(last_used, last_used.c.document_id == DocumentModel.id)
+            .where(DocumentModel.user_id == user_id)
+            .order_by(last_used.c.last_used_at.asc())
+            .limit(item_limit)
+        )
+        rows = (await self._session.execute(statement)).all()
+        items: list[DailyDigestItemRecord] = []
+        for row in rows:
+            last_used_at = row.last_used_at
+            days_since_activity = max(0, (now - last_used_at).days)
+            items.append(
+                DailyDigestItemRecord(
+                    document_id=row.id,
+                    title=row.title,
+                    summary=row.summary,
+                    question=_digest_question(row.title, row.suggested_questions),
+                    reason=f"No activity for {days_since_activity} days.",
+                    last_used_at=last_used_at,
+                    days_since_activity=days_since_activity,
+                )
+            )
+        return items
+
+    async def get_weekly_report(self, *, user_id: UUID) -> WeeklyReportRecord:
+        now = datetime.now(UTC)
+        week_cutoff = now - timedelta(days=7)
+        stale_cutoff = now - timedelta(days=30)
+        last_used = (
+            select(
+                DocumentModel.id.label("document_id"),
+                func.coalesce(func.max(DocumentActivityModel.created_at), DocumentModel.created_at).label("last_used_at"),
+            )
+            .select_from(DocumentModel)
+            .outerjoin(
+                DocumentActivityModel,
+                (DocumentActivityModel.document_id == DocumentModel.id)
+                & (DocumentActivityModel.user_id == user_id),
+            )
+            .where(DocumentModel.user_id == user_id)
+            .group_by(DocumentModel.id, DocumentModel.created_at)
+            .subquery()
+        )
+        statement = select(
+            select(func.count(DocumentModel.id))
+            .where(DocumentModel.user_id == user_id)
+            .where(DocumentModel.created_at >= week_cutoff)
+            .scalar_subquery()
+            .label("saved_documents"),
+            select(func.count(distinct(DocumentActivityModel.document_id)))
+            .where(DocumentActivityModel.user_id == user_id)
+            .where(DocumentActivityModel.created_at >= week_cutoff)
+            .scalar_subquery()
+            .label("active_documents"),
+            select(func.count(DocumentActivityModel.id))
+            .where(DocumentActivityModel.user_id == user_id)
+            .where(DocumentActivityModel.created_at >= week_cutoff)
+            .where(DocumentActivityModel.event_type == "queried")
+            .scalar_subquery()
+            .label("query_count"),
+            select(func.count(DocumentActivityModel.id))
+            .where(DocumentActivityModel.user_id == user_id)
+            .where(DocumentActivityModel.created_at >= week_cutoff)
+            .where(DocumentActivityModel.event_type == "cited_in_answer")
+            .scalar_subquery()
+            .label("citation_count"),
+            _document_count(user_id=user_id, status=DocumentStatus.READY).label("ready_documents"),
+            _document_count(user_id=user_id, status=DocumentStatus.FAILED).label("failed_documents"),
+            select(func.count())
+            .select_from(last_used)
+            .where(last_used.c.last_used_at < stale_cutoff)
+            .scalar_subquery()
+            .label("stale_documents"),
+        )
+        row = (await self._session.execute(statement)).one()
+        return WeeklyReportRecord(
+            saved_documents=int(row.saved_documents or 0),
+            active_documents=int(row.active_documents or 0),
+            query_count=int(row.query_count or 0),
+            citation_count=int(row.citation_count or 0),
+            ready_documents=int(row.ready_documents or 0),
+            failed_documents=int(row.failed_documents or 0),
+            stale_documents=int(row.stale_documents or 0),
+        )
+
     async def _document_rows(self, *, user_id: UUID, start_month: datetime) -> list[Any]:
         month = func.date_trunc("month", DocumentModel.created_at).label("month")
         statement = (
@@ -182,3 +295,11 @@ def _activity_count(*, user_id: UUID, event_type: str) -> Any:
         .where(DocumentActivityModel.event_type == event_type)
         .scalar_subquery()
     )
+
+
+def _digest_question(title: str, suggested_questions: list[str] | None) -> str:
+    if suggested_questions:
+        for question in suggested_questions:
+            if question.strip():
+                return question
+    return f"What should I remember from {title}?"

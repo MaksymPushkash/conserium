@@ -5,25 +5,26 @@ from kombu import Exchange, Queue
 from src.core.config import settings
 from src.core.startup_checks import validate_startup_settings
 
-_cortex_exchange = Exchange("cortex", type="direct", durable=True)
+_conserium_exchange = Exchange("conserium", type="direct", durable=True)
 
 
 _QUEUES = (
-    Queue("document_processing", _cortex_exchange, routing_key="document_processing", durable=True),
-    Queue("embeddings", _cortex_exchange, routing_key="embeddings", durable=True),
-    Queue("notifications", _cortex_exchange, routing_key="notifications", durable=True),
-    Queue("cleanup", _cortex_exchange, routing_key="cleanup", durable=True),
-    Queue("media_processing", _cortex_exchange, routing_key="media_processing", durable=True),
-    Queue("hf_processing", _cortex_exchange, routing_key="hf_processing", durable=True),
+    Queue("document_processing", _conserium_exchange, routing_key="document_processing", durable=True),
+    Queue("embeddings", _conserium_exchange, routing_key="embeddings", durable=True),
+    Queue("notifications", _conserium_exchange, routing_key="notifications", durable=True),
+    Queue("cleanup", _conserium_exchange, routing_key="cleanup", durable=True),
+    Queue("media_processing", _conserium_exchange, routing_key="media_processing", durable=True),
+    Queue("hf_processing", _conserium_exchange, routing_key="hf_processing", durable=True),
 )
 
 
 celery_app = Celery(
-    "cortex",
+    "conserium",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "src.infrastructure.celery.tasks.document_ingestion_task",
+        "src.infrastructure.celery.tasks.document_processing_outbox_tasks",
         "src.infrastructure.celery.tasks.embedding_tasks",
         "src.infrastructure.celery.tasks.enrichment_tasks",
         "src.infrastructure.celery.tasks.media_processing_tasks",
@@ -34,7 +35,7 @@ celery_app = Celery(
 celery_app.conf.update(
     task_queues=_QUEUES,
     task_default_queue="document_processing",
-    task_default_exchange="cortex",
+    task_default_exchange="conserium",
     task_default_routing_key="document_processing",
     task_routes={
         "src.infrastructure.celery.tasks.document_ingestion_task.*": {
@@ -52,6 +53,9 @@ celery_app.conf.update(
         "src.infrastructure.celery.tasks.repo_sync_tasks.*": {
             "queue": "cleanup",
         },
+        "src.infrastructure.celery.tasks.document_processing_outbox_tasks.*": {
+            "queue": "cleanup",
+        },
     },
     beat_schedule={
         "run-due-repo-syncs": {
@@ -60,6 +64,13 @@ celery_app.conf.update(
         },
         "drain-repo-sync-outbox": {
             "task": "src.infrastructure.celery.tasks.repo_sync_tasks.drain_repo_sync_outbox_task",
+            "schedule": 60.0,
+        },
+        "drain-document-processing-outbox": {
+            "task": (
+                "src.infrastructure.celery.tasks.document_processing_outbox_tasks."
+                "drain_document_processing_outbox_task"
+            ),
             "schedule": 60.0,
         },
     },

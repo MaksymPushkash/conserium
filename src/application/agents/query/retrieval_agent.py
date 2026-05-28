@@ -1,6 +1,6 @@
 import re
 
-from src.application.agents.query.state import CortexQueryState
+from src.application.agents.query.state import ConseriumQueryState
 from src.application.dtos.query_dtos import QuerySourceDTO
 from src.application.ports.ai.reranker import IReranker
 from src.application.services.retrieval.chunk_quality_filter import ChunkQualityFilter, ChunkRelevanceFilter
@@ -23,7 +23,7 @@ class RetrievalAgent:
         self._chunk_quality_filter = chunk_quality_filter or ChunkQualityFilter()
         self._chunk_relevance_filter = chunk_relevance_filter or ChunkRelevanceFilter()
 
-    async def retrieve(self, state: CortexQueryState) -> CortexQueryState:
+    async def retrieve(self, state: ConseriumQueryState) -> ConseriumQueryState:
         retrieval_query = state.retrieval_query or state.query
         document_types = state.document_types or _document_type_filter_for_query(state.query)
         if document_types == (DocumentType.MARKDOWN,):
@@ -61,13 +61,13 @@ class RetrievalAgent:
                 key=lambda source: source.document_id not in promoted_ids,
             )
         metrics_registry.inc_counter(
-            "cortex_retrieval_requests_total",
+            "conserium_retrieval_requests_total",
             "Retrieval requests grouped by outcome.",
             labels={"scoped": str(state.collection_id is not None).lower()},
         )
         if state.sources:
             metrics_registry.inc_counter(
-                "cortex_retrieval_hits_total",
+                "conserium_retrieval_hits_total",
                 "Retrieval requests with at least one usable source.",
                 labels={"scoped": str(state.collection_id is not None).lower()},
             )

@@ -34,6 +34,18 @@ class IExternalIntakeRepository(ABC):
     async def create(self, record: ExternalIntakeItemRecord) -> ExternalIntakeItemRecord: ...
 
     @abstractmethod
+    async def get_by_id(self, *, user_id: UUID, intake_item_id: UUID) -> ExternalIntakeItemRecord | None: ...
+
+    @abstractmethod
+    async def list_by_user_id(
+        self,
+        *,
+        user_id: UUID,
+        limit: int,
+        offset: int,
+    ) -> list[ExternalIntakeItemRecord]: ...
+
+    @abstractmethod
     async def get_by_idempotency_key(
         self,
         *,

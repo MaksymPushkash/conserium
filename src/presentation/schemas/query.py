@@ -70,3 +70,4 @@ class QueryResponse(BaseModel):
     sources: list[QuerySourceResponse]
     refrag_context: RefragContextResponse
     debug: QueryDebugResponse | None = None
+    suggested_follow_up_questions: list[str] = Field(default_factory=list)

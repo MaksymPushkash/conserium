@@ -28,18 +28,18 @@ class OpenAILLMService(ILLMService, IStreamingLLMService):
             )
         except Exception:
             metrics_registry.inc_counter(
-                "cortex_openai_requests_total",
+                "conserium_openai_requests_total",
                 "OpenAI API requests grouped by operation and outcome.",
                 labels={"operation": "chat", "status": "error"},
             )
             raise
         metrics_registry.inc_counter(
-            "cortex_openai_requests_total",
+            "conserium_openai_requests_total",
             "OpenAI API requests grouped by operation and outcome.",
             labels={"operation": "chat", "status": "success"},
         )
         metrics_registry.inc_counter(
-            "cortex_openai_estimated_cost_usd",
+            "conserium_openai_estimated_cost_usd",
             "Approximate OpenAI API cost estimate in USD.",
             value=_estimate_chat_cost(query=query, context=context),
         )
@@ -64,18 +64,18 @@ class OpenAILLMService(ILLMService, IStreamingLLMService):
             )
         except Exception:
             metrics_registry.inc_counter(
-                "cortex_openai_requests_total",
+                "conserium_openai_requests_total",
                 "OpenAI API requests grouped by operation and outcome.",
                 labels={"operation": "chat_stream", "status": "error"},
             )
             raise
         metrics_registry.inc_counter(
-            "cortex_openai_requests_total",
+            "conserium_openai_requests_total",
             "OpenAI API requests grouped by operation and outcome.",
             labels={"operation": "chat_stream", "status": "success"},
         )
         metrics_registry.inc_counter(
-            "cortex_openai_estimated_cost_usd",
+            "conserium_openai_estimated_cost_usd",
             "Approximate OpenAI API cost estimate in USD.",
             value=_estimate_chat_cost(query=query, context=context),
         )

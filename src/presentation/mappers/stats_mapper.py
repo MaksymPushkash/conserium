@@ -1,5 +1,12 @@
-from src.application.dtos.stats_dtos import StatsOverviewDTO, StatsTimelineDTO
-from src.presentation.schemas.stats import StatsOverviewResponse, StatsTimelineBucketResponse, StatsTimelineResponse
+from src.application.dtos.stats_dtos import DailyDigestDTO, StatsOverviewDTO, StatsTimelineDTO, WeeklyReportDTO
+from src.presentation.schemas.stats import (
+    DailyDigestItemResponse,
+    DailyDigestResponse,
+    StatsOverviewResponse,
+    StatsTimelineBucketResponse,
+    StatsTimelineResponse,
+    WeeklyReportResponse,
+)
 
 
 def to_stats_overview_response(dto: StatsOverviewDTO) -> StatsOverviewResponse:
@@ -30,4 +37,35 @@ def to_stats_timeline_response(dto: StatsTimelineDTO) -> StatsTimelineResponse:
             for item in dto.items
         ],
         months=dto.months,
+    )
+
+
+def to_daily_digest_response(dto: DailyDigestDTO) -> DailyDigestResponse:
+    return DailyDigestResponse(
+        items=[
+            DailyDigestItemResponse(
+                document_id=item.document_id,
+                title=item.title,
+                summary=item.summary,
+                question=item.question,
+                reason=item.reason,
+                last_used_at=item.last_used_at,
+                days_since_activity=item.days_since_activity,
+            )
+            for item in dto.items
+        ]
+    )
+
+
+def to_weekly_report_response(dto: WeeklyReportDTO) -> WeeklyReportResponse:
+    return WeeklyReportResponse(
+        saved_documents=dto.saved_documents,
+        active_documents=dto.active_documents,
+        query_count=dto.query_count,
+        citation_count=dto.citation_count,
+        ready_documents=dto.ready_documents,
+        failed_documents=dto.failed_documents,
+        stale_documents=dto.stale_documents,
+        summary=dto.summary,
+        recommended_actions=dto.recommended_actions,
     )

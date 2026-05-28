@@ -8,9 +8,11 @@ from src.infrastructure.database.models.comparison import ComparisonModel
 from src.infrastructure.database.models.conflict import ClaimConflictModel, DocumentClaimModel
 from src.infrastructure.database.models.document import DocumentModel
 from src.infrastructure.database.models.document_activity import DocumentActivityModel
+from src.infrastructure.database.models.document_processing_outbox import DocumentProcessingOutboxModel
 from src.infrastructure.database.models.draft import DraftModel, DraftVersionModel
 from src.infrastructure.database.models.external_connection import ExternalConnectionModel
 from src.infrastructure.database.models.external_intake import ExternalIntakeItemModel
+from src.infrastructure.database.models.flashcard import FlashcardModel, FlashcardReviewModel
 from src.infrastructure.database.models.knowledge_edge import KnowledgeEdgeModel
 from src.infrastructure.database.models.knowledge_graph_concern import KnowledgeGraphConcernModel
 from src.infrastructure.database.models.learning_goal import LearningGoalModel, LearningGoalResourceModel
@@ -18,6 +20,7 @@ from src.infrastructure.database.models.note_version import NoteVersionModel
 from src.infrastructure.database.models.repo_sync import RepoSyncItemModel, RepoSyncModel, RepoSyncOutboxModel
 from src.infrastructure.database.models.search_query import SearchQueryModel
 from src.infrastructure.database.models.tag import TagModel
+from src.infrastructure.database.models.telegram import TelegramChatBindingModel, TelegramPairingCodeModel
 from src.infrastructure.database.models.topic import TopicModel
 from src.infrastructure.database.models.topic_override import TopicOverrideModel
 from src.infrastructure.database.models.topic_override_event import TopicOverrideEventModel
@@ -36,10 +39,13 @@ __all__ = [
     "DocumentActivityModel",
     "DocumentClaimModel",
     "DocumentModel",
+    "DocumentProcessingOutboxModel",
     "DraftModel",
     "DraftVersionModel",
     "ExternalConnectionModel",
     "ExternalIntakeItemModel",
+    "FlashcardModel",
+    "FlashcardReviewModel",
     "KnowledgeEdgeModel",
     "KnowledgeGraphConcernModel",
     "LearningGoalModel",
@@ -50,6 +56,8 @@ __all__ = [
     "RepoSyncOutboxModel",
     "SearchQueryModel",
     "TagModel",
+    "TelegramChatBindingModel",
+    "TelegramPairingCodeModel",
     "TopicModel",
     "TopicOverrideEventModel",
     "TopicOverrideModel",

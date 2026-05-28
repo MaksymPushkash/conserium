@@ -91,21 +91,14 @@ class GetCollectionWorkspaceUseCase:
             total_documents = sum(status_counts.values())
             ready_documents = status_counts.get(DocumentStatus.READY, 0)
             failed_documents = status_counts.get(DocumentStatus.FAILED, 0)
-            recent_questions = await self._uow.search_query_repo.list_recent_by_collection(
+            recent_activity = await self._uow.collection_workspace_repo.get_recent_activity(
                 user_id=user_id,
                 collection_id=collection_id,
                 limit=5,
             )
-            recent_drafts = await self._uow.draft_repo.list_by_user_id(
-                user_id=user_id,
-                collection_id=collection_id,
-                limit=5,
-            )
-            recent_comparisons = await self._uow.compare_repo.list_by_user_id(
-                user_id=user_id,
-                collection_id=collection_id,
-                limit=5,
-            )
+            recent_questions = recent_activity.questions
+            recent_drafts = recent_activity.drafts
+            recent_comparisons = recent_activity.comparisons
 
         topics = workspace_topics(topic_documents)
         ready_topic_documents = [document for document in topic_documents if document.status == DocumentStatus.READY]

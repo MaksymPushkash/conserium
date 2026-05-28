@@ -42,6 +42,8 @@ def to_compare_documents_response(dto: CompareResultDTO) -> CompareDocumentsResp
                 right_source_id=row.right_source_id,
                 left_citation=row.left_citation,
                 right_citation=row.right_citation,
+                confidence=row.confidence,
+                rationale=row.rationale,
             )
             for row in dto.evidence_rows
         ],

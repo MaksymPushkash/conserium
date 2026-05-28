@@ -4,10 +4,10 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.application.agents.query.state import CortexQueryState
+    from src.application.agents.query.state import ConseriumQueryState
 
 
 class IQueryTracer(ABC):
     @abstractmethod
-    async def trace_query(self, state: CortexQueryState) -> str | None:
+    async def trace_query(self, state: ConseriumQueryState) -> str | None:
         """Record query trace data and return an external trace id when available."""

@@ -44,7 +44,7 @@ class _FakeS3Client:
 @pytest.mark.asyncio
 async def test_save_document_file_stores_s3_key_only() -> None:
     client = _FakeS3Client()
-    storage = S3FileStorage(bucket="cortex-documents", prefix="uploads", client=client)
+    storage = S3FileStorage(bucket="conserium-documents", prefix="uploads", client=client)
     user_id = uuid4()
 
     stored_file = await storage.save_document_file(
@@ -59,13 +59,13 @@ async def test_save_document_file_stores_s3_key_only() -> None:
     assert not stored_file.path.startswith("s3://")
     assert client.objects[stored_file.path] == b"%PDF-1.4"
     assert client.last_put is not None
-    assert client.last_put["Bucket"] == "cortex-documents"
+    assert client.last_put["Bucket"] == "conserium-documents"
 
 
 @pytest.mark.asyncio
 async def test_read_document_file_reads_s3_key() -> None:
     client = _FakeS3Client()
-    storage = S3FileStorage(bucket="cortex-documents", prefix="uploads", client=client)
+    storage = S3FileStorage(bucket="conserium-documents", prefix="uploads", client=client)
     client.objects["uploads/user/file.pdf"] = b"pdf"
 
     assert await storage.read_document_file("uploads/user/file.pdf") == b"pdf"
@@ -74,16 +74,16 @@ async def test_read_document_file_reads_s3_key() -> None:
 @pytest.mark.asyncio
 async def test_read_document_file_accepts_s3_uri_for_compatibility() -> None:
     client = _FakeS3Client()
-    storage = S3FileStorage(bucket="cortex-documents", prefix="uploads", client=client)
+    storage = S3FileStorage(bucket="conserium-documents", prefix="uploads", client=client)
     client.objects["uploads/user/file.pdf"] = b"pdf"
 
-    assert await storage.read_document_file("s3://cortex-documents/uploads/user/file.pdf") == b"pdf"
+    assert await storage.read_document_file("s3://conserium-documents/uploads/user/file.pdf") == b"pdf"
 
 
 @pytest.mark.asyncio
 async def test_delete_document_file_deletes_s3_key() -> None:
     client = _FakeS3Client()
-    storage = S3FileStorage(bucket="cortex-documents", prefix="uploads", client=client)
+    storage = S3FileStorage(bucket="conserium-documents", prefix="uploads", client=client)
 
     await storage.delete_document_file("uploads/user/file.pdf")
 

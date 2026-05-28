@@ -383,7 +383,7 @@ def suggested_actions(*, area: RubricArea, topic: str, covered: bool) -> list[st
         return [f"Review the matched sources for {topic} {area.name}.", "Add a synthesis note if the evidence is fragmented."]
     return [
         f"Add a reference source about {topic} {area.name}.",
-        f"Create a note summarizing what Cortex should know about {area.name}.",
+        f"Create a note summarizing what Conserium should know about {area.name}.",
         "Ask within this topic before drafting to confirm the gap.",
     ]
 

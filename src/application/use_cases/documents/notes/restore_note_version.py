@@ -61,9 +61,7 @@ class RestoreNoteVersionUseCase:
             word_count=len(content.split()),
             language=document.language,
         )
-        if has_content:
-            document.mark_queued()
-        else:
+        if not has_content:
             document.mark_ready()
 
         async with self._uow:

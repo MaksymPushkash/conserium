@@ -98,7 +98,7 @@ class ApiClient:
                     f"{method} {path} failed with HTTP {exc.code} from {self._base_url}: "
                     "received HTML instead of JSON. "
                     "PRODUCTION_API_BASE_URL must point to the backend API origin, "
-                    "for example https://api.cortexx.me, not the frontend app URL. "
+                    "for example https://api.conserium.app, not the frontend app URL. "
                     "If it already points to the API origin, the public nginx/backend route is unhealthy."
                 ) from exc
             raise RuntimeError(f"{method} {path} failed with HTTP {exc.code}: {detail}") from exc
@@ -129,7 +129,7 @@ def _authenticate(base_url: str, email: str, password: str, create_user: bool) -
             token_payload = client.request(
                 "POST",
                 "/auth/register",
-                payload={"email": email, "password": password, "display_name": "Cortex Live Eval"},
+                payload={"email": email, "password": password, "display_name": "Conserium Live Eval"},
             )
             return client.with_token(str(token_payload["access_token"]))
         except RuntimeError as exc:
@@ -438,7 +438,7 @@ def _write_report(path: str, report: JsonObject) -> None:
 
 
 def _main() -> int:
-    parser = argparse.ArgumentParser(description="Seed and validate live Cortex retrieval through the public API.")
+    parser = argparse.ArgumentParser(description="Seed and validate live Conserium retrieval through the public API.")
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--email", required=True)
     parser.add_argument("--password", required=True)

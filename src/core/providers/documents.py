@@ -20,6 +20,7 @@ from src.application.use_cases.documents.delete_document_use_case import DeleteD
 from src.application.use_cases.documents.export_document_use_case import ExportDocumentUseCase
 from src.application.use_cases.documents.export_markdown_to_notion_use_case import ExportMarkdownToNotionUseCase
 from src.application.use_cases.documents.get_document_chunk_use_case import GetDocumentChunkUseCase
+from src.application.use_cases.documents.get_document_connections_use_case import GetDocumentConnectionsUseCase
 from src.application.use_cases.documents.get_document_question_history_use_case import GetDocumentQuestionHistoryUseCase
 from src.application.use_cases.documents.get_document_status_use_case import GetDocumentStatusUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
@@ -27,7 +28,9 @@ from src.application.use_cases.documents.ingest_document_use_case import IngestD
 from src.application.use_cases.documents.ingest_text_document_use_case import IngestTextDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
 from src.application.use_cases.documents.manage_document_use_cases import (
+    BulkAddDocumentTagsUseCase,
     BulkDeleteDocumentsUseCase,
+    BulkMoveDocumentsUseCase,
     BulkReprocessDocumentsUseCase,
     MoveDocumentUseCase,
     RenameDocumentUseCase,
@@ -93,6 +96,10 @@ class DocumentsProvider(Provider):
         return GetDocumentUseCase(uow)
 
     @provide(scope=Scope.REQUEST)
+    def get_document_connections_use_case(self, uow: IUnitOfWork) -> GetDocumentConnectionsUseCase:
+        return GetDocumentConnectionsUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
     def get_export_document_use_case(self, uow: IUnitOfWork) -> ExportDocumentUseCase:
         return ExportDocumentUseCase(uow)
 
@@ -128,6 +135,14 @@ class DocumentsProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_bulk_delete_documents_use_case(self, uow: IUnitOfWork) -> BulkDeleteDocumentsUseCase:
         return BulkDeleteDocumentsUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_bulk_move_documents_use_case(self, uow: IUnitOfWork) -> BulkMoveDocumentsUseCase:
+        return BulkMoveDocumentsUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_bulk_add_document_tags_use_case(self, uow: IUnitOfWork) -> BulkAddDocumentTagsUseCase:
+        return BulkAddDocumentTagsUseCase(uow)
 
     @provide(scope=Scope.REQUEST)
     def get_bulk_reprocess_documents_use_case(

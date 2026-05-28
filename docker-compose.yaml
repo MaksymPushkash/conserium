@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: cortex_app
+    container_name: conserium_app
     env_file:
       - .env.prod
     environment:
@@ -29,7 +29,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.celery
-    container_name: cortex_worker_default
+    container_name: conserium_worker_default
     env_file:
       - .env.prod
     environment:
@@ -54,7 +54,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.celery
-    container_name: cortex_scheduler
+    container_name: conserium_scheduler
     env_file:
       - .env.prod
     environment:
@@ -79,7 +79,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.celery
-    container_name: cortex_worker_embeddings
+    container_name: conserium_worker_embeddings
     env_file:
       - .env.prod
     environment:
@@ -102,7 +102,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.celery-media
-    container_name: cortex_worker_media
+    container_name: conserium_worker_media
     env_file:
       - .env.prod
     environment:
@@ -125,7 +125,7 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: cortex_postgres
+    container_name: conserium_postgres
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
@@ -141,7 +141,7 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:8.14
-    container_name: cortex_pgadmin
+    container_name: conserium_pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
@@ -156,7 +156,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: cortex_redis
+    container_name: conserium_redis
     volumes:
       - redis_data:/data
     healthcheck:
@@ -168,7 +168,7 @@ services:
 
   redisinsight:
     image: redis/redisinsight:latest
-    container_name: cortex_redisinsight
+    container_name: conserium_redisinsight
     ports:
       - "127.0.0.1:5540:5540"
     volumes:
@@ -180,7 +180,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: cortex_rabbitmq
+    container_name: conserium_rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
@@ -197,7 +197,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.54.1
-    container_name: cortex_prometheus
+    container_name: conserium_prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=7d
@@ -218,7 +218,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.1.4
-    container_name: cortex_grafana
+    container_name: conserium_grafana
     environment:
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}

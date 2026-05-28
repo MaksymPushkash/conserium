@@ -6,10 +6,11 @@ from uuid import uuid4
 
 import structlog
 
-from src.application.agents.query.state import CortexQueryState
+from src.application.agents.query.state import ConseriumQueryState
 from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStreamEventType
 from src.application.services.query_orchestration import QueryOrchestrationService
 from src.application.services.query_payloads import (
+    build_follow_up_questions,
     mark_sources_used_in_answer,
     query_debug_payload,
     refrag_context_payload,
@@ -57,7 +58,7 @@ class StreamQueryUseCase:
         try:
             conversation_turns = await self._orchestration.prepare_context(dto, query=query, conversation_id=conversation_id)
             state = await self._graph_runner.prepare(
-                CortexQueryState(
+                ConseriumQueryState(
                     query=query,
                     user_id=dto.user_id,
                     limit=dto.limit,
@@ -92,6 +93,7 @@ class StreamQueryUseCase:
 
             state.answer = "".join(answer_parts)
             state.sources = mark_sources_used_in_answer(state.sources, state.answer)
+            follow_up_questions = build_follow_up_questions(state.answer, state.sources)
             yield QueryStreamEventDTO(
                 event=QueryStreamEventType.DEBUG,
                 data=query_debug_payload(query, state),
@@ -140,6 +142,7 @@ class StreamQueryUseCase:
                     "conversation_id": str(conversation_id),
                     "eval_scores": state.eval_scores,
                     "trace_id": state.trace_id,
+                    "suggested_follow_up_questions": follow_up_questions,
                 },
             )
         except Exception as exc:

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -6,6 +7,13 @@ if TYPE_CHECKING:
     from src.domain.entities.document_entity import DocumentEntity
     from src.domain.value_objects.document_status import DocumentStatus
     from src.domain.value_objects.document_type import DocumentType
+
+
+@dataclass(frozen=True, slots=True)
+class RelatedDocumentRecord:
+    document: "DocumentEntity"
+    reasons: list[str]
+    relationship_score: int
 
 
 class IDocumentRepository(ABC):
@@ -32,6 +40,9 @@ class IDocumentRepository(ABC):
 
     @abstractmethod
     async def delete(self, document_id: UUID) -> None: ...
+
+    @abstractmethod
+    async def add_manual_tags(self, *, document_id: UUID, user_id: UUID, tag_names: list[str]) -> None: ...
 
     @abstractmethod
     async def exists(self, document_id: UUID) -> bool: ...
@@ -62,3 +73,12 @@ class IDocumentRepository(ABC):
         collection_id: UUID,
         limit: int = 200,
     ) -> "tuple[list[DocumentEntity], dict[DocumentStatus, int]]": ...
+
+    @abstractmethod
+    async def get_related_documents(
+        self,
+        *,
+        user_id: UUID,
+        document_id: UUID,
+        limit: int = 5,
+    ) -> list[RelatedDocumentRecord]: ...

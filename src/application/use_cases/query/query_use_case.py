@@ -6,10 +6,15 @@ from uuid import uuid4
 
 import structlog
 
-from src.application.agents.query.state import CortexQueryState
+from src.application.agents.query.state import ConseriumQueryState
 from src.application.dtos.query_dtos import QueryResultDTO
 from src.application.services.query_orchestration import QueryOrchestrationService
-from src.application.services.query_payloads import mark_sources_used_in_answer, query_debug, refrag_context_payload
+from src.application.services.query_payloads import (
+    build_follow_up_questions,
+    mark_sources_used_in_answer,
+    query_debug,
+    refrag_context_payload,
+)
 from src.domain.exceptions import QueryProcessingException, QueryValidationException
 
 if TYPE_CHECKING:
@@ -42,7 +47,7 @@ class QueryUseCase:
         conversation_turns = await self._orchestration.prepare_context(dto, query=query, conversation_id=conversation_id)
         started_at = perf_counter()
         state = await self._graph_runner.run(
-            CortexQueryState(
+            ConseriumQueryState(
                 query=query,
                 user_id=dto.user_id,
                 limit=dto.limit,
@@ -63,6 +68,7 @@ class QueryUseCase:
             raise QueryProcessingException("query graph did not produce refrag_context")
         state.sources = mark_sources_used_in_answer(state.sources, state.answer)
         debug = query_debug(query, state)
+        follow_up_questions = build_follow_up_questions(state.answer, state.sources)
         await self._orchestration.append_turn(
             user_id=dto.user_id,
             conversation_id=conversation_id,
@@ -95,4 +101,5 @@ class QueryUseCase:
             sources=state.sources,
             refrag_context=state.refrag_context,
             debug=debug,
+            suggested_follow_up_questions=follow_up_questions,
         )

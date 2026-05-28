@@ -16,6 +16,10 @@ class ITaskDispatcher(ABC):
         """Enqueue repo sync outbox draining work."""
 
     @abstractmethod
+    async def dispatch_document_processing_outbox(self) -> None:
+        """Enqueue document processing outbox draining work."""
+
+    @abstractmethod
     async def dispatch_embed_and_finalize_document(
         self,
         *,

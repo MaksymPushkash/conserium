@@ -54,8 +54,6 @@ class IngestDocumentUseCase:
             tags=dto.tags,
         )
 
-        document.mark_queued()
-
         async with self._uow:
             await self._uow.document_repo.create(document)
             await self._uow.document_activity_repo.record_event(

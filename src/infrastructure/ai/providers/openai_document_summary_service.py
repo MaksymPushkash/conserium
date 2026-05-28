@@ -34,19 +34,19 @@ class OpenAIDocumentSummaryService(IDocumentSummaryService):
             )
         except Exception:
             metrics_registry.inc_counter(
-                "cortex_openai_requests_total",
+                "conserium_openai_requests_total",
                 "OpenAI API requests grouped by operation and outcome.",
                 labels={"operation": "document_summary", "status": "error"},
             )
             raise
 
         metrics_registry.inc_counter(
-            "cortex_openai_requests_total",
+            "conserium_openai_requests_total",
             "OpenAI API requests grouped by operation and outcome.",
             labels={"operation": "document_summary", "status": "success"},
         )
         metrics_registry.inc_counter(
-            "cortex_openai_estimated_cost_usd",
+            "conserium_openai_estimated_cost_usd",
             "Approximate OpenAI API cost estimate in USD.",
             value=_estimate_summary_cost(normalized_text),
         )

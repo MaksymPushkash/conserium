@@ -1,7 +1,9 @@
 from uuid import UUID
 
 from src.application.dtos.document_dtos import (
+    BulkAddDocumentTagsDTO,
     BulkDocumentOperationDTO,
+    BulkMoveDocumentsDTO,
     CreateDocumentDTO,
     DeleteDocumentDTO,
     GetDocumentChunkDTO,
@@ -94,6 +96,14 @@ def to_move_document_dto(document_id: UUID, collection_id: UUID | None, user_id:
 
 def to_bulk_document_operation_dto(document_ids: list[UUID], user_id: UUID) -> BulkDocumentOperationDTO:
     return BulkDocumentOperationDTO(user_id=user_id, document_ids=document_ids)
+
+
+def to_bulk_move_documents_dto(document_ids: list[UUID], collection_id: UUID | None, user_id: UUID) -> BulkMoveDocumentsDTO:
+    return BulkMoveDocumentsDTO(user_id=user_id, document_ids=document_ids, collection_id=collection_id)
+
+
+def to_bulk_add_document_tags_dto(document_ids: list[UUID], tags: list[str], user_id: UUID) -> BulkAddDocumentTagsDTO:
+    return BulkAddDocumentTagsDTO(user_id=user_id, document_ids=document_ids, tags=tags)
 
 
 def to_retry_document_dto(document_id: UUID, user_id: UUID) -> RetryDocumentDTO:

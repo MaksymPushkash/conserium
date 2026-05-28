@@ -14,6 +14,13 @@ from src.application.use_cases.integrations import (
     SearchNotionPagesUseCase,
     UpdateNotionConnectionSettingsUseCase,
 )
+from src.application.use_cases.telegram import (
+    ConsumeTelegramPairingCodeUseCase,
+    CreateTelegramPairingCodeUseCase,
+    GetTelegramStatusUseCase,
+    IngestTelegramItemUseCase,
+    RevokeTelegramBindingUseCase,
+)
 from src.core.config import settings
 from src.infrastructure.integrations.notion_oauth_client import NotionOAuthClient
 from src.infrastructure.integrations.notion_workspace_client import NotionWorkspaceClient
@@ -86,3 +93,27 @@ class IntegrationsProvider(Provider):
         ingest_external_item: IngestExternalItemUseCase,
     ) -> ImportNotionPageUseCase:
         return ImportNotionPageUseCase(uow, workspace_client, token_cipher, ingest_external_item)
+
+    @provide(scope=Scope.REQUEST)
+    def get_telegram_status_use_case(self, uow: IUnitOfWork) -> GetTelegramStatusUseCase:
+        return GetTelegramStatusUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_create_telegram_pairing_code_use_case(self, uow: IUnitOfWork) -> CreateTelegramPairingCodeUseCase:
+        return CreateTelegramPairingCodeUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_revoke_telegram_binding_use_case(self, uow: IUnitOfWork) -> RevokeTelegramBindingUseCase:
+        return RevokeTelegramBindingUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_consume_telegram_pairing_code_use_case(self, uow: IUnitOfWork) -> ConsumeTelegramPairingCodeUseCase:
+        return ConsumeTelegramPairingCodeUseCase(uow)
+
+    @provide(scope=Scope.REQUEST)
+    def get_ingest_telegram_item_use_case(
+        self,
+        uow: IUnitOfWork,
+        ingest_external_item: IngestExternalItemUseCase,
+    ) -> IngestTelegramItemUseCase:
+        return IngestTelegramItemUseCase(uow, ingest_external_item)

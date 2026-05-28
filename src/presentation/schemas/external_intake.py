@@ -54,3 +54,9 @@ class ExternalIntakeItemResponse(BaseModel):
 class ExternalIngestResponse(BaseModel):
     intake_item: ExternalIntakeItemResponse
     document: DocumentResponse | None
+
+
+class ExternalIntakeListResponse(BaseModel):
+    items: list[ExternalIntakeItemResponse]
+    limit: int
+    offset: int

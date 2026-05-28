@@ -1,4 +1,4 @@
-from src.application.agents.query.state import CortexQueryState
+from src.application.agents.query.state import ConseriumQueryState
 from src.application.ports.ai.llm_service import ILLMService
 
 ABSTENTION_ANSWER = "The provided context does not contain enough relevant information to answer this question."
@@ -8,7 +8,7 @@ class SynthesisAgent:
     def __init__(self, llm_service: ILLMService) -> None:
         self._llm_service = llm_service
 
-    async def synthesize(self, state: CortexQueryState) -> CortexQueryState:
+    async def synthesize(self, state: ConseriumQueryState) -> ConseriumQueryState:
         if state.refrag_context is None:
             raise ValueError("refrag_context is required before synthesis")
         if not state.refrag_context.selected_chunks:

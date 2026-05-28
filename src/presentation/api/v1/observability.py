@@ -15,10 +15,10 @@ router = APIRouter(prefix="/observability", tags=["observability"])
 @inject
 async def observability_summary(current_user: CurrentUser, uow: FromDishka[IUnitOfWork]) -> dict[str, object]:
     metrics_text = metrics_registry.render_prometheus()
-    query_latency_sum = _metric_value(metrics_text, "cortex_query_latency_seconds_sum")
-    query_latency_count = _metric_value(metrics_text, "cortex_query_latency_seconds_count")
-    retrieval_requests = _metric_value(metrics_text, "cortex_retrieval_requests_total")
-    retrieval_hits = _metric_value(metrics_text, "cortex_retrieval_hits_total")
+    query_latency_sum = _metric_value(metrics_text, "conserium_query_latency_seconds_sum")
+    query_latency_count = _metric_value(metrics_text, "conserium_query_latency_seconds_count")
+    retrieval_requests = _metric_value(metrics_text, "conserium_retrieval_requests_total")
+    retrieval_hits = _metric_value(metrics_text, "conserium_retrieval_hits_total")
     async with uow:
         failed_documents = await uow.document_repo.count_by_user_id(current_user.id, status=DocumentStatus.FAILED)
     return {
@@ -35,7 +35,7 @@ async def observability_summary(current_user: CurrentUser, uow: FromDishka[IUnit
             "failed_processing_count": failed_documents,
         },
         "openai": {
-            "estimated_cost_usd": _metric_value(metrics_text, "cortex_openai_estimated_cost_usd"),
+            "estimated_cost_usd": _metric_value(metrics_text, "conserium_openai_estimated_cost_usd"),
         },
         "queues": _queue_depths(metrics_text),
     }
@@ -54,7 +54,7 @@ def _metric_value(metrics_text: str, name: str) -> float:
 
 def _queue_depths(metrics_text: str) -> dict[str, float]:
     depths: dict[str, float] = {}
-    pattern = re.compile(r'^cortex_queue_depth\{queue="([^"]+)"\}\s+(.+)$')
+    pattern = re.compile(r'^conserium_queue_depth\{queue="([^"]+)"\}\s+(.+)$')
     for line in metrics_text.splitlines():
         match = pattern.match(line)
         if match:

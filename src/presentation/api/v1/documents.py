@@ -7,11 +7,14 @@ from src.application.use_cases.documents.create_document_use_case import CreateD
 from src.application.use_cases.documents.delete_document_use_case import DeleteDocumentUseCase
 from src.application.use_cases.documents.export_document_use_case import ExportDocumentUseCase
 from src.application.use_cases.documents.get_document_chunk_use_case import GetDocumentChunkUseCase
+from src.application.use_cases.documents.get_document_connections_use_case import GetDocumentConnectionsUseCase
 from src.application.use_cases.documents.get_document_question_history_use_case import GetDocumentQuestionHistoryUseCase
 from src.application.use_cases.documents.get_document_use_case import GetDocumentUseCase
 from src.application.use_cases.documents.list_documents_use_case import ListDocumentsUseCase
 from src.application.use_cases.documents.manage_document_use_cases import (
+    BulkAddDocumentTagsUseCase,
     BulkDeleteDocumentsUseCase,
+    BulkMoveDocumentsUseCase,
     BulkReprocessDocumentsUseCase,
     MoveDocumentUseCase,
     RenameDocumentUseCase,
@@ -24,13 +27,16 @@ from src.domain.value_objects.document_type import DocumentType
 from src.presentation.dependencies.auth import CurrentUser
 from src.presentation.mappers.document_mapper import (
     to_document_chunk_response,
+    to_document_connections_response,
     to_document_list_response,
     to_document_question_history_response,
     to_document_response,
     to_document_search_response,
 )
 from src.presentation.mappers.document_request_mapper import (
+    to_bulk_add_document_tags_dto,
     to_bulk_document_operation_dto,
+    to_bulk_move_documents_dto,
     to_create_document_dto,
     to_delete_document_dto,
     to_get_document_chunk_dto,
@@ -43,9 +49,12 @@ from src.presentation.mappers.document_request_mapper import (
     to_search_documents_dto,
 )
 from src.presentation.schemas.document import (
+    BulkAddDocumentTagsRequest,
     BulkDocumentOperationRequest,
+    BulkMoveDocumentsRequest,
     CreateDocumentRequest,
     DocumentChunkResponse,
+    DocumentConnectionsResponse,
     DocumentListResponse,
     DocumentQuestionHistoryResponse,
     DocumentResponse,
@@ -117,6 +126,18 @@ async def get_document(
 ) -> DocumentResponse:
     result = await use_case(to_get_document_dto(document_id, current_user.id))
     return to_document_response(result)
+
+
+@router.get("/{document_id}/connections", response_model=DocumentConnectionsResponse)
+@inject
+async def get_document_connections(
+    document_id: UUID,
+    current_user: CurrentUser,
+    use_case: FromDishka[GetDocumentConnectionsUseCase],
+    limit: int = Query(default=5, ge=1, le=20),
+) -> DocumentConnectionsResponse:
+    result = await use_case(to_get_document_dto(document_id, current_user.id), limit=limit)
+    return to_document_connections_response(result)
 
 
 @router.get("/{document_id}/export")
@@ -202,6 +223,28 @@ async def bulk_delete_documents(
     use_case: FromDishka[BulkDeleteDocumentsUseCase],
 ) -> Response:
     await use_case(to_bulk_document_operation_dto(body.document_ids, current_user.id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/bulk/move", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def bulk_move_documents(
+    body: BulkMoveDocumentsRequest,
+    current_user: CurrentUser,
+    use_case: FromDishka[BulkMoveDocumentsUseCase],
+) -> Response:
+    await use_case(to_bulk_move_documents_dto(body.document_ids, body.collection_id, current_user.id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/bulk/tags", status_code=status.HTTP_204_NO_CONTENT)
+@inject
+async def bulk_add_document_tags(
+    body: BulkAddDocumentTagsRequest,
+    current_user: CurrentUser,
+    use_case: FromDishka[BulkAddDocumentTagsUseCase],
+) -> Response:
+    await use_case(to_bulk_add_document_tags_dto(body.document_ids, body.tags, current_user.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

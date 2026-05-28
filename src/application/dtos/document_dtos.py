@@ -94,6 +94,22 @@ class BulkDocumentOperationDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
+class BulkMoveDocumentsDTO:
+    user_id: UUID
+    document_ids: list[UUID]
+    collection_id: UUID | None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class BulkAddDocumentTagsDTO:
+    user_id: UUID
+    document_ids: list[UUID]
+    tags: list[str]
+
+
+@final
+@dataclass(frozen=True, slots=True)
 class RetryDocumentDTO:
     user_id: UUID
     document_id: UUID
@@ -192,4 +208,21 @@ class DocumentQuestionHistoryItemDTO:
 class DocumentQuestionHistoryDTO:
     items: list[DocumentQuestionHistoryItemDTO]
     document_id: UUID
+    limit: int
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class DocumentConnectionDTO:
+    document: DocumentDTO
+    reasons: list[str]
+    relationship_score: int
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class DocumentConnectionsDTO:
+    items: list[DocumentConnectionDTO]
+    document_id: UUID
+    total: int
     limit: int

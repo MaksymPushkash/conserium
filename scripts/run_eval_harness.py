@@ -403,7 +403,7 @@ def _uuid_or_zero(value: str) -> uuid.UUID:
 
 
 async def _main() -> int:
-    parser = argparse.ArgumentParser(description="Run Cortex query eval regression.")
+    parser = argparse.ArgumentParser(description="Run Conserium query eval regression.")
     parser.add_argument("--dataset", default="evals/query_eval_set.json")
     parser.add_argument("--dataset-dir", default="")
     parser.add_argument("--min-faithfulness", type=float, default=None)

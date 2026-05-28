@@ -8,7 +8,7 @@ from src.application.dtos.query_dtos import QueryDebugDTO, QuerySourceDTO
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from src.application.agents.query.state import CortexQueryState
+    from src.application.agents.query.state import ConseriumQueryState
     from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage
 
 
@@ -60,7 +60,7 @@ def stream_source_payload(source: QuerySourceDTO, citation_index: int, *, includ
     return payload
 
 
-def query_debug(original_query: str, state: CortexQueryState) -> QueryDebugDTO:
+def query_debug(original_query: str, state: ConseriumQueryState) -> QueryDebugDTO:
     return QueryDebugDTO(
         original_query=original_query,
         retrieval_query=state.retrieval_query or original_query,
@@ -74,7 +74,7 @@ def query_debug(original_query: str, state: CortexQueryState) -> QueryDebugDTO:
     )
 
 
-def query_debug_payload(original_query: str, state: CortexQueryState) -> dict[str, object]:
+def query_debug_payload(original_query: str, state: ConseriumQueryState) -> dict[str, object]:
     debug = query_debug(original_query, state)
     return {
         "original_query": debug.original_query,
@@ -87,6 +87,20 @@ def query_debug_payload(original_query: str, state: CortexQueryState) -> dict[st
         "used_sources": sources_payload(debug.used_sources),
         "filtered_sources": sources_payload(debug.filtered_sources),
     }
+
+
+def build_follow_up_questions(answer: str, sources: list[QuerySourceDTO]) -> list[str]:
+    if not answer.strip() or not any(source.used_in_answer for source in sources):
+        return []
+
+    used_sources = [source for source in sources if source.used_in_answer]
+    title = next((source.document_title for source in used_sources if source.document_title), None)
+    topic = _compact_topic(title or _keywords_from_answer(answer) or "this topic")
+    return [
+        f"What are the key tradeoffs in {topic}?",
+        f"Show the strongest evidence for {topic}.",
+        f"What should I read next about {topic}?",
+    ]
 
 
 def refrag_context_payload(context: RefragContextPackage) -> dict[str, object]:
@@ -152,3 +166,15 @@ def mark_sources_used_in_answer(sources: list[QuerySourceDTO], answer: str) -> l
         )
         for index, source in enumerate(sources, start=1)
     ]
+
+
+def _keywords_from_answer(answer: str) -> str | None:
+    words = re.findall(r"[A-Za-z][A-Za-z0-9+-]{3,}", answer)
+    ignored = {"this", "that", "with", "from", "have", "about", "there", "their", "which", "would", "should"}
+    keywords = [word for word in words if word.lower() not in ignored]
+    return " ".join(keywords[:3]) if keywords else None
+
+
+def _compact_topic(value: str) -> str:
+    value = " ".join(value.split())
+    return f"{value[:31]}..." if len(value) > 34 else value

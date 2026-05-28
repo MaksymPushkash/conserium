@@ -23,6 +23,8 @@ class CompareEvidenceRowResponse(BaseModel):
     right_source_id: UUID | None = None
     left_citation: str | None = None
     right_citation: str | None = None
+    confidence: float | None = None
+    rationale: str | None = None
 
 
 class CompareDocumentsResponse(BaseModel):

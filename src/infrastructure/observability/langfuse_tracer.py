@@ -9,11 +9,11 @@ from src.application.ports.observability.query_trace import IQueryTracer
 from src.core.config import settings
 
 if TYPE_CHECKING:
-    from src.application.agents.query.state import CortexQueryState
+    from src.application.agents.query.state import ConseriumQueryState
 
 
 class LangfuseQueryTracer(IQueryTracer):
-    async def trace_query(self, state: CortexQueryState) -> str | None:
+    async def trace_query(self, state: ConseriumQueryState) -> str | None:
         trace_id = uuid.uuid4().hex
         if not settings.LANGFUSE_PUBLIC_KEY or not settings.LANGFUSE_SECRET_KEY:
             return trace_id
@@ -26,7 +26,7 @@ class LangfuseQueryTracer(IQueryTracer):
                     "timestamp": None,
                     "body": {
                         "id": trace_id,
-                        "name": "cortex.query",
+                        "name": "conserium.query",
                         "userId": str(state.user_id),
                         "input": state.query,
                         "output": state.answer,

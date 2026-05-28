@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, cast
 
 from src.application.agents.query.graph_runner import QueryGraphRunner
-from src.application.agents.query.state import CortexQueryState, QueryType
+from src.application.agents.query.state import ConseriumQueryState, QueryType
 from src.application.agents.query.streaming_graph_runner import StreamingQueryGraphRunner
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ class _Router:
     def __init__(self, calls: list[str]) -> None:
         self._calls = calls
 
-    def route(self, state: CortexQueryState) -> CortexQueryState:
+    def route(self, state: ConseriumQueryState) -> ConseriumQueryState:
         self._calls.append("router")
         state.query_type = QueryType.SUMMARY
         return state
@@ -30,7 +30,7 @@ class _ConversationContext:
     def __init__(self, calls: list[str]) -> None:
         self._calls = calls
 
-    def apply(self, state: CortexQueryState) -> CortexQueryState:
+    def apply(self, state: ConseriumQueryState) -> ConseriumQueryState:
         self._calls.append("conversation_context")
         state.retrieval_query = f"contextual: {state.query}"
         return state
@@ -40,7 +40,7 @@ class _Retrieval:
     def __init__(self, calls: list[str]) -> None:
         self._calls = calls
 
-    async def retrieve(self, state: CortexQueryState) -> CortexQueryState:
+    async def retrieve(self, state: ConseriumQueryState) -> ConseriumQueryState:
         self._calls.append("retrieval")
         return state
 
@@ -49,7 +49,7 @@ class _RefragContext:
     def __init__(self, calls: list[str]) -> None:
         self._calls = calls
 
-    def build_context(self, state: CortexQueryState) -> CortexQueryState:
+    def build_context(self, state: ConseriumQueryState) -> ConseriumQueryState:
         self._calls.append("refrag_context")
         return state
 
@@ -58,7 +58,7 @@ class _Synthesis:
     def __init__(self, calls: list[str]) -> None:
         self._calls = calls
 
-    async def synthesize(self, state: CortexQueryState) -> CortexQueryState:
+    async def synthesize(self, state: ConseriumQueryState) -> ConseriumQueryState:
         self._calls.append("synthesis")
         state.answer = "final answer"
         return state
@@ -68,7 +68,7 @@ class _Eval:
     def __init__(self, calls: list[str]) -> None:
         self._calls = calls
 
-    async def evaluate(self, state: CortexQueryState) -> CortexQueryState:
+    async def evaluate(self, state: ConseriumQueryState) -> ConseriumQueryState:
         self._calls.append("eval")
         state.eval_scores = {"faithfulness": 1.0, "answer_relevancy": 1.0, "context_recall": 1.0}
         state.trace_id = "trace-1"
@@ -82,7 +82,7 @@ class _StreamingSynthesis:
     async def _tokens(self) -> AsyncIterator[str]:
         yield "final"
 
-    def stream(self, state: CortexQueryState) -> AsyncIterator[str]:
+    def stream(self, state: ConseriumQueryState) -> AsyncIterator[str]:
         self._calls.append("streaming_synthesis")
         return self._tokens()
 
@@ -99,7 +99,7 @@ async def test_query_graph_runner_preserves_node_order_and_final_state() -> None
     )
 
     result = await runner.run(
-        CortexQueryState(
+        ConseriumQueryState(
             query="Summarize my notes",
             user_id=uuid.uuid4(),
             conversation_id=uuid.uuid4(),
@@ -126,7 +126,7 @@ async def test_streaming_query_graph_runner_prepare_preserves_node_order_and_str
     )
 
     prepared_state = await runner.prepare(
-        CortexQueryState(
+        ConseriumQueryState(
             query="Summarize my notes",
             user_id=uuid.uuid4(),
             conversation_id=uuid.uuid4(),

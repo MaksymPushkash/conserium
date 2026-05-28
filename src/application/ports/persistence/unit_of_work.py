@@ -6,19 +6,23 @@ from src.application.ports.persistence.chat_repository import IChatRepository
 from src.application.ports.persistence.chunk_repository import IChunkRepository
 from src.application.ports.persistence.collection_repository import ICollectionRepository
 from src.application.ports.persistence.collection_share_repository import ICollectionShareRepository
+from src.application.ports.persistence.collection_workspace_repository import ICollectionWorkspaceRepository
 from src.application.ports.persistence.compare_repository import ICompareRepository
 from src.application.ports.persistence.conflict_repository import IConflictRepository
 from src.application.ports.persistence.document_activity_repository import IDocumentActivityRepository
+from src.application.ports.persistence.document_processing_outbox_repository import IDocumentProcessingOutboxRepository
 from src.application.ports.persistence.document_repository import IDocumentRepository
 from src.application.ports.persistence.draft_repository import IDraftRepository
 from src.application.ports.persistence.external_connection_repository import IExternalConnectionRepository
 from src.application.ports.persistence.external_intake_repository import IExternalIntakeRepository
+from src.application.ports.persistence.flashcard_repository import IFlashcardRepository
 from src.application.ports.persistence.knowledge_graph_repository import IKnowledgeGraphRepository
 from src.application.ports.persistence.learning_goal_repository import ILearningGoalRepository
 from src.application.ports.persistence.note_version_repository import INoteVersionRepository
 from src.application.ports.persistence.repo_sync_repository import IRepoSyncRepository
 from src.application.ports.persistence.search_query_repository import ISearchQueryRepository
 from src.application.ports.persistence.stats_repository import IStatsRepository
+from src.application.ports.persistence.telegram_repository import ITelegramRepository
 from src.application.ports.persistence.topic_repository import ITopicRepository
 from src.application.ports.persistence.user_repository import IUserRepository
 
@@ -34,19 +38,23 @@ class IUnitOfWork(ABC):
     user_repo: IUserRepository
     chat_repo: IChatRepository
     collection_repo: ICollectionRepository
+    collection_workspace_repo: ICollectionWorkspaceRepository
     collection_share_repo: ICollectionShareRepository
     compare_repo: ICompareRepository
     conflict_repo: IConflictRepository
     document_repo: IDocumentRepository
     document_activity_repo: IDocumentActivityRepository
+    document_processing_outbox_repo: IDocumentProcessingOutboxRepository
     draft_repo: IDraftRepository
     external_connection_repo: IExternalConnectionRepository
     external_intake_repo: IExternalIntakeRepository
+    flashcard_repo: IFlashcardRepository
     chunk_repo: IChunkRepository
     note_version_repo: INoteVersionRepository
     repo_sync_repo: IRepoSyncRepository
     search_query_repo: ISearchQueryRepository
     stats_repo: IStatsRepository
+    telegram_repo: ITelegramRepository
     topic_repo: ITopicRepository
     knowledge_graph_repo: IKnowledgeGraphRepository
     learning_goal_repo: ILearningGoalRepository

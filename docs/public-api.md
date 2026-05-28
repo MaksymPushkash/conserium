@@ -1,4 +1,4 @@
-# Cortex Public API
+# Conserium Public API
 
 Default local API origin: `http://localhost:8000`
 
@@ -16,7 +16,7 @@ Browser UI authentication uses bearer access tokens returned by register, login,
 Authorization: Bearer <access_token>
 ```
 
-Developer and automation authentication uses Cortex API keys created in Settings → Integrations.
+Developer and automation authentication uses Conserium API keys created in Settings → Integrations.
 
 ```http
 Authorization: Bearer ctx_<api_key>
@@ -91,7 +91,7 @@ Shared payload fields:
 }
 ```
 
-Use `idempotency_key` to prevent duplicate ingestion. If omitted, Cortex falls back to `external_id`, then URL hash for URL payloads.
+Use `idempotency_key` to prevent duplicate ingestion. If omitted, Conserium falls back to `external_id`, then URL hash for URL payloads.
 
 `POST /api/v1/public-api/ingest`
 
@@ -159,14 +159,18 @@ The browser extension scaffold is in `client/extensions/browser`.
 
 Configuration fields:
 
-- API origin: `https://api.cortexx.me/api/v1`
+- API origin: `https://api.conserium.app/api/v1`
 - API key: a `ctx_...` key with `ingest:write`
 - Collection id: optional
 - Tags: comma-separated
 
-The extension stores credentials in browser-local extension storage and sends current-tab URLs and selected text to:
+The extension stores credentials in browser-local extension storage, loads collections from:
 
-`POST /api/v1/webhooks/ingest`
+`GET /api/v1/public-api/collections`
+
+It sends current-tab URLs and selected text to:
+
+`POST /api/v1/public-api/ingest`
 
 ## Telegram Bot MVP
 
@@ -175,7 +179,8 @@ The Telegram adapter is in `scripts/telegram_webhook_bot.py`.
 Run it separately:
 
 ```bash
-CORTEX_API_BASE_URL=https://api.cortexx.me/api/v1 \
+CONSERIUM_API_BASE_URL=https://api.conserium.app/api/v1 \
+CONSERIUM_TELEGRAM_SECRET=... \
 TELEGRAM_BOT_TOKEN=... \
 uvicorn scripts.telegram_webhook_bot:app --host 0.0.0.0 --port 8090
 ```
@@ -186,21 +191,21 @@ Set the Telegram webhook to:
 https://<bot-host>/telegram/webhook
 ```
 
-Pair a Telegram chat by sending:
+Create a Telegram pairing code in Conserium Settings, then pair a Telegram chat by sending:
 
 ```text
-/pair ctx_<api_key>
+/pair <code>
 ```
 
-Forwarded URLs become `URL` or `YOUTUBE` documents. Plain text becomes a `TEXT` document. Telegram message id is used as the idempotency key. `CORTEX_API_KEY` remains a fallback for local single-user deployments.
+Forwarded URLs become `URL` or `YOUTUBE` documents. Plain text becomes a `TEXT` document. Telegram message id is used as the idempotency key. Chat bindings and revocation live in Conserium.
 
 ## Anytype Import MVP
 
 Export Anytype notes as Markdown, then import them with:
 
 ```bash
-CORTEX_API_BASE_URL=https://api.cortexx.me/api/v1 \
-CORTEX_API_KEY=ctx_... \
+CONSERIUM_API_BASE_URL=https://api.conserium.app/api/v1 \
+CONSERIUM_API_KEY=ctx_... \
 uv run python scripts/import_anytype_export.py /path/to/anytype/export
 ```
 
@@ -292,7 +297,7 @@ OAuth:
 - `GET /api/v1/auth/github`
 - `GET /api/v1/auth/github/callback`
 
-The OAuth start routes redirect to the provider. The callback routes validate the HTTP-only OAuth `state` cookie and return Cortex access/refresh tokens as JSON.
+The OAuth start routes redirect to the provider. The callback routes validate the HTTP-only OAuth `state` cookie and return Conserium access/refresh tokens as JSON.
 
 ## Users
 
@@ -488,7 +493,7 @@ Against a running API:
 uv run python scripts/run_eval_harness.py --base-url http://localhost:8000 --token "$ACCESS_TOKEN"
 ```
 
-By default, Cortex uses a deterministic local scorer for CI and development. Set `EVAL_SCORER=ragas` and install the optional eval dependencies to use the external RAGAS library:
+By default, Conserium uses a deterministic local scorer for CI and development. Set `EVAL_SCORER=ragas` and install the optional eval dependencies to use the external RAGAS library:
 
 ```bash
 uv sync --extra eval
