@@ -97,10 +97,6 @@ class DrainDocumentProcessingOutboxUseCase:
             progress=0,
             message="Queued for processing.",
         )
-        await self._task_dispatcher.dispatch_process_document(
-            str(outbox.document_id),
-            task_id=document_processing_outbox_task_id(outbox.id),
-        )
 
         async with self._uow:
             document = await self._uow.document_repo.get_by_id(outbox.document_id)
@@ -109,6 +105,11 @@ class DrainDocumentProcessingOutboxUseCase:
                 await self._uow.document_repo.update(document)
             await self._uow.document_processing_outbox_repo.mark_dispatched(outbox.id, datetime.now(UTC))
             await self._uow.commit()
+
+        await self._task_dispatcher.dispatch_process_document(
+            str(outbox.document_id),
+            task_id=document_processing_outbox_task_id(outbox.id),
+        )
 
     async def _load_document(self, document_id: UUID) -> DocumentEntity | None:
         async with self._uow:
@@ -165,13 +166,8 @@ async def kick_document_processing_outbox_item(
     uow: IUnitOfWork,
     task_dispatcher: ITaskDispatcher,
 ) -> None:
-    await task_dispatcher.dispatch_process_document(
-        str(document_id),
-        task_id=document_processing_outbox_task_id(outbox_id),
-    )
-    async with uow:
-        await uow.document_processing_outbox_repo.mark_dispatched(outbox_id, datetime.now(UTC))
-        await uow.commit()
+    _ = (outbox_id, document_id, uow)
+    await task_dispatcher.dispatch_document_processing_outbox()
 
 
 def _sanitize_outbox_error(exc: Exception) -> str:

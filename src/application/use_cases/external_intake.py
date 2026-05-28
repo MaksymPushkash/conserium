@@ -38,7 +38,10 @@ class IngestExternalItemUseCase:
         if existing is not None:
             return await self._existing_result(existing)
 
-        intake_item = await self._create_intake_item(dto, provider, idempotency_key, tags, payload_metadata)
+        intake_item, created = await self._create_intake_item(dto, provider, idempotency_key, tags, payload_metadata)
+        if not created:
+            return await self._existing_result(intake_item)
+
         try:
             document = await self._ingest_document(
                 IngestDocumentDTO(
@@ -90,7 +93,7 @@ class IngestExternalItemUseCase:
         idempotency_key: str | None,
         tags: list[str],
         payload_metadata: dict[str, object],
-    ) -> ExternalIntakeItemRecord:
+    ) -> tuple[ExternalIntakeItemRecord, bool]:
         now = datetime.now(UTC)
         record = ExternalIntakeItemRecord(
             id=uuid4(),
@@ -115,7 +118,7 @@ class IngestExternalItemUseCase:
         async with self._uow:
             created = await self._uow.external_intake_repo.create(record)
             await self._uow.commit()
-        return created
+        return created, created.id == record.id
 
     async def _mark_queued(self, intake_item_id: UUID, document_id: UUID) -> ExternalIntakeItemRecord:
         async with self._uow:

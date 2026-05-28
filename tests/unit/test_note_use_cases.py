@@ -67,8 +67,8 @@ async def test_update_note_versions_previous_content_and_requeues_processing() -
     assert uow.note_version_repo.records[0].title == "Old title"
     assert uow.note_version_repo.records[0].content == "Old content"
     assert uow.document_processing_outbox_repo.created == [(note.id, "process_document")]
-    assert dispatcher.document_ids == [str(note.id)]
-    assert dispatcher.document_processing_outbox_dispatches == 0
+    assert dispatcher.document_ids == []
+    assert dispatcher.document_processing_outbox_dispatches == 1
     assert status_cache.calls[-1] == ("QUEUED", 0, "Queued note for memory indexing.")
 
 

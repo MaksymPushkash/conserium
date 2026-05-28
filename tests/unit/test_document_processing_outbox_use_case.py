@@ -41,7 +41,7 @@ async def test_document_processing_outbox_drains_pending_item_with_deterministic
 
 
 @pytest.mark.asyncio
-async def test_document_processing_outbox_retries_after_post_dispatch_commit_failure() -> None:
+async def test_document_processing_outbox_does_not_dispatch_when_state_commit_fails() -> None:
     document = _document(status=DocumentStatus.PENDING)
     outbox = _outbox(document_id=document.id)
     uow = _OutboxUow(document=document, outbox=outbox, fail_after_dispatch_commit=True)
@@ -54,7 +54,7 @@ async def test_document_processing_outbox_retries_after_post_dispatch_commit_fai
     )()
 
     assert result.failed == 1
-    assert dispatcher.calls == [(str(document.id), document_processing_outbox_task_id(outbox.id))]
+    assert dispatcher.calls == []
     assert uow.document_processing_outbox_repo.failed == [(outbox.id, True)]
 
 

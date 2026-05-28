@@ -459,8 +459,8 @@ def evidence_row_for_dimension(
         right_source_id=right.source.chunk_id if right is not None else None,
         left_citation=left.citation if left is not None else None,
         right_citation=right.citation if right is not None else None,
-        confidence=0.35 if left is not None or right is not None else 0.0,
-        rationale=f"Heuristic fallback from cited answer text. {assessment}",
+        confidence=0.0,
+        rationale=f"Inferred fallback, not structured grounded evidence. {assessment}",
     )
 
 
