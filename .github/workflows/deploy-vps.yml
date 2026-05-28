@@ -198,7 +198,17 @@ jobs:
           git reset --hard "$PREVIOUS_DEPLOY_REF"
           docker compose --env-file .env.prod up -d --build --remove-orphans
           docker compose --env-file .env.prod ps
-          curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
+          local_health_ready="false"
+          for attempt in $(seq 1 24); do
+            if curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null; then
+              echo "Rollback local health check passed."
+              local_health_ready="true"
+              break
+            fi
+            echo "Rollback local health not ready: attempt=${attempt}"
+            sleep 5
+          done
+          test "$local_health_ready" = "true"
           if [ -n "${PRODUCTION_API_BASE_URL:-}" ]; then
             public_health="${PRODUCTION_API_BASE_URL%/}"
             public_health="${public_health%/api/v1}/health"
