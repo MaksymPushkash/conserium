@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import uuid
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from src.application.use_cases.documents.base import document_to_dto, ensure_collection_owner
@@ -15,6 +17,8 @@ if TYPE_CHECKING:
     from src.application.ports.cache.document_status_cache import IDocumentStatusCache
     from src.application.ports.ingestion.task_dispatcher import ITaskDispatcher
     from src.application.ports.persistence.unit_of_work import IUnitOfWork
+
+logger = logging.getLogger(__name__)
 
 
 class IngestDocumentUseCase:
@@ -63,12 +67,39 @@ class IngestDocumentUseCase:
             )
             await self._uow.commit()
 
-        await queue_document_processing(
-            document=document,
-            uow=self._uow,
-            status_cache=self._status_cache,
-            task_dispatcher=self._task_dispatcher,
-            message="Queued for processing.",
-        )
+        try:
+            await queue_document_processing(
+                document=document,
+                uow=self._uow,
+                status_cache=self._status_cache,
+                task_dispatcher=self._task_dispatcher,
+                message="Queued for processing.",
+            )
+        except Exception as exc:
+            logger.exception(
+                "document_queueing_failed_after_create",
+                extra={
+                    "document_id": str(document.id),
+                    "user_id": str(dto.user_id),
+                    "error_type": type(exc).__name__,
+                },
+            )
+            document.mark_queued()
+            with suppress(Exception):
+                async with self._uow:
+                    await self._uow.document_repo.update(document)
+                    await self._uow.commit()
+            with suppress(Exception):
+                await self._status_cache.set_status(
+                    document.id,
+                    status="QUEUED",
+                    progress=0,
+                    message="Queued for processing.",
+                )
+            with suppress(Exception):
+                await self._task_dispatcher.dispatch_process_document(
+                    str(document.id),
+                    task_id=f"document-processing-direct-{document.id}",
+                )
 
         return document_to_dto(document)

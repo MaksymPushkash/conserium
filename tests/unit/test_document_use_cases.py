@@ -186,11 +186,14 @@ class _FakeDocumentActivityRepository:
 
 
 class _FakeDocumentProcessingOutboxRepository:
-    def __init__(self) -> None:
+    def __init__(self, *, fail_create: bool = False) -> None:
         self.created: list[tuple[uuid.UUID, str]] = []
         self.dispatched: list[uuid.UUID] = []
+        self.fail_create = fail_create
 
     async def create_outbox(self, *, document_id: uuid.UUID, task_name: str) -> object:
+        if self.fail_create:
+            raise RuntimeError("outbox unavailable")
         self.created.append((document_id, task_name))
         return _OutboxRecord(id=uuid.uuid4())
 
@@ -661,6 +664,36 @@ async def test_ingest_document_use_case_persists_outbox_when_status_cache_fails(
     assert uow.document_processing_outbox_repo.created == [(document_repo.created[0].id, "process_document")]
     assert dispatcher.processed_document_ids == [str(document_repo.created[0].id)]
     assert dispatcher.document_processing_outbox_dispatches == 0
+
+
+async def test_ingest_document_use_case_falls_back_to_direct_dispatch_when_outbox_create_fails() -> None:
+    user_id = uuid.uuid4()
+    document_repo = _FakeDocumentRepository()
+    uow = _FakeUnitOfWork(document_repo)
+    uow.document_processing_outbox_repo = _FakeDocumentProcessingOutboxRepository(fail_create=True)
+    status_cache = _FakeStatusCache()
+    dispatcher = _SuccessfulTaskDispatcher()
+    use_case = IngestDocumentUseCase(
+        _as_uow(uow),
+        cast("IDocumentStatusCache", status_cache),
+        cast("ITaskDispatcher", dispatcher),
+    )
+
+    result = await use_case(
+        IngestDocumentDTO(
+            user_id=user_id,
+            title="Fallback note",
+            type=DocumentType.TEXT,
+            raw_content="Hello world",
+        )
+    )
+
+    assert document_repo.created
+    created_document = document_repo.created[0]
+    assert result.status == DocumentStatus.QUEUED
+    assert created_document.status == DocumentStatus.QUEUED
+    assert status_cache.calls[-1] == ("QUEUED", 0, "Queued for processing.")
+    assert dispatcher.processed_document_ids == [str(created_document.id)]
 
 
 async def test_create_note_use_case_creates_markdown_document_and_queues_indexing() -> None:
