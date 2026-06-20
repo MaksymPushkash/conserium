@@ -1,14 +1,14 @@
 import uuid
 from typing import TYPE_CHECKING, cast
 
-from src.application.agents.query.eval_agent import EvalAgent
-from src.application.agents.query.state import ConseriumQueryState
-from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage, RefragRepresentation
-from src.core.metrics import metrics_registry
+from src.observability.metrics_registry import metrics_registry
+from src.query.agents.eval_agent import EvalAgent
+from src.query.agents.state import ConseriumQueryState
+from src.query.schemas import RefragChunk, RefragContextPackage, RefragRepresentation
 
 if TYPE_CHECKING:
-    from src.application.ports.evaluation.eval_scorer import IEvalScorer
-    from src.application.ports.observability.query_trace import IQueryTracer
+    from src.kit.ports.evaluation.eval_scorer import IEvalScorer
+    from src.kit.ports.observability.query_trace import IQueryTracer
 
 
 class _EvalScorer:

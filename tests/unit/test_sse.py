@@ -1,5 +1,5 @@
-from src.application.dtos.query_stream_dtos import QueryStreamEventDTO, QueryStreamEventType
-from src.presentation.sse import format_sse_event
+from src.query.schemas import QueryStreamEventDTO, QueryStreamEventType
+from src.query.service import format_sse_event
 
 
 def test_format_sse_event_serializes_structured_event() -> None:

@@ -3,8 +3,8 @@
 from openai import APIConnectionError, APITimeoutError, RateLimitError
 from requests.exceptions import ConnectionError, Timeout  # type: ignore[import-untyped,unused-ignore]
 
-from src.domain.exceptions import DomainException, ValidationException
-from src.infrastructure.celery.error_handling import classify_error
+from src.kit.exceptions import DomainException, ValidationException
+from src.worker.error_handling import classify_error
 
 
 def _make_exception(exc_type: type[Exception]) -> Exception:

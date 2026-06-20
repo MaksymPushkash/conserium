@@ -1,21 +1,21 @@
 from unittest.mock import AsyncMock, patch
 
 
-def test_embed_and_finalize_document_delegates_to_use_case_runner() -> None:
-    from src.infrastructure.celery.tasks.embedding_tasks import embed_and_finalize_document
+def test_embed_and_finalize_document_delegates_to_service_runner() -> None:
+    from src.documents.tasks import embed_and_finalize_document
 
     with (
         patch(
-            "src.infrastructure.celery.tasks.embedding_tasks.process_document_embeddings",
+            "src.documents.task_embedding.process_document_embeddings",
             new_callable=AsyncMock,
             return_value={"document_id": "doc-id", "status": "READY"},
-        ) as run_use_case,
-        patch("src.infrastructure.celery.tasks.embedding_tasks.enrich_document_task.apply_async") as dispatch_enrichment,
+        ) as run_service,
+        patch("src.documents.tasks.enrich_document_task.apply_async") as dispatch_enrichment,
     ):
         result = embed_and_finalize_document.run("doc-id", "hello", [{"content": "hello", "chunk_index": 0}])
 
     assert result == {"document_id": "doc-id", "status": "READY"}
-    run_use_case.assert_called_once_with(
+    run_service.assert_called_once_with(
         document_id="doc-id",
         raw_text="hello",
         chunks_data=[{"content": "hello", "chunk_index": 0}],

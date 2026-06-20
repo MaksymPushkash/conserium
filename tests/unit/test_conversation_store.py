@@ -2,11 +2,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from src.application.dtos.conversation_dtos import ConversationSourceDTO, ConversationTurnDTO
-from src.infrastructure.cache.redis_conversation_store import RedisConversationStore
+from src.kit.cache.redis_conversation_store import RedisConversationStore
+from src.query.schemas import ConversationSourceDTO, ConversationTurnDTO
 
 if TYPE_CHECKING:
-    from src.application.ports.cache.cache import ICache
+    from src.kit.ports.cache.cache import ICache
 
 
 class _FakeCache:

@@ -250,7 +250,7 @@ Current metric families include:
 - embedding cache events
 - OpenAI provider events
 - reranker events
-- RabbitMQ queue depth
+- Celery queue depth
 
 ## Auth
 
@@ -315,7 +315,7 @@ Creates a document record synchronously. This is useful for direct CRUD flows, b
 {
   "title": "Saved note",
   "type": "TEXT",
-  "raw_content": "Clean Architecture keeps dependencies inward.",
+  "raw_content": "Feature-first modules keep related behavior together.",
   "collection_id": null,
   "source_url": null,
   "file_path": null,
@@ -356,7 +356,7 @@ Text example:
 {
   "title": "Saved note",
   "type": "TEXT",
-  "raw_content": "Clean Architecture keeps dependencies inward.",
+  "raw_content": "Feature-first modules keep related behavior together.",
   "collection_id": null,
   "language": "en"
 }
@@ -442,7 +442,7 @@ New frontend work should use `/api/v1/ingest*`.
 
 ```json
 {
-  "query": "What did I read about Clean Architecture?",
+  "query": "What did I read about feature-first architecture?",
   "conversation_id": null,
   "collection_id": null,
   "limit": 5

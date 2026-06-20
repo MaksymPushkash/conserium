@@ -2,43 +2,19 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.core.config import settings
-from src.core.container import container
-from src.core.logging import configure_logging
-from src.core.startup_checks import validate_startup_settings
-from src.infrastructure.celery.app import declare_configured_queues
-from src.presentation.api.health import router as health_router
-from src.presentation.api.v1.api_keys import router as api_key_router
-from src.presentation.api.v1.auth import router as auth_router
-from src.presentation.api.v1.chats import router as chat_router
-from src.presentation.api.v1.collections import router as collection_router
-from src.presentation.api.v1.compare import router as compare_router
-from src.presentation.api.v1.conflicts import router as conflict_router
-from src.presentation.api.v1.documents import router as document_router
-from src.presentation.api.v1.drafts import router as draft_router
-from src.presentation.api.v1.exports import router as export_router
-from src.presentation.api.v1.ingestion import router as ingestion_router
-from src.presentation.api.v1.integrations import router as integration_router
-from src.presentation.api.v1.knowledge_gaps import router as knowledge_gap_router
-from src.presentation.api.v1.knowledge_graph import router as knowledge_graph_router
-from src.presentation.api.v1.learning_goals import router as learning_goal_router
-from src.presentation.api.v1.notes import router as note_router
-from src.presentation.api.v1.observability import router as observability_router
-from src.presentation.api.v1.public import router as public_router
-from src.presentation.api.v1.public_api import router as public_api_router
-from src.presentation.api.v1.query import router as query_router
-from src.presentation.api.v1.repo_syncs import router as repo_sync_router
-from src.presentation.api.v1.review import router as review_router
-from src.presentation.api.v1.stats import router as stats_router
-from src.presentation.api.v1.topics import router as topic_router
-from src.presentation.api.v1.user import router as user_router
-from src.presentation.api.v1.webhooks import router as webhook_router
-from src.presentation.exception_handlers import setup_exception_handlers
-from src.presentation.middleware.rate_limit import setup_rate_limiting
+from src.api import router as api_router
+from src.exceptions import setup_exception_handlers
+from src.lifecycle import dispose_dependencies
+from src.observability.health import router as health_router
+from src.observability.logging import configure_logging
+from src.observability.rate_limit import setup_rate_limiting
+from src.postgres import dispose_engine
+from src.settings import settings
+from src.startup_checks import validate_startup_settings
+from src.worker import declare_configured_queues
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +28,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.warning("celery_queue_declaration_failed", exc_info=True)
     yield
-    await container.close()
+    await dispose_dependencies()
+    await dispose_engine()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan, title="conserium")
-    setup_dishka(container, app)
     setup_rate_limiting(app)
     setup_exception_handlers(app)
 
@@ -70,31 +46,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health_router)
-    app.include_router(auth_router, prefix="/api/v1")
-    app.include_router(api_key_router, prefix="/api/v1")
-    app.include_router(user_router, prefix="/api/v1")
-    app.include_router(collection_router, prefix="/api/v1")
-    app.include_router(compare_router, prefix="/api/v1")
-    app.include_router(conflict_router, prefix="/api/v1")
-    app.include_router(document_router, prefix="/api/v1")
-    app.include_router(draft_router, prefix="/api/v1")
-    app.include_router(export_router, prefix="/api/v1")
-    app.include_router(ingestion_router, prefix="/api/v1")
-    app.include_router(integration_router, prefix="/api/v1")
-    app.include_router(knowledge_graph_router, prefix="/api/v1")
-    app.include_router(knowledge_gap_router, prefix="/api/v1")
-    app.include_router(learning_goal_router, prefix="/api/v1")
-    app.include_router(note_router, prefix="/api/v1")
-    app.include_router(chat_router, prefix="/api/v1")
-    app.include_router(query_router, prefix="/api/v1")
-    app.include_router(repo_sync_router, prefix="/api/v1")
-    app.include_router(review_router, prefix="/api/v1")
-    app.include_router(stats_router, prefix="/api/v1")
-    app.include_router(topic_router, prefix="/api/v1")
-    app.include_router(observability_router, prefix="/api/v1")
-    app.include_router(public_router, prefix="/api/v1")
-    app.include_router(public_api_router, prefix="/api/v1")
-    app.include_router(webhook_router, prefix="/api/v1")
+    app.include_router(api_router)
 
     return app
 

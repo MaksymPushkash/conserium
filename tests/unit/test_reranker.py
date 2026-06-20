@@ -3,12 +3,12 @@ from typing import Any
 
 import pytest
 
-from src.application.dtos.query_dtos import QuerySourceDTO
-from src.application.ports.ai.embedding_provider import IEmbeddingProvider
-from src.application.ports.ai.reranker import IReranker
-from src.application.services.retrieval.cross_encoder_reranker import CrossEncoderReranker
-from src.application.services.retrieval.embedding_reranker import EmbeddingReranker
-from src.core.providers.query import QueryProvider
+from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
+from src.kit.ports.ai.reranker import IReranker
+from src.query.schemas import QuerySourceDTO
+from src.query.service import get_reranker
+from src.query.services.retrieval.cross_encoder_reranker import CrossEncoderReranker
+from src.query.services.retrieval.embedding_reranker import EmbeddingReranker
 
 
 class _FailingLoadCrossEncoderReranker(CrossEncoderReranker):
@@ -58,9 +58,7 @@ async def test_cross_encoder_reranker_falls_back_when_model_load_fails() -> None
     assert result == [second, first]
 
 
-def test_query_provider_uses_embedding_reranker_by_default() -> None:
-    provider = QueryProvider()
-
-    reranker = provider.get_reranker(_FakeEmbeddingProvider())
+def test_reranker_dependency_uses_embedding_reranker_by_default() -> None:
+    reranker = get_reranker(_FakeEmbeddingProvider())
 
     assert isinstance(reranker, EmbeddingReranker)

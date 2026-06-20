@@ -7,19 +7,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.application.dtos.document_dtos import DocumentDTO
-from src.application.dtos.ingestion_dtos import IngestDocumentDTO
-from src.application.dtos.query_dtos import QueryDTO, QueryResultDTO
-from src.application.dtos.refrag_dtos import RefragContextPackage
-from src.application.use_cases.documents.ingest_document_use_case import IngestDocumentUseCase
-from src.application.use_cases.query.query_use_case import QueryUseCase
-from src.domain.entities.user_entity import UserEntity
-from src.domain.exceptions import InvalidPasswordException
-from src.domain.value_objects.document_status import DocumentStatus
-from src.domain.value_objects.document_type import DocumentType
-from src.domain.value_objects.email import Email
+from src.auth.auth import get_current_user
+from src.documents.ingestion import DocumentIngester
+from src.documents.schemas import DocumentDTO, IngestDocumentDTO
+from src.documents.status import DocumentStatus
+from src.documents.types import DocumentType
+from src.kit.exceptions import InvalidPasswordException
 from src.main import create_app
-from src.presentation.dependencies.auth import get_current_user
+from src.models.user import UserModel
+from src.query.schemas import QueryDTO, QueryResultDTO, RefragContextPackage
+from src.query.service import QueryExecutor
 
 
 @pytest.fixture
@@ -27,10 +24,10 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     """Create a test app with auth overridden for request validation tests."""
     application = create_app()
 
-    async def override_current_user() -> UserEntity:
-        return UserEntity.create(id=uuid4(), email=Email(value="tester@example.com"), password="hashed-password")
+    async def override_current_user() -> UserModel:
+        return UserModel.create(id=uuid4(), email="tester@example.com", password="hashed-password")
 
-    async def fake_query_call(self: QueryUseCase, dto: QueryDTO) -> QueryResultDTO:
+    async def fake_query_call(self: QueryExecutor, dto: QueryDTO) -> QueryResultDTO:
         conversation_id = dto.conversation_id or uuid4()
         return QueryResultDTO(
             conversation_id=conversation_id,
@@ -48,7 +45,7 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
             ),
         )
 
-    async def fake_ingest_call(self: IngestDocumentUseCase, dto: IngestDocumentDTO) -> DocumentDTO:
+    async def fake_ingest_call(self: DocumentIngester, dto: IngestDocumentDTO) -> DocumentDTO:
         if not dto.title.strip():
             raise InvalidPasswordException("title cannot be empty")
         now = datetime.now(UTC)
@@ -78,8 +75,8 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
         )
 
     application.dependency_overrides[get_current_user] = override_current_user
-    monkeypatch.setattr(QueryUseCase, "__call__", fake_query_call)
-    monkeypatch.setattr(IngestDocumentUseCase, "__call__", fake_ingest_call)
+    monkeypatch.setattr(QueryExecutor, "__call__", fake_query_call)
+    monkeypatch.setattr(DocumentIngester, "__call__", fake_ingest_call)
     return application
 
 

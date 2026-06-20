@@ -1,4 +1,4 @@
-from src.application.services.enrichment.suggested_questions import build_suggested_questions
+from src.documents.services.enrichment.suggested_questions import build_suggested_questions
 
 
 def test_build_suggested_questions_uses_title_tags_and_categories() -> None:

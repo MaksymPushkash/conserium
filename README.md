@@ -36,15 +36,15 @@ User → Uploads content (text, PDF, URL, YouTube video URL, image)
 | Layer | Technology |
 |-------|-----------|
 | **API** | FastAPI, Pydantic, async |
-| **Background Jobs** | Celery, RabbitMQ |
+| **Background Jobs** | Celery, Redis |
 | **Database** | PostgreSQL 16 + pgvector |
 | **Cache** | Redis |
 | **Embeddings** | OpenAI (text-embedding-3-small) |
 | **NLP Models** | HuggingFace (NER, whisper, reranker) |
 | **Orchestration** | LangGraph (multi-agent) |
 | **Observability** | Langfuse, Prometheus, Grafana |
-| **Architecture** | Clean Architecture + CQRS patterns |
-| **DI Container** | Dishka |
+| **Architecture** | Feature-first modular monolith |
+| **Dependency Injection** | FastAPI dependencies |
 | **Async ORM** | SQLAlchemy 2.0+ |
 | **Deployment** | Docker Compose, Nginx, Let's Encrypt |
 
@@ -52,28 +52,40 @@ User → Uploads content (text, PDF, URL, YouTube video URL, image)
 
 ## Architecture
 
-### Layers
+Conserium is a feature-first modular monolith modeled after Polar's backend structure.
+Each package under `src/` owns its HTTP endpoints, schemas, business services,
+repositories, authorization dependencies, and background tasks. Shared framework code
+lives in `src/kit`, SQLAlchemy models live in `src/models`, API composition lives in
+`src/api.py`, and Celery composition lives in `src/worker`.
 
+```text
+src/
+├── api.py                 # Central /api/v1 router
+├── postgres.py            # Async session dependencies and transaction boundary
+├── models/                # Shared SQLAlchemy models
+├── kit/                   # Cross-cutting helpers and external adapter protocols
+├── worker/                # Celery app, queues, registry, and task names
+└── {feature}/
+    ├── endpoints.py       # Thin FastAPI handlers
+    ├── schemas.py         # API and feature data contracts
+    ├── service.py         # Business orchestration
+    ├── repository.py      # SQLAlchemy query ownership
+    ├── auth.py            # Feature authorization dependencies
+    └── tasks.py           # Feature-owned Celery tasks when needed
 ```
-Presentation → API Routes (FastAPI)
-    ↓
-Application → Use Cases, Agents (LangGraph), DTOs
-    ↓
-Domain → Entities, Value Objects, Business Logic
-    ↓
-Infrastructure → SQLAlchemy, Celery, External Services
-```
 
-
+See [Architecture](docs/architecture.md) for module rules, request and worker flows,
+transaction ownership, frontend API contracts, deployment boundaries, and remaining
+structural debt.
 
 ### Workers
 
-Four separate Celery workers for parallel processing:
+Three Celery worker processes and one Celery Beat scheduler run in production:
 
-- **document_processing** — extract → chunk → tag (general pipeline)
-- **embeddings** — OpenAI API calls (rate-limited)
-- **media_processing** — CPU-heavy media/enrichment models (separate Docker image)
-- **cleanup** — periodic maintenance tasks
+- **worker-default** — `document_processing`, `notifications`, and `cleanup` queues
+- **worker-embeddings** — `embeddings` queue for OpenAI embedding work
+- **worker-media** — `media_processing` and `hf_processing` queues for CPU-heavy work
+- **scheduler** — dispatches repo sync, outbox drain, and optional notification jobs
 
 ---
 
@@ -124,7 +136,7 @@ Four separate Celery workers for parallel processing:
 
 ```bash
 # 1) Setup
-docker compose up -d postgres redis rabbitmq
+docker compose up -d postgres redis
 
 # 2) Migrations
 uv run alembic upgrade head
@@ -241,20 +253,22 @@ Status: unit tests, mypy, ruff, and frontend build are expected to pass before d
 - Hybrid retrieval with semantic search, REFRAG packaging, citations, streaming SSE, query persistence, and suggested follow-up questions
 - Chat scopes for all workspace, document, collection, and topic contexts
 - Library search, filters, document details, metadata cleanup, retry/reprocess, delete, bulk move, bulk tags, and bulk Markdown export
-- Collection workspaces with documents, topics, gaps, recent Q&A, recent drafts, recent comparisons, share/export actions, and quick sidebar access
+- Collection workspaces with documents, topics, gaps, recent Q&A, recent drafts, recent comparisons, share/export actions, quick sidebar access, and workspace-scoped filters
+- Team workspaces with workspace-owned collections, inherited roles, member invite/update/remove, owner transfer, shared ingestion, and workspace audit trail
 - Drafts v2 with scoped generation, templates, editable outlines, persisted versions, restore, and Markdown export
 - Compare v2 with selected documents, explicit dimensions, persisted history, evidence tables, synthesis note and decision memo actions
 - Knowledge Graph v2 with filters, node details, graph insights, topic actions, topic rename/merge/pin/ignore, and topic pages
 - Knowledge Gaps v2 with collection/topic coverage, why-detected rationale, missing source types, suggested actions, note creation, and collection integration
 - Learning goals with resources, completion tracking, reminders, and recommended resource refresh
-- Dashboard onboarding, activity timeline, daily digest questions, weekly report summary, and actionable empty states
-- Public collection shares, collection share controls, and public collection pages
+- Review learning foundation with flashcards, spaced-repetition review, quiz generation/history/retry, weak-area feedback, and learning paths with ordered steps
+- Dashboard onboarding, activity timeline, due review metrics, daily digest questions, weekly report summary, and actionable empty states
+- Public collection shares, collection share controls, public collection Ask, shareable answers with citations, public answer pages, owner controls, quotas, and abuse/audit logging
 - GitHub markdown repo sync with include/exclude filters, per-file status, truncated-tree protection, partial raw-file warnings, and durable outbox dispatch
 - Notion OAuth, page search/import, Notion export, and integration settings
 - Public API keys with scopes, hashed storage, last-used tracking, revocation, public ingest, status, collection list, and query endpoints
 - Webhook ingestion with idempotency, provider metadata, collection/tag routing, and intake status/retry records
 - Telegram pairing backend, chat bindings, revocation, and Telegram adapter MVP
-- Browser extension scaffold with API-key validation, collection picker, origin validation, selected-text/current-tab save, and save history
+- Browser extension scaffold with API-key validation, collection picker, origin validation, selected-text/current-tab save, save history, and release/install docs
 - Markdown, PDF, and Notion export
 - Settings for account, privacy, AI preferences, API keys, Notion, Telegram pairing, and browser/bookmarklet capture
 - Command palette with recent actions and global drag-and-drop ingestion
@@ -262,10 +276,10 @@ Status: unit tests, mypy, ruff, and frontend build are expected to pass before d
 
 ### Partially Implemented
 
-- Daily digest and weekly report exist as backend/dashboard product surfaces, but scheduled Telegram/email delivery is not finished
-- Smart connections are planned after ingestion, but related-document surfacing is not complete yet
-- Public collection pages exist, but public "Ask this collection" and analytics/security hardening are still pending
-- Browser extension and Telegram bot are MVP-level; production packaging, richer media support, and delivery/status polish remain
+- Scheduled proactive delivery is still limited: daily digest, weekly report, and reminders exist as product surfaces/state, but Telegram/email delivery is intentionally not a current priority
+- Team workspace polish is underway: core workspaces, roles, owner transfer, shared ingestion, and audit trail exist; remaining work is workspace rename/delete, confirmation UX, richer audit filters, and app-shell workspace switching
+- Browser extension is beyond scaffold but still needs production packaging hardening, broader failure recovery, and release QA
+- Telegram bot remains MVP-level; richer media support and delivery/status polish remain
 
 ---
 
@@ -273,16 +287,17 @@ Status: unit tests, mypy, ruff, and frontend build are expected to pass before d
 
 ### Current Engineering Priorities
 
-- [ ] Finish smart connections after ingestion: related documents, overlap reasons, document detail panel, and Telegram response hints
-- [ ] Finish scheduled proactive delivery: daily digest via Telegram/email, digest history, answer state, weekly report delivery, and goal reminder delivery
-- [ ] Add Review learning foundation: flashcard generation, spaced repetition state, Review page, and document/topic/collection review scopes
-- [ ] Add Quiz mode: generated questions, answer checking against saved sources, results, and weak-area feedback into Goals/Gaps
-- [ ] Add Learning Path mode: ordered plan from topic, current documents, gaps, and goals
-- [ ] Finish public knowledge workflows: public collection Ask, shareable answers with citations, abuse controls, and analytics
-- [ ] Add shared workspace foundation: team ownership, members, roles, shared ingestion, audit trail, and billing boundary
-- [ ] Harden Telegram bot: forwarded files/images/voice, collection selection, status replies, duplicate detection, and production deployment docs
-- [ ] Harden browser extension: packaged release, test coverage, token storage review, save history polish, and failure recovery
+- [x] Smart connections v1: related documents, overlap reasons, document detail panel, and Telegram response hints
+- [x] Review learning foundation: flashcard generation, spaced repetition state, Review page, and document/topic/collection review scopes
+- [x] Quiz mode v1: generated questions, answer checking, quiz history/retry, and weak-area feedback into Goals/Gaps
+- [x] Learning Path mode v1: ordered plan from topic/document/collection, persisted path steps, progress, and regeneration
+- [x] Public knowledge workflows v1: public collection Ask, shareable answers with citations, public answer pages, abuse controls, quotas, and owner management
+- [x] Shared workspace foundation: team ownership, members, roles, shared ingestion, audit trail, team collections, and owner transfer
+- [ ] Finish workspace polish: rename/delete workspace, owner-transfer confirmation, app-shell workspace switcher, audit filters, and stronger upload-route integration tests
+- [ ] Harden browser extension: packaged release, token storage review, failure recovery, save-history polish, and final release QA
 - [ ] Optimize collection workspace aggregate loading and large dashboard queries
+- [ ] Harden Telegram bot when cost allows: forwarded files/images/voice, collection selection, status replies, duplicate detection, and production deployment docs
+- [ ] Finish scheduled proactive delivery when cost allows: daily digest via Telegram/email, digest history, answer state, weekly report delivery, and goal reminder delivery
 
 ### Later Product Work
 
@@ -297,7 +312,7 @@ Status: unit tests, mypy, ruff, and frontend build are expected to pass before d
 
 ## Documentation
 
-
+- [Architecture](docs/architecture.md)
 - [Public API](docs/public-api.md)
 - [Local Development](docs/local-development.md)
 

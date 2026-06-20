@@ -5,19 +5,21 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.application.dtos.compare_dtos import CompareEvidenceRowDTO, CompareListDTO, CompareResultDTO
-from src.application.dtos.query_dtos import QuerySourceDTO
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.compare import (
-    CompareDocumentsUseCase,
-    DeleteCompareResultUseCase,
-    GetCompareResultUseCase,
-    ListCompareResultsUseCase,
+from src.auth.jwt_service import JWTServiceProtocol
+from src.compare.schemas import CompareEvidenceRowDTO, CompareListDTO, CompareResultDTO
+from src.compare.service import (
+    get_compare_llm_service,
+    get_compare_query_executor,
+    get_compare_service,
+    to_compare_documents_response,
+    to_compare_list_response,
 )
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.email import Email
 from src.main import create_app
+from src.models.user import UserModel
+from src.postgres import get_db_read_session, get_db_session
+from src.query.schemas import QuerySourceDTO
+from src.users.repository import UserRepository
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -39,7 +41,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -48,53 +50,57 @@ class _FakeRootContainer:
 
 
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity) -> None:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
 
-class _ReturningCompareUseCase:
+class _ReturningCompareService:
     def __init__(self, result: CompareResultDTO) -> None:
         self._result = result
         self.received: tuple[uuid.UUID, uuid.UUID, uuid.UUID] | None = None
 
-    async def __call__(self, dto):
+    async def compare_documents(self, session, *, query_executor, llm_service, dto):
         self.received = (dto.user_id, dto.left_document_id, dto.right_document_id)
-        return self._result
+        return to_compare_documents_response(self._result)
 
 
-class _ReturningCompareListUseCase:
-    def __init__(self, result: CompareListDTO) -> None:
-        self._result = result
-
-    async def __call__(self, dto):
-        return self._result
-
-
-class _ReturningCompareDetailUseCase:
+class _ReturningCompareHistoryService:
     def __init__(self, result: CompareResultDTO) -> None:
         self._result = result
 
-    async def __call__(self, dto):
-        return self._result
+    async def list_results(self, session, **kwargs):
+        return to_compare_list_response(CompareListDTO(items=[self._result], total=1))
 
+    async def get_result(self, session, **kwargs):
+        return to_compare_documents_response(self._result)
 
-class _DeletingCompareUseCase:
-    async def __call__(self, dto):
+    async def delete_result(self, session, **kwargs):
         return None
+
+
+async def _session_override():
+    yield object()
+
+
+def _dependency_override(dependency: object):
+    def override() -> object:
+        return dependency
+
+    return override
 
 
 def test_compare_documents_route_returns_markdown_and_sources() -> None:
@@ -111,7 +117,7 @@ def test_compare_documents_route_returns_markdown_and_sources() -> None:
         score=0.9,
         used_in_answer=True,
     )
-    use_case = _ReturningCompareUseCase(
+    handler = _ReturningCompareService(
         CompareResultDTO(
             id=uuid.uuid4(),
             user_id=user.id,
@@ -138,13 +144,16 @@ def test_compare_documents_route_returns_markdown_and_sources() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            CompareDocumentsUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
+    app.dependency_overrides[get_compare_service] = _dependency_override(handler)
+    app.dependency_overrides[get_db_session] = _session_override
+    app.dependency_overrides[get_compare_query_executor] = _dependency_override(object())
+    app.dependency_overrides[get_compare_llm_service] = _dependency_override(object())
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -167,7 +176,7 @@ def test_compare_documents_route_returns_markdown_and_sources() -> None:
     assert response.json()["dimensions"] == ["claims", "tradeoffs"]
     assert response.json()["evidence_rows"][0]["dimension"] == "claims"
     assert response.json()["sources"][0]["document_id"] == str(left_document_id)
-    assert use_case.received == (user.id, left_document_id, right_document_id)
+    assert handler.received == (user.id, left_document_id, right_document_id)
 
 
 def test_compare_result_history_routes_return_persisted_results() -> None:
@@ -176,15 +185,15 @@ def test_compare_result_history_routes_return_persisted_results() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            ListCompareResultsUseCase: _ReturningCompareListUseCase(CompareListDTO(items=[result], total=1)),
-            GetCompareResultUseCase: _ReturningCompareDetailUseCase(result),
-            DeleteCompareResultUseCase: _DeletingCompareUseCase(),
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
+    app.dependency_overrides[get_db_read_session] = _session_override
+    app.dependency_overrides[get_db_session] = _session_override
+    app.dependency_overrides[get_compare_service] = _dependency_override(_ReturningCompareHistoryService(result))
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -201,10 +210,10 @@ def test_compare_result_history_routes_return_persisted_results() -> None:
     assert delete_response.status_code == 204
 
 
-def _make_user() -> UserEntity:
-    return UserEntity(
+def _make_user() -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=True,

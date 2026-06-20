@@ -3,10 +3,10 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.services.enrichment.enrichment_service import EnrichmentService
-from src.domain.entities.chunk_entity import ChunkEntity
-from src.domain.entities.document_entity import DocumentEntity
-from src.domain.value_objects.document_type import DocumentType
+from src.documents.services.enrichment.enrichment_service import EnrichmentService
+from src.documents.types import DocumentType
+from src.models.chunk import ChunkModel
+from src.models.document import DocumentModel
 
 
 @pytest.mark.asyncio
@@ -14,7 +14,7 @@ async def test_enrichment_service_with_ner_and_classification():
     """Test enrichment service extracts entities and categories."""
     doc_id = uuid4()
     user_id = uuid4()
-    doc = DocumentEntity.create(
+    doc = DocumentModel.create(
         id=doc_id,
         user_id=user_id,
         title="Test Document",
@@ -23,10 +23,10 @@ async def test_enrichment_service_with_ner_and_classification():
     )
 
     # Mock providers
-    uow = AsyncMock()
-    uow.document_repo.get_by_id.return_value = doc
-    uow.document_repo.get_by_user_id.return_value = []
-    uow.chunk_repo.get_by_document_id.return_value = []
+    repository_session = AsyncMock()
+    repository_session.document_repo.get_by_id.return_value = doc
+    repository_session.document_repo.get_by_user_id.return_value = []
+    repository_session.chunk_repo.get_by_document_id.return_value = []
 
     embedding_provider = AsyncMock()
     embedding_provider.embed_text.return_value = [0.1] * 1536
@@ -45,7 +45,12 @@ async def test_enrichment_service_with_ner_and_classification():
     ]
 
     service = EnrichmentService(
-        uow, embedding_provider, ner_provider=ner_provider, classifier_provider=classifier_provider
+        repository_session,
+        repository_session.document_repo,
+        embedding_provider,
+        repository_session.chunk_repo,
+        ner_provider=ner_provider,
+        classifier_provider=classifier_provider,
     )
 
     result = await service.enrich_document(doc_id)
@@ -64,7 +69,7 @@ async def test_enrichment_service_with_ner_and_classification():
 async def test_enrichment_service_syncs_topics_from_tags():
     doc_id = uuid4()
     user_id = uuid4()
-    doc = DocumentEntity.create(
+    doc = DocumentModel.create(
         id=doc_id,
         user_id=user_id,
         title="Async Python",
@@ -72,10 +77,10 @@ async def test_enrichment_service_syncs_topics_from_tags():
         raw_content="Async Python uses coroutines.",
     )
 
-    uow = AsyncMock()
-    uow.document_repo.get_by_id.return_value = doc
-    uow.document_repo.get_by_user_id.return_value = []
-    uow.chunk_repo.get_by_document_id.return_value = []
+    repository_session = AsyncMock()
+    repository_session.document_repo.get_by_id.return_value = doc
+    repository_session.document_repo.get_by_user_id.return_value = []
+    repository_session.chunk_repo.get_by_document_id.return_value = []
     embedding_provider = AsyncMock()
     embedding_provider.embed_text.return_value = [0.1] * 1536
     classifier_provider = AsyncMock()
@@ -86,8 +91,10 @@ async def test_enrichment_service_syncs_topics_from_tags():
     topic_sync.sync_topics.return_value = ["python"]
 
     service = EnrichmentService(
-        uow,
+        repository_session,
+        repository_session.document_repo,
         embedding_provider,
+        repository_session.chunk_repo,
         classifier_provider=classifier_provider,
         tag_sync=tag_sync,
         topic_sync=topic_sync,
@@ -107,7 +114,7 @@ async def test_enrichment_service_syncs_topics_from_tags():
 async def test_enrichment_service_generates_summary_for_supported_documents():
     doc_id = uuid4()
     user_id = uuid4()
-    doc = DocumentEntity.create(
+    doc = DocumentModel.create(
         id=doc_id,
         user_id=user_id,
         title="Async Python",
@@ -115,16 +122,22 @@ async def test_enrichment_service_generates_summary_for_supported_documents():
         raw_content="Async Python lets programs overlap I/O work. It uses coroutines and an event loop.",
     )
 
-    uow = AsyncMock()
-    uow.document_repo.get_by_id.return_value = doc
-    uow.document_repo.get_by_user_id.return_value = []
-    uow.chunk_repo.get_by_document_id.return_value = []
+    repository_session = AsyncMock()
+    repository_session.document_repo.get_by_id.return_value = doc
+    repository_session.document_repo.get_by_user_id.return_value = []
+    repository_session.chunk_repo.get_by_document_id.return_value = []
     embedding_provider = AsyncMock()
     embedding_provider.embed_text.return_value = [0.1] * 1536
     summary_service = AsyncMock()
     summary_service.summarize_document.return_value = "Async Python overlaps I/O work with coroutines and an event loop."
 
-    service = EnrichmentService(uow, embedding_provider, summary_service=summary_service)
+    service = EnrichmentService(
+        repository_session,
+        repository_session.document_repo,
+        embedding_provider,
+        repository_session.chunk_repo,
+        summary_service=summary_service,
+    )
     result = await service.enrich_document(doc_id)
 
     assert result["summary"] == "Async Python overlaps I/O work with coroutines and an event loop."
@@ -139,7 +152,7 @@ async def test_enrichment_service_generates_summary_for_supported_documents():
 async def test_enrichment_service_skips_summary_for_empty_text():
     doc_id = uuid4()
     user_id = uuid4()
-    doc = DocumentEntity.create(
+    doc = DocumentModel.create(
         id=doc_id,
         user_id=user_id,
         title="Empty",
@@ -147,14 +160,20 @@ async def test_enrichment_service_skips_summary_for_empty_text():
         raw_content=None,
     )
 
-    uow = AsyncMock()
-    uow.document_repo.get_by_id.return_value = doc
-    uow.document_repo.get_by_user_id.return_value = []
-    uow.chunk_repo.get_by_document_id.return_value = []
+    repository_session = AsyncMock()
+    repository_session.document_repo.get_by_id.return_value = doc
+    repository_session.document_repo.get_by_user_id.return_value = []
+    repository_session.chunk_repo.get_by_document_id.return_value = []
     embedding_provider = AsyncMock()
     summary_service = AsyncMock()
 
-    service = EnrichmentService(uow, embedding_provider, summary_service=summary_service)
+    service = EnrichmentService(
+        repository_session,
+        repository_session.document_repo,
+        embedding_provider,
+        repository_session.chunk_repo,
+        summary_service=summary_service,
+    )
     result = await service.enrich_document(doc_id)
 
     assert result["summary"] is None
@@ -169,7 +188,7 @@ async def test_enrichment_service_deduplication():
     user_id = uuid4()
     original_id = uuid4()
 
-    doc = DocumentEntity.create(
+    doc = DocumentModel.create(
         id=doc_id,
         user_id=user_id,
         title="Document A",
@@ -177,7 +196,7 @@ async def test_enrichment_service_deduplication():
         raw_content="Duplicate content here.",
     )
 
-    original = DocumentEntity.create(
+    original = DocumentModel.create(
         id=original_id,
         user_id=user_id,
         title="Document B",
@@ -185,28 +204,33 @@ async def test_enrichment_service_deduplication():
         raw_content="Original content.",
     )
     # Set same embedding to trigger deduplication
-    original._doc_embedding = [0.1] * 1536
+    original.doc_embedding = [0.1] * 1536
 
-    uow = AsyncMock()
-    uow.document_repo.get_by_id.return_value = doc
-    uow.document_repo.get_by_user_id.return_value = [original]
-    uow.chunk_repo.get_by_document_id.return_value = []
+    repository_session = AsyncMock()
+    repository_session.document_repo.get_by_id.return_value = doc
+    repository_session.document_repo.get_by_user_id.return_value = [original]
+    repository_session.chunk_repo.get_by_document_id.return_value = []
 
     embedding_provider = AsyncMock()
     embedding_provider.embed_text.return_value = [0.1] * 1536
 
-    service = EnrichmentService(uow, embedding_provider)
+    service = EnrichmentService(
+        repository_session,
+        repository_session.document_repo,
+        embedding_provider,
+        repository_session.chunk_repo,
+    )
     result = await service.enrich_document(doc_id)
 
     assert result["is_duplicate"] is True
-    uow.document_repo.update.assert_called_once()
+    repository_session.document_repo.update.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_enrichment_service_uses_chunk_embeddings_for_document_embedding():
     doc_id = uuid4()
     user_id = uuid4()
-    doc = DocumentEntity.create(
+    doc = DocumentModel.create(
         id=doc_id,
         user_id=user_id,
         title="Long Document",
@@ -214,14 +238,14 @@ async def test_enrichment_service_uses_chunk_embeddings_for_document_embedding()
         raw_content="Long content",
     )
     chunks = [
-        ChunkEntity.create(
+        ChunkModel.create(
             id=uuid4(),
             document_id=doc_id,
             content="first",
             embedding=[0.2] * 1536,
             chunk_index=0,
         ),
-        ChunkEntity.create(
+        ChunkModel.create(
             id=uuid4(),
             document_id=doc_id,
             content="second",
@@ -230,13 +254,18 @@ async def test_enrichment_service_uses_chunk_embeddings_for_document_embedding()
         ),
     ]
 
-    uow = AsyncMock()
-    uow.document_repo.get_by_id.return_value = doc
-    uow.document_repo.get_by_user_id.return_value = []
-    uow.chunk_repo.get_by_document_id.return_value = chunks
+    repository_session = AsyncMock()
+    repository_session.document_repo.get_by_id.return_value = doc
+    repository_session.document_repo.get_by_user_id.return_value = []
+    repository_session.chunk_repo.get_by_document_id.return_value = chunks
     embedding_provider = AsyncMock()
 
-    service = EnrichmentService(uow, embedding_provider)
+    service = EnrichmentService(
+        repository_session,
+        repository_session.document_repo,
+        embedding_provider,
+        repository_session.chunk_repo,
+    )
     await service.enrich_document(doc_id)
 
     embedding_provider.embed_text.assert_not_called()
@@ -247,7 +276,7 @@ async def test_enrichment_service_uses_chunk_embeddings_for_document_embedding()
 async def test_enrichment_service_skips_large_full_text_embedding_without_chunks(monkeypatch):
     doc_id = uuid4()
     user_id = uuid4()
-    doc = DocumentEntity.create(
+    doc = DocumentModel.create(
         id=doc_id,
         user_id=user_id,
         title="Large Document",
@@ -255,18 +284,23 @@ async def test_enrichment_service_skips_large_full_text_embedding_without_chunks
         raw_content="x" * 100,
     )
 
-    uow = AsyncMock()
-    uow.document_repo.get_by_id.return_value = doc
-    uow.document_repo.get_by_user_id.return_value = []
-    uow.chunk_repo.get_by_document_id.return_value = []
+    repository_session = AsyncMock()
+    repository_session.document_repo.get_by_id.return_value = doc
+    repository_session.document_repo.get_by_user_id.return_value = []
+    repository_session.chunk_repo.get_by_document_id.return_value = []
     embedding_provider = AsyncMock()
 
     monkeypatch.setattr(
-        "src.application.services.enrichment.document_embedding_service.settings.ENRICHMENT_FULL_TEXT_EMBEDDING_MAX_CHARS",
+        "src.documents.services.enrichment.document_embedding_service.settings.ENRICHMENT_FULL_TEXT_EMBEDDING_MAX_CHARS",
         10,
     )
 
-    service = EnrichmentService(uow, embedding_provider)
+    service = EnrichmentService(
+        repository_session,
+        repository_session.document_repo,
+        embedding_provider,
+        repository_session.chunk_repo,
+    )
     await service.enrich_document(doc_id)
 
     embedding_provider.embed_text.assert_not_called()

@@ -5,7 +5,18 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.application.dtos.draft_dtos import (
+from src.auth.jwt_service import JWTServiceProtocol
+from src.drafts.operations import (
+    DraftGenerator,
+    delete_draft,
+    generate_draft_outline,
+    get_draft,
+    list_draft_templates,
+    list_draft_versions,
+    list_drafts,
+    restore_draft_version,
+)
+from src.drafts.schemas import (
     DraftDetailDTO,
     DraftListDTO,
     DraftListItemDTO,
@@ -14,22 +25,21 @@ from src.application.dtos.draft_dtos import (
     DraftTemplateDTO,
     DraftVersionDTO,
 )
-from src.application.dtos.query_dtos import QuerySourceDTO
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.drafts import (
-    DeleteDraftUseCase,
-    GenerateDraftOutlineUseCase,
-    GenerateDraftUseCase,
-    GetDraftUseCase,
-    ListDraftsUseCase,
-    ListDraftTemplatesUseCase,
-    ListDraftVersionsUseCase,
-    RestoreDraftVersionUseCase,
+from src.drafts.service import (
+    get_draft_service,
+    to_draft_detail_response,
+    to_draft_generate_dto,
+    to_draft_list_response,
+    to_draft_outline_response,
+    to_draft_response,
+    to_draft_template_list_response,
+    to_draft_version_list_response,
 )
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.email import Email
 from src.main import create_app
+from src.models.user import UserModel
+from src.query.schemas import QuerySourceDTO
+from src.users.repository import UserRepository
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -51,7 +61,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -60,25 +70,25 @@ class _FakeRootContainer:
 
 
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity) -> None:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
 
-class _ReturningDraftUseCase:
+class _ReturningDraftService:
     def __init__(self, result: DraftResultDTO) -> None:
         self._result = result
         self.received = None
@@ -88,7 +98,7 @@ class _ReturningDraftUseCase:
         return self._result
 
 
-class _ReturningTemplatesUseCase:
+class _ReturningTemplatesService:
     async def __call__(self) -> list[DraftTemplateDTO]:
         return [
             DraftTemplateDTO(
@@ -101,7 +111,7 @@ class _ReturningTemplatesUseCase:
         ]
 
 
-class _ReturningOutlineUseCase:
+class _ReturningOutlineService:
     def __init__(self) -> None:
         self.received = None
 
@@ -116,7 +126,7 @@ class _ReturningOutlineUseCase:
         )
 
 
-class _ReturningDraftListUseCase:
+class _ReturningDraftListService:
     def __init__(self, result: DraftListDTO) -> None:
         self._result = result
         self.received: dict[str, object] = {}
@@ -126,7 +136,7 @@ class _ReturningDraftListUseCase:
         return self._result
 
 
-class _ReturningDraftDetailUseCase:
+class _ReturningDraftDetailService:
     def __init__(self, result: DraftDetailDTO) -> None:
         self._result = result
         self.received: dict[str, object] = {}
@@ -136,7 +146,7 @@ class _ReturningDraftDetailUseCase:
         return self._result
 
 
-class _ReturningDraftVersionsUseCase:
+class _ReturningDraftVersionsService:
     def __init__(self, result: list[DraftVersionDTO]) -> None:
         self._result = result
         self.received: dict[str, object] = {}
@@ -146,7 +156,7 @@ class _ReturningDraftVersionsUseCase:
         return self._result
 
 
-class _DeletingDraftUseCase:
+class _DeletingDraftService:
     def __init__(self) -> None:
         self.received: dict[str, object] = {}
 
@@ -154,10 +164,49 @@ class _DeletingDraftUseCase:
         self.received = kwargs
 
 
-def _make_user() -> UserEntity:
-    return UserEntity(
+class _DraftServiceFromServices:
+    def __init__(self, dependencies: Mapping[type[object], object]) -> None:
+        self._dependencies = dependencies
+
+    async def list(self, *, user_id: uuid.UUID, collection_id: uuid.UUID | None, limit: int, offset: int):
+        handler = self._dependencies[list_drafts]
+        return to_draft_list_response(
+            await handler(user_id=user_id, collection_id=collection_id, limit=limit, offset=offset)
+        )
+
+    async def list_templates(self):
+        handler = self._dependencies[list_draft_templates]
+        return to_draft_template_list_response(await handler())
+
+    async def generate_outline(self, *, user_id: uuid.UUID, body: object):
+        handler = self._dependencies[generate_draft_outline]
+        return to_draft_outline_response(await handler(to_draft_generate_dto(body, user_id)))
+
+    async def generate(self, *, user_id: uuid.UUID, body: object):
+        handler = self._dependencies[DraftGenerator]
+        return to_draft_response(await handler(to_draft_generate_dto(body, user_id)))
+
+    async def get(self, *, user_id: uuid.UUID, draft_id: uuid.UUID):
+        handler = self._dependencies[get_draft]
+        return to_draft_detail_response(await handler(user_id=user_id, draft_id=draft_id))
+
+    async def list_versions(self, *, user_id: uuid.UUID, draft_id: uuid.UUID):
+        handler = self._dependencies[list_draft_versions]
+        return to_draft_version_list_response(await handler(user_id=user_id, draft_id=draft_id))
+
+    async def restore_version(self, *, user_id: uuid.UUID, draft_id: uuid.UUID, version_id: uuid.UUID):
+        handler = self._dependencies[restore_draft_version]
+        return to_draft_detail_response(await handler(user_id=user_id, draft_id=draft_id, version_id=version_id))
+
+    async def delete(self, *, user_id: uuid.UUID, draft_id: uuid.UUID) -> None:
+        handler = self._dependencies[delete_draft]
+        await handler(user_id=user_id, draft_id=draft_id)
+
+
+def _make_user() -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=True,
@@ -179,7 +228,7 @@ def test_generate_draft_route_returns_markdown_and_sources() -> None:
         score=0.9,
         used_in_answer=True,
     )
-    use_case = _ReturningDraftUseCase(
+    handler = _ReturningDraftService(
         DraftResultDTO(
             draft_id=uuid.uuid4(),
             version_id=uuid.uuid4(),
@@ -192,17 +241,7 @@ def test_generate_draft_route_returns_markdown_and_sources() -> None:
             gaps=[],
         )
     )
-    jwt_service = MagicMock()
-    jwt_service.verify_access_token.return_value = user.id
-    app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
-        {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            GenerateDraftUseCase: use_case,
-        }
-    )
-    client = TestClient(app, raise_server_exceptions=False)
+    client = _client(user, {DraftGenerator: handler})
 
     try:
         response = client.post(
@@ -222,24 +261,14 @@ def test_generate_draft_route_returns_markdown_and_sources() -> None:
     assert response.json()["scope_type"] == "topic"
     assert response.json()["sources"][0]["document_id"] == str(document_id)
     assert response.json()["gaps"] == []
-    assert use_case.received is not None
-    assert use_case.received.prompt == "Write about Python generators"
-    assert use_case.received.topic == "Python"
+    assert handler.received is not None
+    assert handler.received.prompt == "Write about Python generators"
+    assert handler.received.topic == "Python"
 
 
 def test_list_draft_templates_route_returns_structured_templates() -> None:
     user = _make_user()
-    jwt_service = MagicMock()
-    jwt_service.verify_access_token.return_value = user.id
-    app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
-        {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            ListDraftTemplatesUseCase: _ReturningTemplatesUseCase(),
-        }
-    )
-    client = TestClient(app, raise_server_exceptions=False)
+    client = _client(user, {list_draft_templates: _ReturningTemplatesService()})
 
     try:
         response = client.get("/api/v1/drafts/templates", headers={"Authorization": "Bearer access-token"})
@@ -253,18 +282,8 @@ def test_list_draft_templates_route_returns_structured_templates() -> None:
 
 def test_generate_draft_outline_route_forwards_scope() -> None:
     user = _make_user()
-    use_case = _ReturningOutlineUseCase()
-    jwt_service = MagicMock()
-    jwt_service.verify_access_token.return_value = user.id
-    app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
-        {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            GenerateDraftOutlineUseCase: use_case,
-        }
-    )
-    client = TestClient(app, raise_server_exceptions=False)
+    handler = _ReturningOutlineService()
+    client = _client(user, {generate_draft_outline: handler})
 
     try:
         response = client.post(
@@ -277,15 +296,15 @@ def test_generate_draft_outline_route_forwards_scope() -> None:
 
     assert response.status_code == 200
     assert response.json()["sections"] == ["Context", "Key points"]
-    assert use_case.received is not None
-    assert use_case.received.scope_type == "collection"
+    assert handler.received is not None
+    assert handler.received.scope_type == "collection"
 
 
 def test_list_drafts_route_returns_recent_drafts() -> None:
     user = _make_user()
     collection_id = uuid.uuid4()
     draft_id = uuid.uuid4()
-    use_case = _ReturningDraftListUseCase(
+    handler = _ReturningDraftListService(
         DraftListDTO(
             items=[
                 DraftListItemDTO(
@@ -305,7 +324,7 @@ def test_list_drafts_route_returns_recent_drafts() -> None:
             total=1,
         )
     )
-    client = _client(user, {ListDraftsUseCase: use_case})
+    client = _client(user, {list_drafts: handler})
 
     try:
         response = client.get(f"/api/v1/drafts?collection_id={collection_id}&limit=5", headers={"Authorization": "Bearer access-token"})
@@ -314,7 +333,7 @@ def test_list_drafts_route_returns_recent_drafts() -> None:
 
     assert response.status_code == 200
     assert response.json()["items"][0]["id"] == str(draft_id)
-    assert use_case.received == {"user_id": user.id, "collection_id": collection_id, "limit": 5, "offset": 0}
+    assert handler.received == {"user_id": user.id, "collection_id": collection_id, "limit": 5, "offset": 0}
 
 
 def test_get_draft_and_restore_version_routes_enforce_user_context() -> None:
@@ -322,15 +341,15 @@ def test_get_draft_and_restore_version_routes_enforce_user_context() -> None:
     draft_id = uuid.uuid4()
     version_id = uuid.uuid4()
     detail = _draft_detail(draft_id=draft_id, version_id=version_id)
-    get_use_case = _ReturningDraftDetailUseCase(detail)
-    restore_use_case = _ReturningDraftDetailUseCase(detail)
-    versions_use_case = _ReturningDraftVersionsUseCase([_draft_version(draft_id=draft_id, version_id=version_id)])
+    get_handler = _ReturningDraftDetailService(detail)
+    restore_service = _ReturningDraftDetailService(detail)
+    versions_service = _ReturningDraftVersionsService([_draft_version(draft_id=draft_id, version_id=version_id)])
     client = _client(
         user,
         {
-            GetDraftUseCase: get_use_case,
-            RestoreDraftVersionUseCase: restore_use_case,
-            ListDraftVersionsUseCase: versions_use_case,
+            get_draft: get_handler,
+            restore_draft_version: restore_service,
+            list_draft_versions: versions_service,
         },
     )
 
@@ -344,16 +363,16 @@ def test_get_draft_and_restore_version_routes_enforce_user_context() -> None:
     assert get_response.status_code == 200
     assert versions_response.status_code == 200
     assert restore_response.status_code == 200
-    assert get_use_case.received == {"user_id": user.id, "draft_id": draft_id}
-    assert versions_use_case.received == {"user_id": user.id, "draft_id": draft_id}
-    assert restore_use_case.received == {"user_id": user.id, "draft_id": draft_id, "version_id": version_id}
+    assert get_handler.received == {"user_id": user.id, "draft_id": draft_id}
+    assert versions_service.received == {"user_id": user.id, "draft_id": draft_id}
+    assert restore_service.received == {"user_id": user.id, "draft_id": draft_id, "version_id": version_id}
 
 
 def test_delete_draft_route_forwards_user_context() -> None:
     user = _make_user()
     draft_id = uuid.uuid4()
-    use_case = _DeletingDraftUseCase()
-    client = _client(user, {DeleteDraftUseCase: use_case})
+    handler = _DeletingDraftService()
+    client = _client(user, {delete_draft: handler})
 
     try:
         response = client.delete(f"/api/v1/drafts/{draft_id}", headers={"Authorization": "Bearer access-token"})
@@ -361,20 +380,21 @@ def test_delete_draft_route_forwards_user_context() -> None:
         client.close()
 
     assert response.status_code == 204
-    assert use_case.received == {"user_id": user.id, "draft_id": draft_id}
+    assert handler.received == {"user_id": user.id, "draft_id": draft_id}
 
 
-def _client(user: UserEntity, dependencies: Mapping[type[object], object]) -> TestClient:
+def _client(user: UserModel, dependencies: Mapping[type[object], object]) -> TestClient:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
             **dependencies,
         }
-    )
+    )._dependencies)
+    app.dependency_overrides[get_draft_service] = lambda: _DraftServiceFromServices(dependencies)
     return TestClient(app, raise_server_exceptions=False)
 
 

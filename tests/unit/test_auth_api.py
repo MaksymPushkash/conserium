@@ -6,24 +6,27 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
-from src.application.dtos.auth_dtos import TokenResponseDTO
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.auth.complete_oauth_login_use_case import CompleteOAuthLoginUseCase
-from src.application.use_cases.auth.login_use_case import LoginUserUseCase
-from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
-from src.application.use_cases.auth.register_use_case import RegisterUserUseCase
-from src.application.use_cases.auth.update_user_preferences_use_case import UpdateUserPreferencesUseCase
-from src.domain.entities.user_entity import UserEntity
-from src.domain.exceptions import (
+from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.oauth_clients import GoogleOAuthClient
+from src.auth.schemas import TokenResponseDTO
+from src.auth.service import (
+    OAuthLoginCompleter,
+    RefreshTokenRotator,
+    UserAuthenticator,
+    UserPreferencesUpdater,
+    UserRegistrar,
+)
+from src.kit.exceptions import (
     EmailAlreadyExistsException,
     InvalidCredentialsException,
     InvalidTokenException,
     OAuthAuthenticationException,
 )
-from src.domain.value_objects.email import Email
-from src.infrastructure.auth.oauth_clients import GoogleOAuthClient
 from src.main import _cors_origins, create_app
+from src.models.user import UserModel
+from src.users.repository import UserRepository
+from src.users.schemas import UserPreferencesResponse
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -45,7 +48,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -53,7 +56,7 @@ class _FakeRootContainer:
         return _FakeScopeContext(self._dependencies)
 
 
-class _RaisingUseCase:
+class _RaisingService:
     def __init__(self, exc: Exception) -> None:
         self._exc = exc
 
@@ -61,54 +64,72 @@ class _RaisingUseCase:
         raise self._exc
 
 
-class _SuccessfulUseCase:
+class _SuccessfulService:
     async def __call__(self, dto: object) -> TokenResponseDTO:
         return TokenResponseDTO(access_token="api-access-token", refresh_token="api-refresh-token")
 
 
-class _SuccessfulOAuthUseCase:
+class _SuccessfulOAuthService:
     async def __call__(self, dto: object, provider: object) -> TokenResponseDTO:
         return TokenResponseDTO(access_token="oauth-access-token", refresh_token="oauth-refresh-token")
 
 
-class _FailingOAuthUseCase:
+class _FailingOAuthService:
     async def __call__(self, dto: object, provider: object) -> TokenResponseDTO:
         raise OAuthAuthenticationException("no_email", "oauth provider did not return an email")
 
 
-class _PreferencesUseCase:
-    def __init__(self, user: UserEntity) -> None:
+class _PreferencesService:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
         self.received_dto: object | None = None
 
-    async def __call__(self, dto: object) -> UserEntity:
+    async def __call__(self, dto: object) -> UserModel:
         self.received_dto = dto
         return self._user
 
 
+class _PreferencesService:
+    def __init__(self, response: UserPreferencesResponse) -> None:
+        self._response = response
+        self.received_user_id: uuid.UUID | None = None
+        self.received_preferences: dict[str, object] | None = None
+
+    async def update_preferences(
+        self,
+        session: object,
+        *,
+        user_id: uuid.UUID,
+        preferences: dict[str, object],
+    ) -> UserPreferencesResponse:
+        self.received_user_id = user_id
+        self.received_preferences = preferences
+        return self._response
+
+
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity | None) -> None:
+    def __init__(self, user: UserModel | None) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity | None) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel | None) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
 
-def _make_user(*, is_active: bool = True, preferences: dict[str, object] | None = None) -> UserEntity:
-    return UserEntity(
+def _make_user(*, is_active: bool = True, preferences: dict[str, object] | None = None) -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=is_active,
@@ -126,8 +147,12 @@ def _make_jwt_service(user_id: uuid.UUID) -> MagicMock:
 
 def _make_client(dependencies: Mapping[type[object], object]) -> TestClient:
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(dependencies)
+    apply_dependency_overrides(app, _FakeDependencyContainer(dependencies)._dependencies)
     return TestClient(app, raise_server_exceptions=False)
+
+
+async def _fake_session() -> object:
+    yield object()
 
 
 def test_debug_cors_includes_local_frontend_origins(monkeypatch: MonkeyPatch) -> None:
@@ -144,7 +169,7 @@ def test_debug_cors_includes_local_frontend_origins(monkeypatch: MonkeyPatch) ->
 def test_refresh_route_maps_invalid_token_exception() -> None:
     client = _make_client(
         {
-            RefreshTokenUseCase: _RaisingUseCase(InvalidTokenException("refresh token invalid")),
+            RefreshTokenRotator: _RaisingService(InvalidTokenException("refresh token invalid")),
         }
     )
 
@@ -160,7 +185,7 @@ def test_refresh_route_maps_invalid_token_exception() -> None:
 def test_login_route_maps_invalid_credentials_exception() -> None:
     client = _make_client(
         {
-            LoginUserUseCase: _RaisingUseCase(InvalidCredentialsException("invalid email or password")),
+            UserAuthenticator: _RaisingService(InvalidCredentialsException("invalid email or password")),
         }
     )
 
@@ -176,7 +201,7 @@ def test_login_route_maps_invalid_credentials_exception() -> None:
 def test_register_route_maps_duplicate_email_exception() -> None:
     client = _make_client(
         {
-            RegisterUserUseCase: _RaisingUseCase(EmailAlreadyExistsException("user@example.com already registered")),
+            UserRegistrar: _RaisingService(EmailAlreadyExistsException("user@example.com already registered")),
         }
     )
 
@@ -193,7 +218,7 @@ def test_register_route_maps_duplicate_email_exception() -> None:
 
 
 def test_register_route_sets_refresh_cookie_without_json_refresh_token() -> None:
-    client = _make_client({RegisterUserUseCase: _SuccessfulUseCase()})
+    client = _make_client({UserRegistrar: _SuccessfulService()})
 
     try:
         response = client.post(
@@ -213,7 +238,7 @@ def test_register_route_sets_refresh_cookie_without_json_refresh_token() -> None
 
 
 def test_login_route_sets_refresh_cookie_without_json_refresh_token() -> None:
-    client = _make_client({LoginUserUseCase: _SuccessfulUseCase()})
+    client = _make_client({UserAuthenticator: _SuccessfulService()})
 
     try:
         response = client.post("/api/v1/auth/login", json={"email": "user@example.com", "password": "securepass123"})
@@ -229,8 +254,8 @@ def test_login_route_sets_refresh_cookie_without_json_refresh_token() -> None:
     assert "HttpOnly" in response.headers["set-cookie"]
 
 
-def test_refresh_route_returns_token_response_from_injected_use_case() -> None:
-    client = _make_client({RefreshTokenUseCase: _SuccessfulUseCase()})
+def test_refresh_route_returns_token_response_from_injected_service() -> None:
+    client = _make_client({RefreshTokenRotator: _SuccessfulService()})
 
     try:
         response = client.post("/api/v1/auth/refresh", json={"refresh_token": "valid-refresh-token"})
@@ -246,8 +271,8 @@ def test_refresh_route_returns_token_response_from_injected_use_case() -> None:
 
 
 def test_refresh_route_accepts_refresh_token_cookie() -> None:
-    use_case = _SuccessfulUseCase()
-    client = _make_client({RefreshTokenUseCase: use_case})
+    handler = _SuccessfulService()
+    client = _make_client({RefreshTokenRotator: handler})
 
     try:
         response = client.post(
@@ -265,8 +290,8 @@ def test_get_me_returns_401_for_deleted_user() -> None:
     user_id = uuid.uuid4()
     client = _make_client(
         {
-            IJWTService: _make_jwt_service(user_id),
-            IUnitOfWork: _FakeUnitOfWork(user=None),
+            JWTServiceProtocol: _make_jwt_service(user_id),
+            UserRepository: _FakeRepositorySession(user=None),
         }
     )
 
@@ -283,8 +308,8 @@ def test_get_me_returns_403_for_inactive_user() -> None:
     user_id = uuid.uuid4()
     client = _make_client(
         {
-            IJWTService: _make_jwt_service(user_id),
-            IUnitOfWork: _FakeUnitOfWork(user=_make_user(is_active=False)),
+            JWTServiceProtocol: _make_jwt_service(user_id),
+            UserRepository: _FakeRepositorySession(user=_make_user(is_active=False)),
         }
     )
 
@@ -301,8 +326,8 @@ def test_get_me_returns_401_without_authorization_header() -> None:
     user_id = uuid.uuid4()
     client = _make_client(
         {
-            IJWTService: _make_jwt_service(user_id),
-            IUnitOfWork: _FakeUnitOfWork(_make_user()),
+            JWTServiceProtocol: _make_jwt_service(user_id),
+            UserRepository: _FakeRepositorySession(_make_user()),
         }
     )
 
@@ -325,8 +350,8 @@ def test_get_preferences_returns_current_user_preferences() -> None:
     )
     client = _make_client(
         {
-            IJWTService: _make_jwt_service(user.id),
-            IUnitOfWork: _FakeUnitOfWork(user),
+            JWTServiceProtocol: _make_jwt_service(user.id),
+            UserRepository: _FakeRepositorySession(user),
         }
     )
 
@@ -343,7 +368,7 @@ def test_get_preferences_returns_current_user_preferences() -> None:
     }
 
 
-def test_update_preferences_returns_saved_preferences() -> None:
+def test_update_preferences_returns_saved_preferences(monkeypatch: MonkeyPatch) -> None:
     user = _make_user(
         preferences={
             "appearance": {"theme": "dark"},
@@ -351,14 +376,21 @@ def test_update_preferences_returns_saved_preferences() -> None:
             "ai": {"answer_language": "match_question", "retrieval_depth": "focused"},
         }
     )
-    use_case = _PreferencesUseCase(user)
-    client = _make_client(
+    service = _PreferencesService(UserPreferencesResponse.model_validate(user.preferences))
+    import src.users.endpoints as user_endpoints
+    from src.postgres import get_db_session
+
+    monkeypatch.setattr(user_endpoints, "users", service)
+    app = create_app()
+    app.dependency_overrides[get_db_session] = _fake_session
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: _make_jwt_service(user.id),
-            IUnitOfWork: _FakeUnitOfWork(user),
-            UpdateUserPreferencesUseCase: use_case,
+            JWTServiceProtocol: _make_jwt_service(user.id),
+            UserRepository: _FakeRepositorySession(user),
+            UserPreferencesUpdater: _PreferencesService(user),
         }
-    )
+    )._dependencies)
+    client = TestClient(app, raise_server_exceptions=False)
 
     try:
         response = client.patch(
@@ -375,7 +407,8 @@ def test_update_preferences_returns_saved_preferences() -> None:
 
     assert response.status_code == 200
     assert response.json()["ai"]["retrieval_depth"] == "focused"
-    assert use_case.received_dto is not None
+    assert service.received_user_id == user.id
+    assert service.received_preferences is not None
 
 
 def test_google_start_uses_forwarded_origin_and_sets_state_cookie() -> None:
@@ -406,7 +439,7 @@ def test_google_callback_redirects_access_token_in_fragment_and_refresh_token_co
     client = _make_client(
         {
             GoogleOAuthClient: GoogleOAuthClient(client_id="google-client", client_secret="google-secret"),
-            CompleteOAuthLoginUseCase: _SuccessfulOAuthUseCase(),
+            OAuthLoginCompleter: _SuccessfulOAuthService(),
         }
     )
 
@@ -435,13 +468,13 @@ def test_google_callback_can_include_refresh_token_in_fragment_for_legacy_fronte
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.presentation.oauth_redirects.settings.OAUTH_INCLUDE_REFRESH_TOKEN_IN_FRAGMENT",
+        "src.auth.oauth_redirects.settings.OAUTH_INCLUDE_REFRESH_TOKEN_IN_FRAGMENT",
         True,
     )
     client = _make_client(
         {
             GoogleOAuthClient: GoogleOAuthClient(client_id="google-client", client_secret="google-secret"),
-            CompleteOAuthLoginUseCase: _SuccessfulOAuthUseCase(),
+            OAuthLoginCompleter: _SuccessfulOAuthService(),
         }
     )
 
@@ -462,7 +495,7 @@ def test_google_callback_redirects_invalid_state_error() -> None:
     client = _make_client(
         {
             GoogleOAuthClient: GoogleOAuthClient(client_id="google-client", client_secret="google-secret"),
-            CompleteOAuthLoginUseCase: _SuccessfulOAuthUseCase(),
+            OAuthLoginCompleter: _SuccessfulOAuthService(),
         }
     )
 
@@ -483,7 +516,7 @@ def test_google_callback_redirects_oauth_error_code() -> None:
     client = _make_client(
         {
             GoogleOAuthClient: GoogleOAuthClient(client_id="google-client", client_secret="google-secret"),
-            CompleteOAuthLoginUseCase: _FailingOAuthUseCase(),
+            OAuthLoginCompleter: _FailingOAuthService(),
         }
     )
 

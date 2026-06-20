@@ -2,18 +2,18 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, cast
 
-from src.application.agents.query.graph_runner import QueryGraphRunner
-from src.application.agents.query.state import ConseriumQueryState, QueryType
-from src.application.agents.query.streaming_graph_runner import StreamingQueryGraphRunner
+from src.query.agents.graph_runner import QueryGraphRunner
+from src.query.agents.state import ConseriumQueryState, QueryType
+from src.query.agents.streaming_graph_runner import StreamingQueryGraphRunner
 
 if TYPE_CHECKING:
-    from src.application.agents.query.conversation_context_agent import ConversationContextAgent
-    from src.application.agents.query.eval_agent import EvalAgent
-    from src.application.agents.query.refrag_context_agent import RefragContextAgent
-    from src.application.agents.query.retrieval_agent import RetrievalAgent
-    from src.application.agents.query.router_agent import RouterAgent
-    from src.application.agents.query.streaming_synthesis_agent import StreamingSynthesisAgent
-    from src.application.agents.query.synthesis_agent import SynthesisAgent
+    from src.query.agents.conversation_context_agent import ConversationContextAgent
+    from src.query.agents.eval_agent import EvalAgent
+    from src.query.agents.refrag_context_agent import RefragContextAgent
+    from src.query.agents.retrieval_agent import RetrievalAgent
+    from src.query.agents.router_agent import RouterAgent
+    from src.query.agents.streaming_synthesis_agent import StreamingSynthesisAgent
+    from src.query.agents.synthesis_agent import SynthesisAgent
 
 
 class _Router:

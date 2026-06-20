@@ -8,8 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.ports.cache.document_status_cache import DocumentStatusDTO
-from src.infrastructure.cache.document_status_cache import RedisDocumentStatusCache
+from src.documents.status_cache import DocumentStatusDTO, RedisDocumentStatusCache
 
 
 def _make_cache(redis_mock: AsyncMock) -> RedisDocumentStatusCache:
@@ -95,7 +94,7 @@ class TestRedisDocumentStatusCache:
         redis.delete.assert_awaited_once_with(f"doc:status:{doc_id}")
 
     async def test_set_uses_configured_ttl(self, redis: AsyncMock) -> None:
-        from src.core.config import settings
+        from src.settings import settings
 
         cache = _make_cache(redis)
 

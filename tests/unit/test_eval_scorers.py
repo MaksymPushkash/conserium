@@ -1,15 +1,15 @@
 from typing import TYPE_CHECKING, cast
 
-from src.application.services.evaluation.heuristic_ragas_scorer import HeuristicRagasScorer
-from src.application.services.evaluation.ragas_eval_scorer import RagasEvalScorer
-from src.core.config import settings
-from src.core.providers.query import QueryProvider
+from src.query.service import get_eval_scorer
+from src.query.services.evaluation.heuristic_ragas_scorer import HeuristicRagasScorer
+from src.query.services.evaluation.ragas_eval_scorer import RagasEvalScorer
+from src.settings import settings
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-    from src.application.dtos.refrag_dtos import RefragContextPackage
-    from src.application.ports.evaluation.eval_scorer import IEvalScorer
+    from src.kit.ports.evaluation.eval_scorer import IEvalScorer
+    from src.query.schemas import RefragContextPackage
 
 
 class _FallbackScorer:
@@ -17,18 +17,18 @@ class _FallbackScorer:
         return {"faithfulness": 0.1, "answer_relevancy": 0.2, "context_recall": 0.3}
 
 
-def test_query_provider_uses_deterministic_scorer_by_default(monkeypatch: "MonkeyPatch") -> None:
+def test_eval_scorer_dependency_uses_deterministic_scorer_by_default(monkeypatch: "MonkeyPatch") -> None:
     monkeypatch.setattr(settings, "EVAL_SCORER", "heuristic")
 
-    scorer = QueryProvider().get_eval_scorer()
+    scorer = get_eval_scorer()
 
     assert isinstance(scorer, HeuristicRagasScorer)
 
 
-def test_query_provider_uses_ragas_adapter_when_configured(monkeypatch: "MonkeyPatch") -> None:
+def test_eval_scorer_dependency_uses_ragas_adapter_when_configured(monkeypatch: "MonkeyPatch") -> None:
     monkeypatch.setattr(settings, "EVAL_SCORER", "ragas")
 
-    scorer = QueryProvider().get_eval_scorer()
+    scorer = get_eval_scorer()
 
     assert isinstance(scorer, RagasEvalScorer)
 

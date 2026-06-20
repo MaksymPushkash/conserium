@@ -4,9 +4,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from jose import jwt
 
-from src.core.config import settings
-from src.domain.exceptions import InvalidTokenException
-from src.infrastructure.auth.jwt_service import JWTService
+from src.auth.jwt_service import JWTService
+from src.kit.exceptions import InvalidTokenException
+from src.settings import settings
 
 
 def test_verify_refresh_token_accepts_refresh_token() -> None:

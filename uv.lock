@@ -591,7 +591,6 @@ dependencies = [
     { name = "bcrypt" },
     { name = "boto3" },
     { name = "celery" },
-    { name = "dishka" },
     { name = "fastapi" },
     { name = "greenlet" },
     { name = "httptools" },
@@ -645,7 +644,6 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.35.0" },
     { name = "celery", specifier = ">=5.6.3" },
     { name = "datasets", marker = "extra == 'eval'", specifier = ">=4.4.1" },
-    { name = "dishka", specifier = ">=1.10.0" },
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "greenlet", specifier = ">=3.4.0" },
     { name = "httptools", specifier = ">=0.7.1" },
@@ -985,15 +983,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/81/e1/56027a71e31b02ddc53c7d65b01e68edf64dea2932122fe7746a516f75d5/dill-0.4.1.tar.gz", hash = "sha256:423092df4182177d4d8ba8290c8a5b640c66ab35ec7da59ccfa00f6fa3eea5fa", size = 187315, upload-time = "2026-01-19T02:36:56.85Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/77/dc8c558f7593132cf8fefec57c4f60c83b16941c574ac5f619abb3ae7933/dill-0.4.1-py3-none-any.whl", hash = "sha256:1e1ce33e978ae97fcfcff5638477032b801c46c7c65cf717f95fbc2248f79a9d", size = 120019, upload-time = "2026-01-19T02:36:55.663Z" },
-]
-
-[[package]]
-name = "dishka"
-version = "1.10.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b3/82/f0b47d43ed57a071b86122c941769f9a822dfbd0ba01448a0b5da1a2f2a6/dishka-1.10.0.tar.gz", hash = "sha256:cb4f2603e05195f352a8d2f0eff1ea726a3b51a6310586d5d6d8fd55e9b02ef4", size = 281742, upload-time = "2026-04-18T21:27:04.829Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/34/15/75f92305d907677d56b337589e11e1897259a1f9f61ff4b1eeebfff98492/dishka-1.10.0-py3-none-any.whl", hash = "sha256:a490fee102ee52123058f52c65b78d240fa1d95533ad7dbc271bf3eba394ebeb", size = 119836, upload-time = "2026-04-18T21:27:03.354Z" },
 ]
 
 [[package]]

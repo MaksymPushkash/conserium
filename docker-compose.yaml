@@ -9,7 +9,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+      CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
     ports:
@@ -20,8 +20,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
@@ -35,18 +33,16 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+      CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=document_processing,notifications,cleanup", "--concurrency=4"]
+    command: ["celery", "-A", "src.worker", "worker", "--loglevel=INFO", "--queues=document_processing,notifications,cleanup", "--concurrency=4"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
@@ -60,18 +56,16 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+      CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["celery", "-A", "src.infrastructure.celery", "beat", "--loglevel=INFO"]
+    command: ["celery", "-A", "src.worker", "beat", "--loglevel=INFO"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
@@ -85,16 +79,14 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+      CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
-    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=embeddings", "--concurrency=4"]
+    command: ["celery", "-A", "src.worker", "worker", "--loglevel=INFO", "--queues=embeddings", "--concurrency=4"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
@@ -108,18 +100,16 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672//
+      CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=media_processing,hf_processing", "--concurrency=2"]
+    command: ["celery", "-A", "src.worker", "worker", "--loglevel=INFO", "--queues=media_processing,hf_processing", "--concurrency=2"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
@@ -178,23 +168,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    container_name: conserium_rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
-    ports:
-      - "127.0.0.1:15672:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-    restart: unless-stopped
-
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: conserium_prometheus
@@ -246,6 +219,5 @@ volumes:
   pgadmin_data:
   redis_data:
   redisinsight_data:
-  rabbitmq_data:
   prometheus_data:
   grafana_data:

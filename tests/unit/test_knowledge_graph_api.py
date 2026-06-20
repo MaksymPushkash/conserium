@@ -5,19 +5,26 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.application.dtos.knowledge_graph_dtos import (
+from src.auth.jwt_service import JWTServiceProtocol
+from src.knowledge_graph.schemas import (
     KnowledgeGraphDTO,
     KnowledgeGraphEdgeDTO,
     KnowledgeGraphInsightDTO,
     KnowledgeGraphInsightsDTO,
+    KnowledgeGraphInsightsResponse,
     KnowledgeGraphNodeDTO,
+    KnowledgeGraphResponse,
 )
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.knowledge_graph import GetKnowledgeGraphInsightsUseCase, GetKnowledgeGraphUseCase
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.email import Email
+from src.knowledge_graph.service import (
+    KnowledgeGraphFilters,
+    get_knowledge_graph_service,
+    to_knowledge_graph_insights_response,
+    to_knowledge_graph_response,
+)
 from src.main import create_app
+from src.models.user import UserModel
+from src.users.repository import UserRepository
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -39,7 +46,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -48,87 +55,75 @@ class _FakeRootContainer:
 
 
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity) -> None:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
 
-class _ReturningGraphUseCase:
+class _ReturningKnowledgeGraphService:
     def __init__(self, result: KnowledgeGraphDTO) -> None:
-        self._result = result
+        self._result = to_knowledge_graph_response(result)
         self.received: dict[str, object] | None = None
 
-    async def __call__(
+    async def get_graph(
         self,
         *,
         user_id: uuid.UUID,
-        document_limit: int = 80,
-        topic_limit: int = 20,
-        collection_id: uuid.UUID | None = None,
-        tag_name: str | None = None,
-        topic_name: str | None = None,
-        document_type: object | None = None,
-        recency_days: int | None = None,
-    ) -> KnowledgeGraphDTO:
+        filters: KnowledgeGraphFilters,
+    ) -> KnowledgeGraphResponse:
         self.received = {
             "user_id": user_id,
-            "document_limit": document_limit,
-            "topic_limit": topic_limit,
-            "collection_id": collection_id,
-            "tag_name": tag_name,
-            "topic_name": topic_name,
-            "document_type": document_type,
-            "recency_days": recency_days,
+            "document_limit": filters.document_limit,
+            "topic_limit": filters.topic_limit,
+            "collection_id": filters.collection_id,
+            "tag_name": filters.tag_name,
+            "topic_name": filters.topic_name,
+            "document_type": filters.document_type,
+            "recency_days": filters.recency_days,
         }
         return self._result
 
 
-class _ReturningGraphInsightsUseCase:
+class _ReturningKnowledgeGraphInsightsService:
     def __init__(self, result: KnowledgeGraphInsightsDTO) -> None:
-        self._result = result
+        self._result = to_knowledge_graph_insights_response(result)
         self.received: dict[str, object] | None = None
 
-    async def __call__(
+    async def get_insights(
         self,
         *,
         user_id: uuid.UUID,
-        document_limit: int = 120,
-        topic_limit: int = 40,
-        collection_id: uuid.UUID | None = None,
-        tag_name: str | None = None,
-        topic_name: str | None = None,
-        document_type: object | None = None,
-        recency_days: int | None = None,
-    ) -> KnowledgeGraphInsightsDTO:
+        filters: KnowledgeGraphFilters,
+    ) -> KnowledgeGraphInsightsResponse:
         self.received = {
             "user_id": user_id,
-            "document_limit": document_limit,
-            "topic_limit": topic_limit,
-            "collection_id": collection_id,
-            "tag_name": tag_name,
-            "topic_name": topic_name,
-            "document_type": document_type,
-            "recency_days": recency_days,
+            "document_limit": filters.document_limit,
+            "topic_limit": filters.topic_limit,
+            "collection_id": filters.collection_id,
+            "tag_name": filters.tag_name,
+            "topic_name": filters.topic_name,
+            "document_type": filters.document_type,
+            "recency_days": filters.recency_days,
         }
         return self._result
 
 
 def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
     user = _make_user()
-    use_case = _ReturningGraphUseCase(
+    service = _ReturningKnowledgeGraphService(
         KnowledgeGraphDTO(
             nodes=[
                 KnowledgeGraphNodeDTO(id="topic:python", kind="topic", label="python"),
@@ -156,13 +151,13 @@ def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            GetKnowledgeGraphUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
+    app.dependency_overrides[get_knowledge_graph_service] = lambda: service
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -177,18 +172,18 @@ def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
     assert response.json()["nodes"][0]["id"] == "topic:python"
     assert response.json()["nodes"][1]["summary"] == "FastAPI summary"
     assert response.json()["edges"][0]["relation_type"] == "same_topic"
-    assert use_case.received is not None
-    assert use_case.received["user_id"] == user.id
-    assert use_case.received["document_limit"] == 50
-    assert use_case.received["topic_limit"] == 10
-    assert use_case.received["tag_name"] == "python"
-    assert use_case.received["topic_name"] == "api"
-    assert use_case.received["recency_days"] == 30
+    assert service.received is not None
+    assert service.received["user_id"] == user.id
+    assert service.received["document_limit"] == 50
+    assert service.received["topic_limit"] == 10
+    assert service.received["tag_name"] == "python"
+    assert service.received["topic_name"] == "api"
+    assert service.received["recency_days"] == 30
 
 
 def test_get_knowledge_graph_insights_route_returns_backend_signals() -> None:
     user = _make_user()
-    use_case = _ReturningGraphInsightsUseCase(
+    service = _ReturningKnowledgeGraphInsightsService(
         KnowledgeGraphInsightsDTO(
             items=[
                 KnowledgeGraphInsightDTO(
@@ -205,13 +200,13 @@ def test_get_knowledge_graph_insights_route_returns_backend_signals() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            GetKnowledgeGraphInsightsUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
+    app.dependency_overrides[get_knowledge_graph_service] = lambda: service
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -225,17 +220,17 @@ def test_get_knowledge_graph_insights_route_returns_backend_signals() -> None:
     assert response.status_code == 200
     assert response.json()["items"][0]["kind"] == "pinned_topics"
     assert response.json()["items"][0]["nodes"][0]["is_pinned"] is True
-    assert use_case.received is not None
-    assert use_case.received["user_id"] == user.id
-    assert use_case.received["document_limit"] == 70
-    assert use_case.received["topic_limit"] == 30
-    assert use_case.received["topic_name"] == "python"
+    assert service.received is not None
+    assert service.received["user_id"] == user.id
+    assert service.received["document_limit"] == 70
+    assert service.received["topic_limit"] == 30
+    assert service.received["topic_name"] == "python"
 
 
-def _make_user() -> UserEntity:
-    return UserEntity(
+def _make_user() -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=True,

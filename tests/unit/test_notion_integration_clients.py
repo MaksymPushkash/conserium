@@ -3,9 +3,9 @@ from typing import Any
 import httpx
 import pytest
 
-from src.domain.exceptions import IntegrationRequestException
-from src.infrastructure.integrations.notion_export_client import NotionExportClient
-from src.infrastructure.integrations.notion_oauth_client import NotionOAuthClient
+from src.integrations.notion_export_client import NotionExportClient
+from src.integrations.notion_oauth_client import NotionOAuthClient
+from src.kit.exceptions import IntegrationRequestException
 
 
 class _RejectedResponse:
@@ -48,7 +48,7 @@ class _UnavailableAsyncClient:
 
 @pytest.mark.asyncio
 async def test_notion_export_client_maps_http_status_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("src.infrastructure.integrations.notion_export_client.httpx.AsyncClient", _RejectingAsyncClient)
+    monkeypatch.setattr("src.integrations.notion_export_client.httpx.AsyncClient", _RejectingAsyncClient)
     client = NotionExportClient(token="token", parent_page_id="parent-page-id")
 
     with pytest.raises(IntegrationRequestException, match="notion rejected the export request"):
@@ -57,7 +57,7 @@ async def test_notion_export_client_maps_http_status_errors(monkeypatch: pytest.
 
 @pytest.mark.asyncio
 async def test_notion_export_client_maps_transport_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("src.infrastructure.integrations.notion_export_client.httpx.AsyncClient", _UnavailableAsyncClient)
+    monkeypatch.setattr("src.integrations.notion_export_client.httpx.AsyncClient", _UnavailableAsyncClient)
     client = NotionExportClient(token="token", parent_page_id="parent-page-id")
 
     with pytest.raises(IntegrationRequestException, match="notion export request failed"):
@@ -66,7 +66,7 @@ async def test_notion_export_client_maps_transport_errors(monkeypatch: pytest.Mo
 
 @pytest.mark.asyncio
 async def test_notion_oauth_client_maps_http_status_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("src.infrastructure.integrations.notion_oauth_client.httpx.AsyncClient", _RejectingAsyncClient)
+    monkeypatch.setattr("src.integrations.notion_oauth_client.httpx.AsyncClient", _RejectingAsyncClient)
     client = NotionOAuthClient(client_id="client-id", client_secret="client-secret")
 
     with pytest.raises(IntegrationRequestException, match="notion rejected the oauth callback"):
@@ -75,7 +75,7 @@ async def test_notion_oauth_client_maps_http_status_errors(monkeypatch: pytest.M
 
 @pytest.mark.asyncio
 async def test_notion_oauth_client_maps_transport_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("src.infrastructure.integrations.notion_oauth_client.httpx.AsyncClient", _UnavailableAsyncClient)
+    monkeypatch.setattr("src.integrations.notion_oauth_client.httpx.AsyncClient", _UnavailableAsyncClient)
     client = NotionOAuthClient(client_id="client-id", client_secret="client-secret")
 
     with pytest.raises(IntegrationRequestException, match="notion oauth request failed"):

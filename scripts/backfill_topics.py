@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.core.config import settings
-from src.infrastructure.database.services.topic_backfill import SQLAlchemyTopicBackfill
+from src.settings import settings
+from src.topics.backfill import TopicBackfill
 
 
 async def main() -> None:
@@ -26,7 +26,7 @@ async def main() -> None:
     try:
         session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
         async with session_factory() as session:
-            result = await SQLAlchemyTopicBackfill(session).rebuild_missing_topics(limit=args.limit)
+            result = await TopicBackfill(session).rebuild_missing_topics(limit=args.limit)
             await session.commit()
             print(f"scanned_documents={result.scanned_documents}")
             print(f"updated_documents={result.updated_documents}")

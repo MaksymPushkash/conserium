@@ -5,13 +5,22 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.application.dtos.review_dtos import FlashcardDTO, FlashcardListDTO, GenerateFlashcardsResultDTO
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.review import GenerateFlashcardsUseCase, ListDueFlashcardsUseCase, ReviewFlashcardUseCase
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.email import Email
+from src.auth.jwt_service import JWTServiceProtocol
 from src.main import create_app
+from src.models.user import UserModel
+from src.review.dependencies import get_review_service
+from src.review.schemas import (
+    FlashcardListResponse,
+    FlashcardResponse,
+    GenerateFlashcardsResponse,
+)
+from src.review.service import (
+    to_flashcard_list_response,
+    to_flashcard_response,
+    to_generate_flashcards_response,
+)
+from src.users.repository import UserRepository
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -33,7 +42,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -42,41 +51,54 @@ class _FakeRootContainer:
 
 
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity) -> None:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
 
-class _ReturningUseCase:
-    def __init__(self, result: object) -> None:
+class _ReturningReviewService:
+    def __init__(self, result: FlashcardListResponse | FlashcardResponse | GenerateFlashcardsResponse) -> None:
         self._result = result
         self.received_args: tuple[object, ...] = ()
         self.received_kwargs: dict[str, object] = {}
 
-    async def __call__(self, *args: object, **kwargs: object) -> object:
+    async def generate_flashcards(self, *args: object, **kwargs: object) -> GenerateFlashcardsResponse:
         self.received_args = args
         self.received_kwargs = kwargs
+        assert isinstance(self._result, GenerateFlashcardsResponse)
+        return self._result
+
+    async def list_due_flashcards(self, *args: object, **kwargs: object) -> FlashcardListResponse:
+        self.received_args = args
+        self.received_kwargs = kwargs
+        assert isinstance(self._result, FlashcardListResponse)
+        return self._result
+
+    async def review_flashcard(self, *args: object, **kwargs: object) -> FlashcardResponse:
+        self.received_args = args
+        self.received_kwargs = kwargs
+        assert isinstance(self._result, FlashcardResponse)
         return self._result
 
 
 def test_generate_flashcards_route_returns_created_cards() -> None:
     user = _make_user()
     card = _flashcard(user.id)
-    use_case = _ReturningUseCase(GenerateFlashcardsResultDTO(items=[card], created_count=1))
-    client = _make_client(user, {GenerateFlashcardsUseCase: use_case})
+    service = _ReturningReviewService(to_generate_flashcards_response(GenerateFlashcardsResponse(items=[card], created_count=1)))
+    client = _make_client(user, service)
 
     try:
         response = client.post(
@@ -90,14 +112,14 @@ def test_generate_flashcards_route_returns_created_cards() -> None:
     assert response.status_code == 201
     assert response.json()["created_count"] == 1
     assert response.json()["items"][0]["question"] == "What is asyncio?"
-    assert use_case.received_args
+    assert service.received_args
 
 
 def test_due_flashcards_route_returns_due_cards() -> None:
     user = _make_user()
     card = _flashcard(user.id)
-    use_case = _ReturningUseCase(FlashcardListDTO(items=[card], total=1, limit=10))
-    client = _make_client(user, {ListDueFlashcardsUseCase: use_case})
+    service = _ReturningReviewService(to_flashcard_list_response(FlashcardListResponse(items=[card], total=1, limit=10)))
+    client = _make_client(user, service)
 
     try:
         response = client.get("/api/v1/review/flashcards/due?limit=10", headers={"Authorization": "Bearer access-token"})
@@ -107,14 +129,15 @@ def test_due_flashcards_route_returns_due_cards() -> None:
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["id"] == str(card.id)
-    assert use_case.received_kwargs == {"user_id": user.id, "limit": 10}
+    assert service.received_args == (user.id,)
+    assert service.received_kwargs == {"limit": 10}
 
 
 def test_review_flashcard_route_returns_updated_card() -> None:
     user = _make_user()
     card = _flashcard(user.id)
-    use_case = _ReturningUseCase(card)
-    client = _make_client(user, {ReviewFlashcardUseCase: use_case})
+    service = _ReturningReviewService(to_flashcard_response(card))
+    client = _make_client(user, service)
 
     try:
         response = client.post(
@@ -127,27 +150,27 @@ def test_review_flashcard_route_returns_updated_card() -> None:
 
     assert response.status_code == 200
     assert response.json()["id"] == str(card.id)
-    assert use_case.received_args
+    assert service.received_args
 
 
-def _make_client(user: UserEntity, dependencies: Mapping[type[object], object]) -> TestClient:
+def _make_client(user: UserModel, service: _ReturningReviewService) -> TestClient:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            **dependencies,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
+    app.dependency_overrides[get_review_service] = lambda: service
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _make_user() -> UserEntity:
-    return UserEntity(
+def _make_user() -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=True,
@@ -156,9 +179,9 @@ def _make_user() -> UserEntity:
     )
 
 
-def _flashcard(user_id: uuid.UUID) -> FlashcardDTO:
+def _flashcard(user_id: uuid.UUID) -> FlashcardResponse:
     now = datetime.now(UTC)
-    return FlashcardDTO(
+    return FlashcardResponse(
         id=uuid.uuid4(),
         user_id=user_id,
         scope_type="document",

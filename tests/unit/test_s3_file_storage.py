@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.infrastructure.storage.s3_file_storage import S3FileStorage
+from src.kit.storage.s3_file_storage import S3FileStorage
 
 
 class _Body:

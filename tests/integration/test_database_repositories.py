@@ -8,27 +8,23 @@ import pytest
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from src.core.config import settings
-from src.domain.entities.chunk_entity import ChunkEntity
-from src.domain.entities.document_entity import DocumentEntity
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.document_status import DocumentStatus
-from src.domain.value_objects.document_type import DocumentType
-from src.domain.value_objects.email import Email
-from src.infrastructure.auth.password_hasher import BcryptPasswordHasher
-from src.infrastructure.database.models import Base
-from src.infrastructure.database.models.base import document_tags, document_topics
-from src.infrastructure.database.models.chunk import ChunkModel
-from src.infrastructure.database.models.collection import CollectionModel
-from src.infrastructure.database.models.document import DocumentModel
-from src.infrastructure.database.models.tag import TagModel
-from src.infrastructure.database.models.topic import TopicModel
-from src.infrastructure.database.models.user import UserModel
-from src.infrastructure.database.repositories.chunk_repository import SQLAlchemyChunkRepository
-from src.infrastructure.database.repositories.document_repository import SQLAlchemyDocumentRepository
-from src.infrastructure.database.repositories.knowledge_graph_repository import SQLAlchemyKnowledgeGraphRepository
-from src.infrastructure.database.repositories.topic_repository import SQLAlchemyTopicRepository
-from src.infrastructure.database.repositories.user_repository import SQLAlchemyUserRepository
+from src.auth.password_hasher import BcryptPasswordHasher
+from src.documents.chunk_repository import ChunkRepository
+from src.documents.document_repository import DocumentRepository
+from src.documents.status import DocumentStatus
+from src.documents.types import DocumentType
+from src.knowledge_graph.repository import KnowledgeGraphRepository
+from src.models import Base
+from src.models.base import document_tags, document_topics
+from src.models.chunk import ChunkModel
+from src.models.collection import CollectionModel
+from src.models.document import DocumentModel
+from src.models.tag import TagModel
+from src.models.topic import TopicModel
+from src.models.user import UserModel
+from src.settings import settings
+from src.topics.repository import TopicRepository
+from src.users.repository import UserRepository
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("CONSERIUM_RUN_DB_TESTS") != "1",
@@ -60,14 +56,14 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
 
 def _embedding(value: float) -> list[float]:
-    return [value] * ChunkEntity.EMBEDDING_DIMENSIONS
+    return [value] * ChunkModel.EMBEDDING_DIMENSIONS
 
 
 async def test_user_repository_preserves_null_updated_at(db_session: AsyncSession) -> None:
-    repository = SQLAlchemyUserRepository(db_session)
-    user = UserEntity.create(
+    repository = UserRepository(db_session)
+    user = UserModel.create(
         id=uuid.uuid4(),
-        email=Email(value=f"{uuid.uuid4()}@integration.test"),
+        email=f"{uuid.uuid4()}@integration.test",
         password=BcryptPasswordHasher().hash("securepass123"),
     )
 
@@ -91,10 +87,10 @@ async def test_document_and_chunk_repositories_round_trip(db_session: AsyncSessi
     await db_session.flush()
     await db_session.refresh(user)
 
-    document_repository = SQLAlchemyDocumentRepository(db_session)
-    chunk_repository = SQLAlchemyChunkRepository(db_session)
+    document_repository = DocumentRepository(db_session)
+    chunk_repository = ChunkRepository(db_session)
 
-    document = DocumentEntity(
+    document = DocumentModel(
         id=uuid.uuid4(),
         user_id=user.id,
         collection_id=None,
@@ -114,7 +110,7 @@ async def test_document_and_chunk_repositories_round_trip(db_session: AsyncSessi
         created_at=user.created_at,
         updated_at=None,
     )
-    chunk = ChunkEntity.create(
+    chunk = ChunkModel.create(
         id=uuid.uuid4(),
         document_id=document.id,
         content="Hello integration tests",
@@ -208,7 +204,7 @@ async def test_knowledge_graph_repository_applies_combined_filters(db_session: A
     )
     await db_session.commit()
 
-    repository = SQLAlchemyKnowledgeGraphRepository(db_session)
+    repository = KnowledgeGraphRepository(db_session)
     result = await repository.list_topic_document_links(
         user.id,
         document_limit=20,
@@ -262,7 +258,7 @@ async def test_topic_repository_applies_alias_pin_and_ignore_overrides(db_sessio
     )
     await db_session.commit()
 
-    repository = SQLAlchemyTopicRepository(db_session)
+    repository = TopicRepository(db_session)
     renamed = await repository.rename_topic(user_id=user.id, source_name="python", display_name="Backend")
     merged = await repository.merge_topics(user_id=user.id, source_names=["python", "fastapi"], display_name="Backend")
     pinned = await repository.set_pinned(user_id=user.id, name="Backend", pinned=True)

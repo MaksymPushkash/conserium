@@ -1,6 +1,8 @@
 # Conserium Local Development
 
-This runbook covers the current backend MVP: FastAPI app, PostgreSQL with pgvector, Redis, RabbitMQ, Celery workers, ingestion, query, metrics, and eval regression.
+This runbook covers the feature-first modular backend: FastAPI, PostgreSQL with
+pgvector, Redis, Celery workers, ingestion, query, metrics, and eval regression. See
+[Architecture](architecture.md) for module ownership and dependency rules.
 
 ## Prerequisites
 
@@ -27,10 +29,8 @@ DB_PASSWORD=conserium
 DATABASE_URL=postgresql+asyncpg://conserium:conserium@localhost:5432/conserium
 
 REDIS_URL=redis://localhost:6379/0
-CELERY_BROKER_URL=amqp://conserium:conserium@localhost:5672//
+CELERY_BROKER_URL=redis://localhost:6379/2
 CELERY_RESULT_BACKEND=redis://localhost:6379/1
-RABBITMQ_USER=conserium
-RABBITMQ_PASSWORD=conserium
 
 OPENAI_API_KEY=
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
@@ -99,7 +99,7 @@ Do not store presigned URLs in `documents.file_path`; generate short-lived presi
 Start infrastructure first:
 
 ```bash
-docker compose up -d postgres redis rabbitmq
+docker compose up -d postgres redis
 ```
 
 Install dependencies locally:
@@ -128,13 +128,13 @@ Services:
 - pgAdmin: `http://localhost:5050`
 - Redis: `localhost:6379`
 - RedisInsight: `http://localhost:5540`
-- RabbitMQ: `http://localhost:15672`
 
 Worker topology:
 
 - `worker-default`: `document_processing`, `notifications`, `cleanup`
 - `worker-embeddings`: `embeddings`
-- `worker-media`: `media_processing`
+- `worker-media`: `media_processing`, `hf_processing`
+- `scheduler`: Celery Beat schedules for repo sync, outbox drains, and optional notifications
 
 Useful commands:
 
@@ -144,6 +144,7 @@ docker compose logs -f app
 docker compose logs -f worker-default
 docker compose logs -f worker-embeddings
 docker compose logs -f worker-media
+docker compose logs -f scheduler
 docker compose down
 ```
 
@@ -154,7 +155,7 @@ Use this when you want faster backend iteration without rebuilding containers.
 Start only infrastructure:
 
 ```bash
-docker compose up -d postgres redis rabbitmq
+docker compose up -d postgres redis
 ```
 
 Install dependencies:
@@ -178,15 +179,21 @@ uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 Start workers in separate terminals:
 
 ```bash
-uv run celery -A src.infrastructure.celery worker --loglevel=INFO --queues=document_processing,notifications,cleanup --concurrency=4
+uv run celery -A src.worker worker --loglevel=INFO --queues=document_processing,notifications,cleanup --concurrency=4
 ```
 
 ```bash
-uv run celery -A src.infrastructure.celery worker --loglevel=INFO --queues=embeddings --concurrency=4
+uv run celery -A src.worker worker --loglevel=INFO --queues=embeddings --concurrency=4
 ```
 
 ```bash
-uv run celery -A src.infrastructure.celery worker --loglevel=INFO --queues=media_processing --concurrency=2
+uv run celery -A src.worker worker --loglevel=INFO --queues=media_processing,hf_processing --concurrency=2
+```
+
+Start Celery Beat in another terminal:
+
+```bash
+uv run celery -A src.worker beat --loglevel=INFO
 ```
 
 For local media/audio/image work, install the heavier dependencies in the same environment:
@@ -222,7 +229,7 @@ Ingest text:
 curl -s http://localhost:8000/api/v1/ingest \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Architecture note","type":"TEXT","raw_content":"Clean Architecture keeps dependencies pointing inward. PostgreSQL pgvector stores embeddings."}'
+  -d '{"title":"Architecture note","type":"TEXT","raw_content":"Feature-first modules keep endpoints, services, and repositories together. PostgreSQL pgvector stores embeddings."}'
 ```
 
 Poll status:
@@ -238,7 +245,7 @@ Query:
 curl -s http://localhost:8000/api/v1/query \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"query":"What did I save about Clean Architecture?","limit":5}'
+  -d '{"query":"What did I save about feature-first architecture?","limit":5}'
 ```
 
 Stream query:
@@ -264,19 +271,30 @@ uv run python scripts/run_eval_harness.py --output artifacts/eval-regression-rep
 
 ## OpenAPI Verification
 
-After the API starts, compare the generated schema with the documented API:
+Generate the deterministic backend contract without starting the API:
 
 ```bash
-curl -s http://localhost:8000/openapi.json > /tmp/conserium-openapi.json
+uv run python -m scripts.export_openapi openapi.generated.json
+diff -u openapi.json openapi.generated.json
 ```
 
-Expected route groups:
+Check compatibility against another schema with `oasdiff`:
 
-- `/api/v1/auth/*`
-- `/api/v1/users/me`
-- `/api/v1/documents*`
-- `/api/v1/ingest*`
-- `/api/v1/query*`
-- `/`
+```bash
+oasdiff breaking openapi.previous.json openapi.generated.json --fail-on ERR
+```
+
+`src/api.py` is the source of truth for `/api/v1` route groups. The root health route is
+also included in OpenAPI.
 
 `/metrics` is intentionally excluded from OpenAPI.
+
+To update the generated frontend client while both repositories are checked out next to
+each other:
+
+```bash
+cd ../conserium_client
+OPENAPI_SCHEMA=../conserium/openapi.json npm run generate:api
+npm run typecheck
+npm test
+```

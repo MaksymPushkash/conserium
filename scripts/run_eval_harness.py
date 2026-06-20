@@ -11,9 +11,9 @@ from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage, RefragRepresentation
-from src.application.services.evaluation.heuristic_ragas_scorer import HeuristicRagasScorer
-from src.application.services.retrieval.chunk_quality_filter import is_quality_chunk
+from src.query.schemas import RefragChunk, RefragContextPackage, RefragRepresentation
+from src.query.services.evaluation.heuristic_ragas_scorer import HeuristicRagasScorer
+from src.query.services.retrieval.chunk_quality_filter import is_quality_chunk
 
 _ZERO_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)

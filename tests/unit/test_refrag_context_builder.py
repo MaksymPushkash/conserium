@@ -1,9 +1,8 @@
 import uuid
 
-from src.application.dtos.query_dtos import QuerySourceDTO
-from src.application.dtos.refrag_dtos import RefragRepresentation
-from src.application.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
-from src.application.services.retrieval.chunk_quality_filter import ChunkQualityFilter, ChunkRelevanceFilter
+from src.query.schemas import QuerySourceDTO, RefragRepresentation
+from src.query.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
+from src.query.services.retrieval.chunk_quality_filter import ChunkQualityFilter, ChunkRelevanceFilter
 
 
 def _source(index: int, *, score: float | None, content: str | None = None) -> QuerySourceDTO:

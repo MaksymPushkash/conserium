@@ -9,7 +9,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from src.application.ports.ingestion.content_extractor import ExtractedContent
+from src.kit.ports.ingestion.content_extractor import ExtractedContent
 
 # ---------------------------------------------------------------------------
 # ExtractedContent dataclass validation
@@ -64,7 +64,7 @@ class TestPdfExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_single_page(self) -> None:
-        from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+        from src.kit.ai.extractors.pdf_extractor import PdfExtractor
 
         extractor = PdfExtractor()
         fake_pdf = self._mock_pdf(["Hello world this is page one content here."])
@@ -80,7 +80,7 @@ class TestPdfExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_multi_page(self) -> None:
-        from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+        from src.kit.ai.extractors.pdf_extractor import PdfExtractor
 
         extractor = PdfExtractor()
         pages = [
@@ -101,7 +101,7 @@ class TestPdfExtractor:
 
     @pytest.mark.asyncio
     async def test_blank_pages_skipped(self) -> None:
-        from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+        from src.kit.ai.extractors.pdf_extractor import PdfExtractor
 
         extractor = PdfExtractor()
         pages = [
@@ -119,7 +119,7 @@ class TestPdfExtractor:
 
     @pytest.mark.asyncio
     async def test_no_text_raises(self) -> None:
-        from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+        from src.kit.ai.extractors.pdf_extractor import PdfExtractor
 
         extractor = PdfExtractor()
         fake_pdf = self._mock_pdf(["   ", "  \n"])  # all blank
@@ -129,7 +129,7 @@ class TestPdfExtractor:
 
     @pytest.mark.asyncio
     async def test_title_falls_back_to_filename(self) -> None:
-        from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+        from src.kit.ai.extractors.pdf_extractor import PdfExtractor
 
         extractor = PdfExtractor()
         fake_pdf = self._mock_pdf(["Some real content that is long enough."])
@@ -142,7 +142,7 @@ class TestPdfExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_from_url_raises(self) -> None:
-        from src.infrastructure.ai.extractors.pdf_extractor import PdfExtractor
+        from src.kit.ai.extractors.pdf_extractor import PdfExtractor
 
         extractor = PdfExtractor()
         with pytest.raises(NotImplementedError):
@@ -172,7 +172,7 @@ class TestUrlExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_from_bytes_success(self) -> None:
-        from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+        from src.kit.ai.extractors.url_extractor import UrlExtractor
 
         extractor = UrlExtractor()
 
@@ -191,7 +191,7 @@ class TestUrlExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_from_bytes_empty_result_raises(self) -> None:
-        from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+        from src.kit.ai.extractors.url_extractor import UrlExtractor
 
         extractor = UrlExtractor()
 
@@ -200,13 +200,13 @@ class TestUrlExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_from_url_success(self) -> None:
-        from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+        from src.kit.ai.extractors.url_extractor import UrlExtractor
 
         extractor = UrlExtractor()
 
         with (
             patch(
-                "src.infrastructure.ai.extractors.url_extractor._fetch_url_safely",
+                "src.kit.ai.extractors.url_extractor._fetch_url_safely",
                 return_value=b"<html><body>Real content here for testing purposes.</body></html>",
             ),
             patch("trafilatura.extract", return_value="Real content here for testing purposes."),
@@ -220,13 +220,13 @@ class TestUrlExtractor:
 
     @pytest.mark.asyncio
     async def test_fetch_url_failure_raises(self) -> None:
-        from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+        from src.kit.ai.extractors.url_extractor import UrlExtractor
 
         extractor = UrlExtractor()
 
         with (
             patch(
-                "src.infrastructure.ai.extractors.url_extractor._fetch_url_safely",
+                "src.kit.ai.extractors.url_extractor._fetch_url_safely",
                 side_effect=ValueError("Failed to download"),
             ),
             pytest.raises(ValueError, match="Failed to download"),
@@ -235,7 +235,7 @@ class TestUrlExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_from_url_blocks_non_http_scheme(self) -> None:
-        from src.infrastructure.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
+        from src.kit.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
 
         extractor = UrlExtractor()
 
@@ -244,7 +244,7 @@ class TestUrlExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_from_url_blocks_private_hosts(self) -> None:
-        from src.infrastructure.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
+        from src.kit.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
 
         extractor = UrlExtractor()
 
@@ -256,7 +256,7 @@ class TestUrlExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_from_url_blocks_redirect_to_private_host(self) -> None:
-        from src.infrastructure.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
+        from src.kit.ai.extractors.url_extractor import UnsafeUrlError, UrlExtractor
 
         extractor = UrlExtractor()
         headers = Message()
@@ -282,14 +282,14 @@ class TestUrlExtractor:
 
         with (
             patch("socket.getaddrinfo", side_effect=_fake_getaddrinfo),
-            patch("src.infrastructure.ai.extractors.url_extractor._URL_OPENER.open", side_effect=redirect_error),
+            patch("src.kit.ai.extractors.url_extractor._URL_OPENER.open", side_effect=redirect_error),
             pytest.raises(UnsafeUrlError, match="non-public"),
         ):
             await extractor.extract_from_url("https://example.com/article")
 
     @pytest.mark.asyncio
     async def test_language_truncated_to_10_chars(self) -> None:
-        from src.infrastructure.ai.extractors.url_extractor import UrlExtractor
+        from src.kit.ai.extractors.url_extractor import UrlExtractor
 
         extractor = UrlExtractor()
 
@@ -311,12 +311,12 @@ class TestUrlExtractor:
 class TestYoutubeExtractor:
     @pytest.mark.asyncio
     async def test_extract_from_url_success(self) -> None:
-        from src.infrastructure.ai.extractors.youtube_extractor import YoutubeExtractor
+        from src.kit.ai.extractors.youtube_extractor import YoutubeExtractor
 
         extractor = YoutubeExtractor()
 
         with patch(
-            "src.infrastructure.ai.extractors.youtube_extractor._fetch_transcript",
+            "src.kit.ai.extractors.youtube_extractor._fetch_transcript",
             return_value=[
                 {"text": "First line", "start": 0.0, "duration": 1.0},
                 {"text": "Second line", "start": 1.0, "duration": 1.0},
@@ -331,7 +331,7 @@ class TestYoutubeExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_from_url_rejects_non_youtube_url(self) -> None:
-        from src.infrastructure.ai.extractors.youtube_extractor import YoutubeExtractor
+        from src.kit.ai.extractors.youtube_extractor import YoutubeExtractor
 
         extractor = YoutubeExtractor()
 
@@ -339,7 +339,7 @@ class TestYoutubeExtractor:
             await extractor.extract_from_url("https://example.com/video")
 
     def test_transcript_to_raw_items_supports_new_api_result(self) -> None:
-        from src.infrastructure.ai.extractors.youtube_extractor import _transcript_to_raw_items
+        from src.kit.ai.extractors.youtube_extractor import _transcript_to_raw_items
 
         class _FetchedTranscript:
             def to_raw_data(self) -> list[dict[str, object]]:
@@ -352,7 +352,7 @@ class TestYoutubeExtractor:
     def test_transcript_to_raw_items_supports_iterable_snippets(self) -> None:
         from dataclasses import dataclass
 
-        from src.infrastructure.ai.extractors.youtube_extractor import _transcript_to_raw_items
+        from src.kit.ai.extractors.youtube_extractor import _transcript_to_raw_items
 
         @dataclass
         class _Snippet:

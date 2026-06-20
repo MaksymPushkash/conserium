@@ -5,19 +5,22 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.application.dtos.knowledge_gap_dtos import KnowledgeGapAreaDTO, KnowledgeGapDTO, KnowledgeGapListDTO
-from src.application.dtos.note_dtos import NoteDTO
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.knowledge_gaps import (
-    CreateKnowledgeGapNoteUseCase,
-    GetKnowledgeGapsUseCase,
-    ListKnowledgeGapsUseCase,
+from src.auth.jwt_service import JWTServiceProtocol
+from src.documents.notes import get_note_service
+from src.documents.schemas import NoteResponse
+from src.documents.status import DocumentStatus
+from src.knowledge_gaps.schemas import KnowledgeGapAreaDTO, KnowledgeGapDTO, KnowledgeGapListDTO
+from src.knowledge_gaps.service import (
+    get_knowledge_gap_service,
+    to_knowledge_gap_list_response,
+    to_knowledge_gap_response,
+    to_note_response,
 )
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.document_status import DocumentStatus
-from src.domain.value_objects.email import Email
 from src.main import create_app
+from src.models.user import UserModel
+from src.postgres import get_db_read_session
+from src.users.repository import UserRepository
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -39,7 +42,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -48,59 +51,72 @@ class _FakeRootContainer:
 
 
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity) -> None:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
 
-class _ListGapsUseCase:
+class _KnowledgeGapService:
     def __init__(self, result: KnowledgeGapListDTO) -> None:
         self._result = result
         self.received: dict[str, object] = {}
 
-    async def __call__(self, **kwargs: object) -> KnowledgeGapListDTO:
+    async def list(self, session: object, **kwargs: object):
         self.received = kwargs
-        return self._result
+        return to_knowledge_gap_list_response(self._result)
 
 
-class _GetGapUseCase:
+class _KnowledgeGapDetailService:
     def __init__(self, result: KnowledgeGapDTO) -> None:
         self._result = result
         self.received: dict[str, object] = {}
 
-    async def __call__(self, **kwargs: object) -> KnowledgeGapDTO:
+    async def get(self, session: object, **kwargs: object):
         self.received = kwargs
-        return self._result
+        return to_knowledge_gap_response(self._result)
 
 
-class _CreateGapNoteUseCase:
-    def __init__(self, result: NoteDTO) -> None:
+class _KnowledgeGapNoteService:
+    def __init__(self, result: NoteResponse) -> None:
         self._result = result
         self.received: dict[str, object] = {}
 
-    async def __call__(self, **kwargs: object) -> NoteDTO:
+    async def create_note(self, **kwargs: object):
         self.received = kwargs
-        return self._result
+        return to_note_response(self._result)
+
+
+async def _session_override():
+    yield object()
+
+
+def _dependency_override(dependency: object):
+    def override() -> object:
+        return dependency
+
+    return override
 
 
 def test_list_knowledge_gaps_route_forwards_collection_scope() -> None:
     user = _make_user()
     collection_id = uuid.uuid4()
-    use_case = _ListGapsUseCase(KnowledgeGapListDTO(items=[_gap(collection_id=collection_id)], total=1))
-    client = _client(user, {ListKnowledgeGapsUseCase: use_case})
+    service = _KnowledgeGapService(KnowledgeGapListDTO(items=[_gap(collection_id=collection_id)], total=1))
+    client = _client(user, {})
+    client.app.dependency_overrides[get_knowledge_gap_service] = _dependency_override(service)
+    client.app.dependency_overrides[get_db_read_session] = _session_override
 
     try:
         response = client.get(
@@ -113,14 +129,16 @@ def test_list_knowledge_gaps_route_forwards_collection_scope() -> None:
     assert response.status_code == 200
     assert response.json()["items"][0]["topic"] == "Python"
     assert response.json()["items"][0]["missing_source_types"] == ["reference"]
-    assert use_case.received == {"user_id": user.id, "collection_id": collection_id, "limit": 5}
+    assert service.received == {"user_id": user.id, "collection_id": collection_id, "limit": 5}
 
 
 def test_get_knowledge_gap_detail_route_forwards_topic_scope() -> None:
     user = _make_user()
     collection_id = uuid.uuid4()
-    use_case = _GetGapUseCase(_gap(collection_id=collection_id))
-    client = _client(user, {GetKnowledgeGapsUseCase: use_case})
+    service = _KnowledgeGapDetailService(_gap(collection_id=collection_id))
+    client = _client(user, {})
+    client.app.dependency_overrides[get_knowledge_gap_service] = _dependency_override(service)
+    client.app.dependency_overrides[get_db_read_session] = _session_override
 
     try:
         response = client.get(
@@ -132,15 +150,15 @@ def test_get_knowledge_gap_detail_route_forwards_topic_scope() -> None:
 
     assert response.status_code == 200
     assert response.json()["areas"][0]["why_detected"] == "No saved source matched Testing."
-    assert use_case.received == {"user_id": user.id, "topic": "Python", "collection_id": collection_id}
+    assert service.received == {"user_id": user.id, "topic": "Python", "collection_id": collection_id}
 
 
 def test_create_knowledge_gap_note_route_creates_note_from_gap_payload() -> None:
     user = _make_user()
     collection_id = uuid.uuid4()
     note_id = uuid.uuid4()
-    use_case = _CreateGapNoteUseCase(
-        NoteDTO(
+    service = _KnowledgeGapNoteService(
+        NoteResponse(
             id=note_id,
             collection_id=collection_id,
             title="Fill gap: Python - Testing",
@@ -152,7 +170,10 @@ def test_create_knowledge_gap_note_route_creates_note_from_gap_payload() -> None
             updated_at=None,
         )
     )
-    client = _client(user, {CreateKnowledgeGapNoteUseCase: use_case})
+    note_service = object()
+    client = _client(user, {})
+    client.app.dependency_overrides[get_knowledge_gap_service] = _dependency_override(service)
+    client.app.dependency_overrides[get_note_service] = _dependency_override(note_service)
 
     try:
         response = client.post(
@@ -165,7 +186,8 @@ def test_create_knowledge_gap_note_route_creates_note_from_gap_payload() -> None
 
     assert response.status_code == 201
     assert response.json()["id"] == str(note_id)
-    assert use_case.received == {
+    assert service.received == {
+        "note_service": note_service,
         "user_id": user.id,
         "gap_id": "python--testing",
         "topic": "Python",
@@ -174,24 +196,24 @@ def test_create_knowledge_gap_note_route_creates_note_from_gap_payload() -> None
     }
 
 
-def _client(user: UserEntity, dependencies: Mapping[type[object], object]) -> TestClient:
+def _client(user: UserModel, dependencies: Mapping[type[object], object]) -> TestClient:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
             **dependencies,
         }
-    )
+    )._dependencies)
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _make_user() -> UserEntity:
-    return UserEntity(
+def _make_user() -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=True,

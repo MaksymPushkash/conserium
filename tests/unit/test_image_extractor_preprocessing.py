@@ -6,7 +6,9 @@ from typing import Any, cast
 import pytest
 from PIL import Image, ImageDraw
 
-from src.infrastructure.ai.extractors.image_extractor import ImageExtractor, _tesseract_language_for
+from src.kit.ai.extractors import image_preprocessing
+from src.kit.ai.extractors.image_extractor import ImageExtractor
+from src.kit.ai.extractors.image_visual_analysis import ImageVisualAnalyzer
 
 
 @pytest.mark.asyncio
@@ -30,10 +32,10 @@ async def test_preprocessing_pipeline_invoked(monkeypatch):
         calls.append("sharpen")
         return img
 
-    monkeypatch.setattr(extractor, "_autocontrast", _autocontrast)
-    monkeypatch.setattr(extractor, "_maybe_upscale", _upscale)
-    monkeypatch.setattr(extractor, "_denoise", _denoise)
-    monkeypatch.setattr(extractor, "_sharpen", _sharpen)
+    monkeypatch.setattr(image_preprocessing, "autocontrast", _autocontrast)
+    monkeypatch.setattr(image_preprocessing, "maybe_upscale", _upscale)
+    monkeypatch.setattr(image_preprocessing, "denoise", _denoise)
+    monkeypatch.setattr(image_preprocessing, "sharpen", _sharpen)
 
     # Provide a lightweight dummy pytesseract module if not installed
     if "pytesseract" not in sys.modules:
@@ -86,7 +88,7 @@ def test_visual_analysis_extracts_diagram_structure() -> None:
                 "height": [12, 12],
             }
 
-    visual = ImageExtractor()._analyze_visual_structure(_FakeTesseract(), image, language="eng")
+    visual = ImageVisualAnalyzer().analyze(_FakeTesseract(), image, language="eng")
 
     assert visual["diagram_type"] == "flowchart"
     assert len(cast("list[object]", visual["diagram_boxes"])) == 2
@@ -95,8 +97,8 @@ def test_visual_analysis_extracts_diagram_structure() -> None:
 
 
 def test_tesseract_language_mapping_supports_ukrainian() -> None:
-    assert _tesseract_language_for("uk") == "ukr+eng"
-    assert _tesseract_language_for("ukr") == "ukr+eng"
-    assert _tesseract_language_for("ukrainian") == "ukr+eng"
-    assert _tesseract_language_for("en") == "eng"
-    assert _tesseract_language_for("ukr+eng") == "ukr+eng"
+    assert image_preprocessing.tesseract_language_for("uk") == "ukr+eng"
+    assert image_preprocessing.tesseract_language_for("ukr") == "ukr+eng"
+    assert image_preprocessing.tesseract_language_for("ukrainian") == "ukr+eng"
+    assert image_preprocessing.tesseract_language_for("en") == "eng"
+    assert image_preprocessing.tesseract_language_for("ukr+eng") == "ukr+eng"

@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.infrastructure.storage.local_file_storage import LocalFileStorage
+from src.kit.storage.local_file_storage import LocalFileStorage
 
 
 @pytest.mark.asyncio

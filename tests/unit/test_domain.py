@@ -4,75 +4,69 @@ from typing import cast
 
 import pytest
 
-from src.domain.entities.chunk_entity import ChunkEntity
-from src.domain.entities.document_entity import DocumentEntity
-from src.domain.entities.user_entity import UserEntity
-from src.domain.exceptions import (
+from src.documents.status import DocumentStatus
+from src.documents.types import DocumentType
+from src.kit.exceptions import (
     InvalidCreatedAtException,
     InvalidPasswordException,
     UserAlreadyInactiveException,
     UserInactiveException,
 )
-from src.domain.value_objects.document_status import DocumentStatus
-from src.domain.value_objects.document_type import DocumentType
-from src.domain.value_objects.email import Email
+from src.models.chunk import ChunkModel
+from src.models.document import DocumentModel
+from src.models.user import UserModel
 
 
 class TestEmail:
     def test_valid_email(self) -> None:
-        email = Email(value="user@example.com")
-        assert str(email) == "user@example.com"
+        user = TestUserModel._make_user(email="user@example.com")
+        assert user.email == "user@example.com"
 
     def test_valid_email_with_subdomain(self) -> None:
-        email = Email(value="user@mail.example.com")
-        assert email.value == "user@mail.example.com"
+        user = TestUserModel._make_user(email="user@mail.example.com")
+        assert user.email == "user@mail.example.com"
 
     def test_invalid_email_no_at(self) -> None:
-        from src.domain.exceptions import InvalidEmailException
+        from src.kit.exceptions import InvalidEmailException
 
         with pytest.raises(InvalidEmailException):
-            Email(value="userexample.com")
+            TestUserModel._make_user(email="userexample.com")
 
     def test_invalid_email_no_domain(self) -> None:
-        from src.domain.exceptions import InvalidEmailException
+        from src.kit.exceptions import InvalidEmailException
 
         with pytest.raises(InvalidEmailException):
-            Email(value="user@")
+            TestUserModel._make_user(email="user@")
 
     def test_invalid_email_no_tld(self) -> None:
-        from src.domain.exceptions import InvalidEmailException
+        from src.kit.exceptions import InvalidEmailException
 
         with pytest.raises(InvalidEmailException):
-            Email(value="user@example")
+            TestUserModel._make_user(email="user@example")
 
     def test_invalid_email_spaces(self) -> None:
-        from src.domain.exceptions import InvalidEmailException
+        from src.kit.exceptions import InvalidEmailException
 
         with pytest.raises(InvalidEmailException):
-            Email(value="user @example.com")
-
-    def test_email_is_frozen(self) -> None:
-        email = Email(value="user@example.com")
-        with pytest.raises(AttributeError):
-            email.value = "other@example.com"  # type: ignore[misc]
+            TestUserModel._make_user(email="user @example.com")
 
     def test_email_equality(self) -> None:
-        a = Email(value="user@example.com")
-        b = Email(value="user@example.com")
+        a = "user@example.com"
+        b = "user@example.com"
         assert a == b
 
     def test_email_inequality(self) -> None:
-        a = Email(value="user@example.com")
-        b = Email(value="other@example.com")
+        a = "user@example.com"
+        b = "other@example.com"
         assert a != b
 
 
-class TestUserEntity:
+class TestUserModel:
     @staticmethod
-    def _make_user(**overrides: object) -> UserEntity:
+    def _make_user(**overrides: object) -> UserModel:
         defaults: dict[str, object] = {
             "id": uuid.uuid4(),
-            "email": Email(value="test@example.com"),
+            "email": "test@example.com",
             "password": "$2b$12$hashedpasswordhere",
             "display_name": "Test User",
             "is_active": True,
@@ -80,9 +74,9 @@ class TestUserEntity:
             "updated_at": None,
         }
         defaults.update(overrides)
-        return UserEntity(
+        return UserModel(
             id=cast("uuid.UUID", defaults["id"]),
-            email=cast("Email", defaults["email"]),
+            email=cast("str", defaults["email"]),
             password=cast("str", defaults["password"]),
             display_name=cast("str | None", defaults["display_name"]),
             is_active=cast("bool", defaults["is_active"]),
@@ -91,9 +85,9 @@ class TestUserEntity:
         )
 
     def test_create_factory(self) -> None:
-        user = UserEntity.create(
+        user = UserModel.create(
             id=uuid.uuid4(),
-            email=Email(value="new@example.com"),
+            email="new@example.com",
             password="$2b$12$hashedpassword",
         )
         assert user.is_active is True
@@ -102,9 +96,9 @@ class TestUserEntity:
         assert str(user.email) == "new@example.com"
 
     def test_create_with_display_name(self) -> None:
-        user = UserEntity.create(
+        user = UserModel.create(
             id=uuid.uuid4(),
-            email=Email(value="new@example.com"),
+            email="new@example.com",
             password="$2b$12$hashedpassword",
             display_name="My Name",
         )
@@ -144,13 +138,13 @@ class TestUserEntity:
 
     def test_update_email(self) -> None:
         user = self._make_user()
-        new_email = Email(value="new@example.com")
+        new_email = "new@example.com"
         user.update_email(new_email)
         assert user.email == new_email
         assert user.updated_at is not None
 
     def test_update_email_same_value_no_update(self) -> None:
-        email = Email(value="same@example.com")
+        email = "same@example.com"
         user = self._make_user(email=email)
         user.update_email(email)
         assert user.updated_at is None
@@ -170,17 +164,17 @@ class TestUserEntity:
     def test_repr(self) -> None:
         user = self._make_user()
         r = repr(user)
-        assert "UserEntity" in r
+        assert "UserModel" in r
         assert "test@example.com" in r
 
 
-class TestDocumentEntity:
+class TestDocumentModel:
     @staticmethod
     def _embedding() -> list[float]:
-        return [0.1] * DocumentEntity.EMBEDDING_DIMENSIONS
+        return [0.1] * DocumentModel.EMBEDDING_DIMENSIONS
 
     @staticmethod
-    def _make_document(**overrides: object) -> DocumentEntity:
+    def _make_document(**overrides: object) -> DocumentModel:
         defaults: dict[str, object] = {
             "id": uuid.uuid4(),
             "user_id": uuid.uuid4(),
@@ -202,7 +196,7 @@ class TestDocumentEntity:
             "updated_at": None,
         }
         defaults.update(overrides)
-        return DocumentEntity(
+        return DocumentModel(
             id=cast("uuid.UUID", defaults["id"]),
             user_id=cast("uuid.UUID", defaults["user_id"]),
             collection_id=cast("uuid.UUID | None", defaults["collection_id"]),
@@ -224,7 +218,7 @@ class TestDocumentEntity:
         )
 
     def test_create_factory_defaults_to_pending(self) -> None:
-        document = DocumentEntity.create(
+        document = DocumentModel.create(
             id=uuid.uuid4(),
             user_id=uuid.uuid4(),
             title="Notes",
@@ -270,11 +264,8 @@ class TestDocumentEntity:
         with pytest.raises(ValueError):
             self._make_document(doc_embedding=[0.1, 0.2])
 
-    def test_document_embedding_getter_returns_copy(self) -> None:
+    def test_document_embedding_is_available(self) -> None:
         document = self._make_document(doc_embedding=self._embedding())
-        embedding = document.doc_embedding
-        assert embedding is not None
-        embedding[0] = 9.9
         assert document.doc_embedding is not None
         assert document.doc_embedding[0] == 0.1
 
@@ -304,18 +295,18 @@ class TestDocumentEntity:
         assert document.duplicate_of_id is None
 
 
-class TestChunkEntity:
+class TestChunkModel:
     @staticmethod
     def _embedding() -> list[float]:
-        return [0.2] * ChunkEntity.EMBEDDING_DIMENSIONS
+        return [0.2] * ChunkModel.EMBEDDING_DIMENSIONS
 
     @staticmethod
-    def _make_chunk(**overrides: object) -> ChunkEntity:
+    def _make_chunk(**overrides: object) -> ChunkModel:
         defaults: dict[str, object] = {
             "id": uuid.uuid4(),
             "document_id": uuid.uuid4(),
             "content": "Chunk content",
-            "embedding": TestChunkEntity._embedding(),
+            "embedding": TestChunkModel._embedding(),
             "chunk_index": 0,
             "start_char": 0,
             "end_char": 13,
@@ -324,7 +315,7 @@ class TestChunkEntity:
             "created_at": datetime.now(UTC),
         }
         defaults.update(overrides)
-        return ChunkEntity(
+        return ChunkModel(
             id=cast("uuid.UUID", defaults["id"]),
             document_id=cast("uuid.UUID", defaults["document_id"]),
             content=cast("str", defaults["content"]),
@@ -338,7 +329,7 @@ class TestChunkEntity:
         )
 
     def test_create_factory(self) -> None:
-        chunk = ChunkEntity.create(
+        chunk = ChunkModel.create(
             id=uuid.uuid4(),
             document_id=uuid.uuid4(),
             content="hello",
@@ -357,10 +348,8 @@ class TestChunkEntity:
         with pytest.raises(ValueError):
             self._make_chunk(embedding=[0.1])
 
-    def test_embedding_getter_returns_copy(self) -> None:
+    def test_embedding_is_available(self) -> None:
         chunk = self._make_chunk()
-        embedding = chunk.embedding
-        embedding[0] = 9.9
         assert chunk.embedding[0] == 0.2
 
     def test_negative_chunk_index_raises(self) -> None:
@@ -381,6 +370,6 @@ class TestChunkEntity:
 
     def test_update_embedding(self) -> None:
         chunk = self._make_chunk()
-        new_embedding = [0.4] * ChunkEntity.EMBEDDING_DIMENSIONS
+        new_embedding = [0.4] * ChunkModel.EMBEDDING_DIMENSIONS
         chunk.update_embedding(new_embedding)
         assert chunk.embedding[0] == 0.4

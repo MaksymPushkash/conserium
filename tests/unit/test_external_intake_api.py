@@ -4,24 +4,21 @@ from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
-from src.application.dtos.api_key_dtos import ApiKeyPrincipalDTO
-from src.application.dtos.collection_dtos import CollectionDTO, CollectionListDTO, ListCollectionsDTO
-from src.application.dtos.document_dtos import DocumentDTO
-from src.application.dtos.external_intake_dtos import ExternalIngestResultDTO, ExternalIntakeItemDTO
-from src.application.dtos.query_dtos import QueryDTO, QueryResultDTO
-from src.application.dtos.refrag_dtos import RefragContextPackage
-from src.application.use_cases.api_keys import AuthenticateApiKeyUseCase
-from src.application.use_cases.documents.collection_use_cases import ListCollectionsUseCase
-from src.application.use_cases.external_intake import (
-    GetExternalIntakeItemUseCase,
-    IngestExternalItemUseCase,
-    ListExternalIntakeItemsUseCase,
-    RetryExternalIntakeItemUseCase,
+from src.collections.schemas import CollectionListResponse, CollectionResponse
+from src.collections.service import CollectionService
+from src.documents.ingestion import (
+    ExternalIntakeService,
+    ExternalItemIngester,
 )
-from src.application.use_cases.query.query_use_case import QueryUseCase
-from src.domain.value_objects.document_status import DocumentStatus
-from src.domain.value_objects.document_type import DocumentType
+from src.documents.schemas import DocumentDTO, ExternalIngestResultDTO, ExternalIntakeItemDTO
+from src.documents.status import DocumentStatus
+from src.documents.types import DocumentType
+from src.integrations.schemas import ApiKeyPrincipalDTO
+from src.integrations.service import ApiKeyAuthenticator
 from src.main import create_app
+from src.query.schemas import QueryDTO, QueryResultDTO, RefragContextPackage
+from src.query.service import QueryExecutor
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -43,7 +40,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -72,44 +69,41 @@ class _IngestExternalItem:
         return self.result
 
 
-class _ListIntakeItems:
-    def __init__(self, item: ExternalIntakeItemDTO) -> None:
+class _ExternalIntakeService:
+    def __init__(self, item: ExternalIntakeItemDTO, result: ExternalIngestResultDTO) -> None:
         self.item = item
+        self.result = result
         self.received: tuple[uuid.UUID, int, int] | None = None
 
-    async def __call__(self, *, user_id: uuid.UUID, limit: int = 20, offset: int = 0) -> list[ExternalIntakeItemDTO]:
+    async def list(self, *, user_id: uuid.UUID, limit: int = 20, offset: int = 0) -> list[ExternalIntakeItemDTO]:
         self.received = (user_id, limit, offset)
         return [self.item]
 
+    async def get(self, *, user_id: uuid.UUID, intake_item_id: uuid.UUID) -> ExternalIngestResultDTO:
+        return self.result
 
-class _GetIntakeItem:
-    def __init__(self, result: ExternalIngestResultDTO) -> None:
-        self.result = result
-
-    async def __call__(self, *, user_id: uuid.UUID, intake_item_id: uuid.UUID) -> ExternalIngestResultDTO:
+    async def retry(self, *, user_id: uuid.UUID, intake_item_id: uuid.UUID) -> ExternalIngestResultDTO:
         return self.result
 
 
-class _RetryIntakeItem(_GetIntakeItem):
-    pass
-
-
 class _ListCollections:
-    async def __call__(self, dto: ListCollectionsDTO) -> CollectionListDTO:
+    async def list(self, session, *, user_id: uuid.UUID, limit: int, offset: int, workspace_id: uuid.UUID | None) -> CollectionListResponse:
         now = datetime.now(UTC)
-        item = CollectionDTO(
+        item = CollectionResponse(
             id=uuid.uuid4(),
-            user_id=dto.user_id,
+            user_id=user_id,
             name="Inbox",
             description=None,
             color=None,
+            workspace_id=None,
+            access_role="owner",
             created_at=now,
             updated_at=None,
         )
-        return CollectionListDTO(items=[item], total=1, limit=dto.limit, offset=dto.offset)
+        return CollectionListResponse(items=[item], total=1, limit=limit, offset=offset)
 
 
-class _QueryUseCase:
+class _QueryExecutor:
     def __init__(self) -> None:
         self.received: QueryDTO | None = None
 
@@ -139,7 +133,7 @@ def test_webhook_ingest_authenticates_api_key_and_forwards_tags() -> None:
     document_id = uuid.uuid4()
     authenticate = _AuthenticateApiKey(user_id, api_key_id)
     ingest = _IngestExternalItem(_external_result(user_id=user_id, api_key_id=api_key_id, document_id=document_id))
-    client = _client({AuthenticateApiKeyUseCase: authenticate, IngestExternalItemUseCase: ingest})
+    client = _client({ApiKeyAuthenticator: authenticate, ExternalItemIngester: ingest})
 
     try:
         response = client.post(
@@ -173,7 +167,7 @@ def test_public_api_ingest_defaults_provider() -> None:
     document_id = uuid.uuid4()
     authenticate = _AuthenticateApiKey(user_id, api_key_id)
     ingest = _IngestExternalItem(_external_result(user_id=user_id, api_key_id=api_key_id, document_id=document_id))
-    client = _client({AuthenticateApiKeyUseCase: authenticate, IngestExternalItemUseCase: ingest})
+    client = _client({ApiKeyAuthenticator: authenticate, ExternalItemIngester: ingest})
 
     try:
         response = client.post(
@@ -200,13 +194,11 @@ def test_public_api_intake_status_list_and_retry_use_scoped_auth() -> None:
     document_id = uuid.uuid4()
     result = _external_result(user_id=user_id, api_key_id=api_key_id, document_id=document_id)
     authenticate = _AuthenticateApiKey(user_id, api_key_id)
-    list_items = _ListIntakeItems(result.intake_item)
+    intake_service = _ExternalIntakeService(result.intake_item, result)
     client = _client(
         {
-            AuthenticateApiKeyUseCase: authenticate,
-            ListExternalIntakeItemsUseCase: list_items,
-            GetExternalIntakeItemUseCase: _GetIntakeItem(result),
-            RetryExternalIntakeItemUseCase: _RetryIntakeItem(result),
+            ApiKeyAuthenticator: authenticate,
+            ExternalIntakeService: intake_service,
         }
     )
 
@@ -231,12 +223,12 @@ def test_public_api_collections_and_query_use_scoped_auth() -> None:
     user_id = uuid.uuid4()
     api_key_id = uuid.uuid4()
     authenticate = _AuthenticateApiKey(user_id, api_key_id)
-    query = _QueryUseCase()
+    query = _QueryExecutor()
     client = _client(
         {
-            AuthenticateApiKeyUseCase: authenticate,
-            ListCollectionsUseCase: _ListCollections(),
-            QueryUseCase: query,
+            ApiKeyAuthenticator: authenticate,
+            CollectionService: _ListCollections(),
+            QueryExecutor: query,
         }
     )
 
@@ -260,7 +252,7 @@ def test_public_api_collections_and_query_use_scoped_auth() -> None:
 
 def _client(dependencies: Mapping[type[object], object]) -> TestClient:
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(dependencies)
+    apply_dependency_overrides(app, _FakeDependencyContainer(dependencies)._dependencies)
     return TestClient(app, raise_server_exceptions=False)
 
 

@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.core.config import settings
-from src.infrastructure.database.models.external_connection import ExternalConnectionModel
-from src.infrastructure.security.fernet_token_cipher import FernetTokenCipher
+from src.kit.security.fernet_token_cipher import FernetTokenCipher
+from src.models.external_connection import ExternalConnectionModel
+from src.settings import settings
 
 
 async def main() -> None:

@@ -2,19 +2,24 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from src.application.agents.query.conversation_context_agent import ConversationContextAgent
-from src.application.agents.query.retrieval_agent import RetrievalAgent
-from src.application.agents.query.router_agent import RouterAgent
-from src.application.agents.query.state import ConseriumQueryState, QueryType
-from src.application.agents.query.synthesis_agent import ABSTENTION_ANSWER, SynthesisAgent
-from src.application.dtos.conversation_dtos import ConversationSourceDTO, ConversationTurnDTO
-from src.application.dtos.query_dtos import QuerySourceDTO
-from src.application.dtos.refrag_dtos import RefragChunk, RefragContextPackage, RefragRepresentation
-from src.domain.value_objects.document_type import DocumentType
+from src.documents.types import DocumentType
+from src.query.agents.conversation_context_agent import ConversationContextAgent
+from src.query.agents.retrieval_agent import RetrievalAgent
+from src.query.agents.router_agent import RouterAgent
+from src.query.agents.state import ConseriumQueryState, QueryType
+from src.query.agents.synthesis_agent import ABSTENTION_ANSWER, SynthesisAgent
+from src.query.schemas import (
+    ConversationSourceDTO,
+    ConversationTurnDTO,
+    QuerySourceDTO,
+    RefragChunk,
+    RefragContextPackage,
+    RefragRepresentation,
+)
 
 if TYPE_CHECKING:
-    from src.application.ports.ai.llm_service import ILLMService
-    from src.application.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
+    from src.kit.ports.ai.llm_service import ILLMService
+    from src.query.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
 
 
 def test_router_agent_marks_summary_queries() -> None:

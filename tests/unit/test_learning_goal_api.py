@@ -5,13 +5,14 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.application.dtos.learning_goal_dtos import LearningGoalDTO
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.learning_goals import ListLearningGoalsUseCase
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.email import Email
+from src.auth.jwt_service import JWTServiceProtocol
+from src.learning_goals.schemas import LearningGoalDTO
+from src.learning_goals.service import get_learning_goal_service, to_learning_goal_response
 from src.main import create_app
+from src.models.user import UserModel
+from src.postgres import get_db_read_session
+from src.users.repository import UserRepository
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -33,7 +34,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -42,39 +43,43 @@ class _FakeRootContainer:
 
 
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity) -> None:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
 
-class _ReturningLearningGoalsUseCase:
+class _ReturningLearningGoalService:
     def __init__(self, result: list[LearningGoalDTO]) -> None:
         self._result = result
         self.received_user_id: uuid.UUID | None = None
 
-    async def __call__(self, *, user_id: uuid.UUID) -> list[LearningGoalDTO]:
+    async def list_goals(self, session: object, *, user_id: uuid.UUID):
         self.received_user_id = user_id
-        return self._result
+        return [to_learning_goal_response(goal) for goal in self._result]
+
+
+async def _session_override():
+    yield object()
 
 
 def test_list_learning_goals_route_serializes_response() -> None:
     user = _make_user()
     goal_id = uuid.uuid4()
     now = datetime.now(UTC)
-    use_case = _ReturningLearningGoalsUseCase(
+    service = _ReturningLearningGoalService(
         [
             LearningGoalDTO(
                 id=goal_id,
@@ -99,13 +104,14 @@ def test_list_learning_goals_route_serializes_response() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            ListLearningGoalsUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
+    app.dependency_overrides[get_learning_goal_service] = lambda: service
+    app.dependency_overrides[get_db_read_session] = _session_override
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -118,13 +124,13 @@ def test_list_learning_goals_route_serializes_response() -> None:
     assert response.json()[0]["topic"] == "Python"
     assert response.json()[0]["recommended_next_areas"] == ["Testing"]
     assert response.json()[0]["deadline_status"] == "none"
-    assert use_case.received_user_id == user.id
+    assert service.received_user_id == user.id
 
 
-def _make_user() -> UserEntity:
-    return UserEntity(
+def _make_user() -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=True,

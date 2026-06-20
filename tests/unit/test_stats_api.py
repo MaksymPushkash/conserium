@@ -3,23 +3,22 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
-from src.application.dtos.stats_dtos import (
-    DailyDigestDTO,
-    DailyDigestItemDTO,
-    StatsOverviewDTO,
-    StatsTimelineBucketDTO,
-    StatsTimelineDTO,
-    WeeklyReportDTO,
-)
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.stats import GetDailyDigestUseCase, GetStatsOverviewUseCase, GetWeeklyReportUseCase
-from src.application.use_cases.stats.get_stats_timeline_use_case import GetStatsTimelineUseCase
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.email import Email
+from src.auth.jwt_service import JWTServiceProtocol
 from src.main import create_app
+from src.models.user import UserModel
+from src.stats.schemas import (
+    DailyDigestItemResponse,
+    DailyDigestResponse,
+    StatsOverviewResponse,
+    StatsTimelineBucketResponse,
+    StatsTimelineResponse,
+    WeeklyReportResponse,
+)
+from src.users.repository import UserRepository
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -41,7 +40,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -50,72 +49,72 @@ class _FakeRootContainer:
 
 
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity) -> None:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
 
-class _ReturningUseCase:
-    def __init__(self, result: StatsOverviewDTO) -> None:
+class _ReturningStatsService:
+    def __init__(self, result: StatsOverviewResponse) -> None:
         self._result = result
         self.received_user_id: uuid.UUID | None = None
 
-    async def __call__(self, user_id: uuid.UUID) -> StatsOverviewDTO:
+    async def get_overview(self, session: object, user_id: uuid.UUID) -> StatsOverviewResponse:
         self.received_user_id = user_id
         return self._result
 
 
-class _ReturningTimelineUseCase:
-    def __init__(self, result: StatsTimelineDTO) -> None:
+class _ReturningTimelineStatsService:
+    def __init__(self, result: StatsTimelineResponse) -> None:
         self._result = result
         self.received_user_id: uuid.UUID | None = None
         self.received_months: int | None = None
 
-    async def __call__(self, user_id: uuid.UUID, *, months: int = 6) -> StatsTimelineDTO:
+    async def get_timeline(self, session: object, user_id: uuid.UUID, *, months: int) -> StatsTimelineResponse:
         self.received_user_id = user_id
         self.received_months = months
         return self._result
 
 
-class _ReturningDailyDigestUseCase:
-    def __init__(self, result: DailyDigestDTO) -> None:
+class _ReturningDailyDigestStatsService:
+    def __init__(self, result: DailyDigestResponse) -> None:
         self._result = result
         self.received_user_id: uuid.UUID | None = None
         self.received_limit: int | None = None
 
-    async def __call__(self, user_id: uuid.UUID, *, limit: int = 3) -> DailyDigestDTO:
+    async def get_daily_digest(self, session: object, user_id: uuid.UUID, *, limit: int) -> DailyDigestResponse:
         self.received_user_id = user_id
         self.received_limit = limit
         return self._result
 
 
-class _ReturningWeeklyReportUseCase:
-    def __init__(self, result: WeeklyReportDTO) -> None:
+class _ReturningWeeklyReportStatsService:
+    def __init__(self, result: WeeklyReportResponse) -> None:
         self._result = result
         self.received_user_id: uuid.UUID | None = None
 
-    async def __call__(self, user_id: uuid.UUID) -> WeeklyReportDTO:
+    async def get_weekly_report(self, session: object, user_id: uuid.UUID) -> WeeklyReportResponse:
         self.received_user_id = user_id
         return self._result
 
 
-def _make_user() -> UserEntity:
-    return UserEntity(
+def _make_user() -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=True,
@@ -124,10 +123,21 @@ def _make_user() -> UserEntity:
     )
 
 
-def test_stats_overview_route_returns_user_stats() -> None:
+async def _fake_read_session() -> object:
+    yield object()
+
+
+def _set_stats_service(monkeypatch: pytest.MonkeyPatch, service: object) -> None:
+    import src.stats.endpoints as stats_endpoints
+
+    monkeypatch.setattr(stats_endpoints, "stats", service)
+    stats_endpoints.router.dependency_overrides_provider = None
+
+
+def test_stats_overview_route_returns_user_stats(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _make_user()
-    use_case = _ReturningUseCase(
-        StatsOverviewDTO(
+    service = _ReturningStatsService(
+        StatsOverviewResponse(
             total_documents=8,
             ready_documents=5,
             processing_documents=2,
@@ -140,16 +150,19 @@ def test_stats_overview_route_returns_user_stats() -> None:
             citation_count=7,
         )
     )
+    _set_stats_service(monkeypatch, service)
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    from src.postgres import get_db_read_session
+
+    app.dependency_overrides[get_db_read_session] = _fake_read_session
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            GetStatsOverviewUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -161,15 +174,15 @@ def test_stats_overview_route_returns_user_stats() -> None:
     assert response.json()["total_documents"] == 8
     assert response.json()["forgotten_documents"] == 1
     assert response.json()["query_count"] == 11
-    assert use_case.received_user_id == user.id
+    assert service.received_user_id == user.id
 
 
-def test_stats_timeline_route_returns_monthly_activity() -> None:
+def test_stats_timeline_route_returns_monthly_activity(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _make_user()
-    use_case = _ReturningTimelineUseCase(
-        StatsTimelineDTO(
+    service = _ReturningTimelineStatsService(
+        StatsTimelineResponse(
             items=[
-                StatsTimelineBucketDTO(
+                StatsTimelineBucketResponse(
                     month="2026-05",
                     saved_documents=3,
                     active_documents=2,
@@ -180,16 +193,19 @@ def test_stats_timeline_route_returns_monthly_activity() -> None:
             months=6,
         )
     )
+    _set_stats_service(monkeypatch, service)
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    from src.postgres import get_db_read_session
+
+    app.dependency_overrides[get_db_read_session] = _fake_read_session
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            GetStatsTimelineUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -201,18 +217,18 @@ def test_stats_timeline_route_returns_monthly_activity() -> None:
     assert response.json()["items"][0]["month"] == "2026-05"
     assert response.json()["items"][0]["query_count"] == 5
     assert response.json()["months"] == 6
-    assert use_case.received_user_id == user.id
-    assert use_case.received_months == 6
+    assert service.received_user_id == user.id
+    assert service.received_months == 6
 
 
-def test_daily_digest_route_returns_stale_document_questions() -> None:
+def test_daily_digest_route_returns_stale_document_questions(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _make_user()
     document_id = uuid.uuid4()
     last_used_at = datetime(2026, 5, 1, tzinfo=UTC)
-    use_case = _ReturningDailyDigestUseCase(
-        DailyDigestDTO(
+    service = _ReturningDailyDigestStatsService(
+        DailyDigestResponse(
             items=[
-                DailyDigestItemDTO(
+                DailyDigestItemResponse(
                     document_id=document_id,
                     title="Clean Architecture",
                     summary="Architecture notes",
@@ -224,16 +240,19 @@ def test_daily_digest_route_returns_stale_document_questions() -> None:
             ]
         )
     )
+    _set_stats_service(monkeypatch, service)
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    from src.postgres import get_db_read_session
+
+    app.dependency_overrides[get_db_read_session] = _fake_read_session
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            GetDailyDigestUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -244,14 +263,14 @@ def test_daily_digest_route_returns_stale_document_questions() -> None:
     assert response.status_code == 200
     assert response.json()["items"][0]["document_id"] == str(document_id)
     assert response.json()["items"][0]["question"] == "How do boundaries work?"
-    assert use_case.received_user_id == user.id
-    assert use_case.received_limit == 2
+    assert service.received_user_id == user.id
+    assert service.received_limit == 2
 
 
-def test_weekly_report_route_returns_actionable_summary() -> None:
+def test_weekly_report_route_returns_actionable_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _make_user()
-    use_case = _ReturningWeeklyReportUseCase(
-        WeeklyReportDTO(
+    service = _ReturningWeeklyReportStatsService(
+        WeeklyReportResponse(
             saved_documents=4,
             active_documents=3,
             query_count=2,
@@ -263,16 +282,19 @@ def test_weekly_report_route_returns_actionable_summary() -> None:
             recommended_actions=["Retry failed processing jobs."],
         )
     )
+    _set_stats_service(monkeypatch, service)
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    from src.postgres import get_db_read_session
+
+    app.dependency_overrides[get_db_read_session] = _fake_read_session
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            GetWeeklyReportUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -283,4 +305,4 @@ def test_weekly_report_route_returns_actionable_summary() -> None:
     assert response.status_code == 200
     assert response.json()["stale_documents"] == 6
     assert response.json()["recommended_actions"] == ["Retry failed processing jobs."]
-    assert use_case.received_user_id == user.id
+    assert service.received_user_id == user.id

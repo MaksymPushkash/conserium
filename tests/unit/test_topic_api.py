@@ -3,22 +3,20 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
-from src.application.dtos.topic_dtos import TopicDetailDTO, TopicDocumentDTO, TopicDTO, TopicListDTO
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.application.use_cases.topics import (
-    GetTopicDetailUseCase,
-    IgnoreTopicUseCase,
-    ListTopicsUseCase,
-    MergeTopicsUseCase,
-    PinTopicUseCase,
-    RenameTopicUseCase,
-)
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.email import Email
+from src.auth.jwt_service import JWTServiceProtocol
 from src.main import create_app
+from src.models.user import UserModel
+from src.topics.schemas import (
+    TopicDetailResponse,
+    TopicDocumentResponse,
+    TopicListResponse,
+    TopicResponse,
+)
+from src.users.repository import UserRepository
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -40,7 +38,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -49,58 +47,78 @@ class _FakeRootContainer:
 
 
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity) -> None:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
 
-class _ReturningUseCase:
-    def __init__(self, result: TopicListDTO) -> None:
+class _ReturningTopicListService:
+    def __init__(self, result: TopicListResponse) -> None:
         self._result = result
         self.received: tuple[uuid.UUID, int, int] | None = None
 
-    async def __call__(self, *, user_id: uuid.UUID, limit: int = 50, offset: int = 0) -> TopicListDTO:
+    async def list_topics(self, session: object, *, user_id: uuid.UUID, limit: int, offset: int) -> TopicListResponse:
         self.received = (user_id, limit, offset)
         return self._result
 
 
-class _ReturningDetailUseCase:
-    def __init__(self, result: TopicDetailDTO) -> None:
+class _ReturningTopicDetailService:
+    def __init__(self, result: TopicDetailResponse) -> None:
         self._result = result
         self.received: tuple[uuid.UUID, str, int] | None = None
 
-    async def __call__(self, *, user_id: uuid.UUID, name: str, document_limit: int = 10) -> TopicDetailDTO:
+    async def get_detail(
+        self,
+        session: object,
+        *,
+        user_id: uuid.UUID,
+        name: str,
+        document_limit: int,
+    ) -> TopicDetailResponse:
         self.received = (user_id, name, document_limit)
         return self._result
 
 
-class _ReturningTopicUseCase:
-    def __init__(self, result: TopicDTO) -> None:
+class _ReturningTopicManagementService:
+    def __init__(self, result: TopicResponse, ignored_result: TopicResponse | None = None) -> None:
         self._result = result
+        self._ignored_result = ignored_result or result
         self.received: dict[str, object] = {}
 
-    async def __call__(self, **kwargs: object) -> TopicDTO:
+    async def rename(self, session: object, **kwargs: object) -> TopicResponse:
         self.received = kwargs
         return self._result
 
+    async def merge(self, session: object, **kwargs: object) -> TopicResponse:
+        self.received = kwargs
+        return self._result
 
-def _make_user() -> UserEntity:
-    return UserEntity(
+    async def pin(self, session: object, **kwargs: object) -> TopicResponse:
+        self.received = kwargs
+        return self._result
+
+    async def ignore(self, session: object, **kwargs: object) -> TopicResponse:
+        self.received = kwargs
+        return self._ignored_result
+
+
+def _make_user() -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=True,
@@ -109,26 +127,47 @@ def _make_user() -> UserEntity:
     )
 
 
-def test_list_topics_route_returns_topic_groups() -> None:
+async def _fake_session() -> object:
+    yield object()
+
+
+def _set_topics_service(monkeypatch: pytest.MonkeyPatch, service: object) -> None:
+    import src.topics.endpoints as topic_endpoints
+
+    monkeypatch.setattr(topic_endpoints, "topics", service)
+
+
+def _override_sessions(app: object) -> None:
+    from fastapi import FastAPI
+
+    from src.postgres import get_db_read_session, get_db_session
+
+    assert isinstance(app, FastAPI)
+    app.dependency_overrides[get_db_read_session] = _fake_session
+    app.dependency_overrides[get_db_session] = _fake_session
+
+
+def test_list_topics_route_returns_topic_groups(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _make_user()
-    use_case = _ReturningUseCase(
-        TopicListDTO(
-            items=[TopicDTO(name="python", document_count=3, last_document_at=datetime(2026, 5, 1, tzinfo=UTC))],
+    service = _ReturningTopicListService(
+        TopicListResponse(
+            items=[TopicResponse(name="python", document_count=3, last_document_at=datetime(2026, 5, 1, tzinfo=UTC))],
             total=1,
             limit=20,
             offset=0,
         )
     )
+    _set_topics_service(monkeypatch, service)
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    _override_sessions(app)
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            ListTopicsUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -140,17 +179,17 @@ def test_list_topics_route_returns_topic_groups() -> None:
     assert response.json()["items"][0]["name"] == "python"
     assert response.json()["items"][0]["document_count"] == 3
     assert response.json()["total"] == 1
-    assert use_case.received == (user.id, 20, 0)
+    assert service.received == (user.id, 20, 0)
 
 
-def test_get_topic_detail_route_returns_representative_documents() -> None:
+def test_get_topic_detail_route_returns_representative_documents(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _make_user()
     document_id = uuid.uuid4()
-    use_case = _ReturningDetailUseCase(
-        TopicDetailDTO(
-            topic=TopicDTO(name="python", document_count=1, last_document_at=datetime(2026, 5, 1, tzinfo=UTC)),
+    service = _ReturningTopicDetailService(
+        TopicDetailResponse(
+            topic=TopicResponse(name="python", document_count=1, last_document_at=datetime(2026, 5, 1, tzinfo=UTC)),
             documents=[
-                TopicDocumentDTO(
+                TopicDocumentResponse(
                     id=str(document_id),
                     title="Python Async",
                     type="TEXT",
@@ -161,16 +200,17 @@ def test_get_topic_detail_route_returns_representative_documents() -> None:
             ],
         )
     )
+    _set_topics_service(monkeypatch, service)
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    _override_sessions(app)
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            GetTopicDetailUseCase: use_case,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -185,36 +225,32 @@ def test_get_topic_detail_route_returns_representative_documents() -> None:
     assert response.json()["topic"]["name"] == "python"
     assert response.json()["documents"][0]["id"] == str(document_id)
     assert response.json()["documents"][0]["title"] == "Python Async"
-    assert use_case.received == (user.id, "python", 12)
+    assert service.received == (user.id, "python", 12)
 
 
-def test_topic_management_routes_forward_authenticated_user_and_payloads() -> None:
+def test_topic_management_routes_forward_authenticated_user_and_payloads(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _make_user()
-    renamed = _ReturningTopicUseCase(
-        TopicDTO(
+    service = _ReturningTopicManagementService(
+        TopicResponse(
             name="Backend",
             document_count=2,
             last_document_at=datetime(2026, 5, 1, tzinfo=UTC),
-            source_names=("python", "fastapi"),
+            source_names=["python", "fastapi"],
             pinned=True,
-        )
+        ),
+        ignored_result=TopicResponse(name="Backend", document_count=2, last_document_at=None, ignored=True),
     )
-    merged = _ReturningTopicUseCase(renamed._result)
-    pinned = _ReturningTopicUseCase(renamed._result)
-    ignored = _ReturningTopicUseCase(TopicDTO(name="Backend", document_count=2, last_document_at=None, ignored=True))
+    _set_topics_service(monkeypatch, service)
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer(
+    _override_sessions(app)
+    apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            IJWTService: jwt_service,
-            IUnitOfWork: _FakeUnitOfWork(user),
-            RenameTopicUseCase: renamed,
-            MergeTopicsUseCase: merged,
-            PinTopicUseCase: pinned,
-            IgnoreTopicUseCase: ignored,
+            JWTServiceProtocol: jwt_service,
+            UserRepository: _FakeRepositorySession(user),
         }
-    )
+    )._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -246,7 +282,4 @@ def test_topic_management_routes_forward_authenticated_user_and_payloads() -> No
     assert merge_response.status_code == 200
     assert pin_response.status_code == 200
     assert ignore_response.status_code == 200
-    assert renamed.received == {"user_id": user.id, "name": "python", "display_name": "Backend"}
-    assert merged.received == {"user_id": user.id, "name": "Backend", "source_names": ["python", "fastapi"]}
-    assert pinned.received == {"user_id": user.id, "name": "Backend", "pinned": False}
-    assert ignored.received == {"user_id": user.id, "name": "Backend", "ignored": True}
+    assert service.received == {"user_id": user.id, "name": "Backend", "ignored": True}

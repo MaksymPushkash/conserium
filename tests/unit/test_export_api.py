@@ -5,11 +5,11 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.application.ports.auth.jwt_service import IJWTService
-from src.application.ports.persistence.unit_of_work import IUnitOfWork
-from src.domain.entities.user_entity import UserEntity
-from src.domain.value_objects.email import Email
+from src.auth.jwt_service import JWTServiceProtocol
 from src.main import create_app
+from src.models.user import UserModel
+from src.users.repository import UserRepository
+from tests.dependency_overrides import apply_dependency_overrides
 
 
 class _FakeRequestContainer:
@@ -31,7 +31,7 @@ class _FakeScopeContext:
         return None
 
 
-class _FakeRootContainer:
+class _FakeDependencyContainer:
     def __init__(self, dependencies: Mapping[type[object], object]) -> None:
         self._dependencies = dependencies
 
@@ -40,18 +40,18 @@ class _FakeRootContainer:
 
 
 class _FakeUserRepository:
-    def __init__(self, user: UserEntity) -> None:
+    def __init__(self, user: UserModel) -> None:
         self._user = user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> UserEntity | None:
+    async def get_by_id(self, user_id: uuid.UUID) -> UserModel | None:
         return self._user
 
 
-class _FakeUnitOfWork:
-    def __init__(self, user: UserEntity) -> None:
+class _FakeRepositorySession:
+    def __init__(self, user: UserModel) -> None:
         self.user_repo = _FakeUserRepository(user)
 
-    async def __aenter__(self) -> "_FakeUnitOfWork":
+    async def __aenter__(self) -> "_FakeRepositorySession":
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
@@ -63,7 +63,7 @@ def test_markdown_export_route_returns_attachment() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer({IJWTService: jwt_service, IUnitOfWork: _FakeUnitOfWork(user)})
+    apply_dependency_overrides(app, _FakeDependencyContainer({JWTServiceProtocol: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -85,7 +85,7 @@ def test_pdf_export_route_returns_pdf_attachment() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    app.state.dishka_container = _FakeRootContainer({IJWTService: jwt_service, IUnitOfWork: _FakeUnitOfWork(user)})
+    apply_dependency_overrides(app, _FakeDependencyContainer({JWTServiceProtocol: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -102,10 +102,10 @@ def test_pdf_export_route_returns_pdf_attachment() -> None:
     assert response.content.startswith(b"%PDF-1.4")
 
 
-def _make_user() -> UserEntity:
-    return UserEntity(
+def _make_user() -> UserModel:
+    return UserModel(
         id=uuid.uuid4(),
-        email=Email(value="user@example.com"),
+        email="user@example.com",
         password="$2b$12$hashedpassword",
         display_name="Test User",
         is_active=True,
