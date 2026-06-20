@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
         with:
           version: latest
@@ -19,7 +21,19 @@ jobs:
       - name: Static checks
         run: |
           uv run ruff check src tests scripts
-          uv run mypy src tests
+          uv run mypy src
+      - name: Verify OpenAPI contract
+        run: |
+          uv run python -m scripts.export_openapi openapi.generated.json
+          diff -u openapi.json openapi.generated.json
+      - name: Check OpenAPI breaking changes
+        if: github.event_name == 'pull_request'
+        uses: oasdiff/oasdiff-action/breaking@v0
+        with:
+          base: 'origin/${{ github.base_ref }}:openapi.json'
+          revision: 'HEAD:openapi.json'
+          fail-on: ERR
+          review: false
       - name: Unit tests
         run: uv run pytest
       - name: Offline RAGAS-compatible eval

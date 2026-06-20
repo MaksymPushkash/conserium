@@ -34,6 +34,7 @@ jobs:
       LIVE_EVAL_EMAIL: ${{ secrets.LIVE_EVAL_EMAIL }}
       LIVE_EVAL_PASSWORD: ${{ secrets.LIVE_EVAL_PASSWORD }}
       LIVE_EVAL_CREATE_USER: ${{ vars.LIVE_EVAL_CREATE_USER || 'false' }}
+      VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -79,8 +80,10 @@ jobs:
           git checkout main
           git reset --hard "$DEPLOY_REF"
 
-          docker compose --env-file .env.prod up -d --build --remove-orphans
-          docker compose --env-file .env.prod exec -T app uv run alembic upgrade head
+          docker compose --env-file .env.prod up -d postgres redis
+          docker compose --env-file .env.prod build
+          docker compose --env-file .env.prod run --rm app uv run alembic upgrade head
+          docker compose --env-file .env.prod up -d --remove-orphans
           docker compose --env-file .env.prod ps
           curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
           REMOTE_DEPLOY
@@ -155,6 +158,10 @@ jobs:
         run: |
           echo "Live validation passed. Candidate revision ${DEPLOY_REF} is now the active production revision."
 
+      - name: Trigger frontend production deployment
+        if: ${{ env.VERCEL_DEPLOY_HOOK_URL != '' }}
+        run: curl --fail --silent --show-error --request POST "$VERCEL_DEPLOY_HOOK_URL"
+
       - name: Collect live eval failure diagnostics
         if: ${{ failure() && env.PRODUCTION_API_BASE_URL != '' }}
         run: |
@@ -167,8 +174,8 @@ jobs:
           echo "=== docker compose ps ==="
           docker compose --env-file .env.prod ps || true
 
-          echo "=== rabbitmq queues ==="
-          docker compose --env-file .env.prod exec -T rabbitmq rabbitmqctl list_queues name messages messages_ready messages_unacknowledged || true
+          echo "=== redis celery broker keys ==="
+          docker compose --env-file .env.prod exec -T redis sh -c 'redis-cli -n 2 --scan --pattern "*" | head -100' || true
 
           echo "=== app logs ==="
           docker compose --env-file .env.prod logs --tail=160 app || true
