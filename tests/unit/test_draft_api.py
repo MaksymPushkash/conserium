@@ -5,7 +5,8 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
+from src.drafts.dependencies import get_draft_service
 from src.drafts.operations import (
     DraftGenerator,
     delete_draft,
@@ -17,18 +18,17 @@ from src.drafts.operations import (
     restore_draft_version,
 )
 from src.drafts.schemas import (
-    DraftDetailDTO,
-    DraftListDTO,
-    DraftListItemDTO,
-    DraftOutlineDTO,
-    DraftResultDTO,
-    DraftTemplateDTO,
-    DraftVersionDTO,
+    DraftDetail,
+    DraftListItem,
+    DraftListResult,
+    DraftOutline,
+    DraftResult,
+    DraftTemplate,
+    DraftVersion,
 )
 from src.drafts.service import (
-    get_draft_service,
+    build_draft_generation_payload,
     to_draft_detail_response,
-    to_draft_generate_dto,
     to_draft_list_response,
     to_draft_outline_response,
     to_draft_response,
@@ -37,7 +37,7 @@ from src.drafts.service import (
 )
 from src.main import create_app
 from src.models.user import UserModel
-from src.query.schemas import QuerySourceDTO
+from src.query.schemas import QuerySource
 from src.users.repository import UserRepository
 from tests.dependency_overrides import apply_dependency_overrides
 
@@ -89,7 +89,7 @@ class _FakeRepositorySession:
 
 
 class _ReturningDraftService:
-    def __init__(self, result: DraftResultDTO) -> None:
+    def __init__(self, result: DraftResult) -> None:
         self._result = result
         self.received = None
 
@@ -99,9 +99,9 @@ class _ReturningDraftService:
 
 
 class _ReturningTemplatesService:
-    async def __call__(self) -> list[DraftTemplateDTO]:
+    async def __call__(self) -> list[DraftTemplate]:
         return [
-            DraftTemplateDTO(
+            DraftTemplate(
                 id="brief",
                 name="Brief",
                 description="Concise cited summary.",
@@ -117,7 +117,7 @@ class _ReturningOutlineService:
 
     async def __call__(self, dto):
         self.received = dto
-        return DraftOutlineDTO(
+        return DraftOutline(
             prompt=dto.prompt,
             template_id=dto.template_id,
             scope_type=dto.scope_type,
@@ -127,31 +127,31 @@ class _ReturningOutlineService:
 
 
 class _ReturningDraftListService:
-    def __init__(self, result: DraftListDTO) -> None:
+    def __init__(self, result: DraftListResult) -> None:
         self._result = result
         self.received: dict[str, object] = {}
 
-    async def __call__(self, **kwargs: object) -> DraftListDTO:
+    async def __call__(self, **kwargs: object) -> DraftListResult:
         self.received = kwargs
         return self._result
 
 
 class _ReturningDraftDetailService:
-    def __init__(self, result: DraftDetailDTO) -> None:
+    def __init__(self, result: DraftDetail) -> None:
         self._result = result
         self.received: dict[str, object] = {}
 
-    async def __call__(self, **kwargs: object) -> DraftDetailDTO:
+    async def __call__(self, **kwargs: object) -> DraftDetail:
         self.received = kwargs
         return self._result
 
 
 class _ReturningDraftVersionsService:
-    def __init__(self, result: list[DraftVersionDTO]) -> None:
+    def __init__(self, result: list[DraftVersion]) -> None:
         self._result = result
         self.received: dict[str, object] = {}
 
-    async def __call__(self, **kwargs: object) -> list[DraftVersionDTO]:
+    async def __call__(self, **kwargs: object) -> list[DraftVersion]:
         self.received = kwargs
         return self._result
 
@@ -180,11 +180,11 @@ class _DraftServiceFromServices:
 
     async def generate_outline(self, *, user_id: uuid.UUID, body: object):
         handler = self._dependencies[generate_draft_outline]
-        return to_draft_outline_response(await handler(to_draft_generate_dto(body, user_id)))
+        return to_draft_outline_response(await handler(build_draft_generation_payload(body, user_id)))
 
     async def generate(self, *, user_id: uuid.UUID, body: object):
         handler = self._dependencies[DraftGenerator]
-        return to_draft_response(await handler(to_draft_generate_dto(body, user_id)))
+        return to_draft_response(await handler(build_draft_generation_payload(body, user_id)))
 
     async def get(self, *, user_id: uuid.UUID, draft_id: uuid.UUID):
         handler = self._dependencies[get_draft]
@@ -218,7 +218,7 @@ def _make_user() -> UserModel:
 def test_generate_draft_route_returns_markdown_and_sources() -> None:
     user = _make_user()
     document_id = uuid.uuid4()
-    source = QuerySourceDTO(
+    source = QuerySource(
         chunk_id=uuid.uuid4(),
         document_id=document_id,
         document_title="Python Notes",
@@ -229,7 +229,7 @@ def test_generate_draft_route_returns_markdown_and_sources() -> None:
         used_in_answer=True,
     )
     handler = _ReturningDraftService(
-        DraftResultDTO(
+        DraftResult(
             draft_id=uuid.uuid4(),
             version_id=uuid.uuid4(),
             version_number=1,
@@ -305,9 +305,9 @@ def test_list_drafts_route_returns_recent_drafts() -> None:
     collection_id = uuid.uuid4()
     draft_id = uuid.uuid4()
     handler = _ReturningDraftListService(
-        DraftListDTO(
+        DraftListResult(
             items=[
-                DraftListItemDTO(
+                DraftListItem(
                     id=draft_id,
                     collection_id=collection_id,
                     title="Brief: Python",
@@ -389,7 +389,7 @@ def _client(user: UserModel, dependencies: Mapping[type[object], object]) -> Tes
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
             **dependencies,
         }
@@ -398,8 +398,8 @@ def _client(user: UserModel, dependencies: Mapping[type[object], object]) -> Tes
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _draft_detail(*, draft_id: uuid.UUID, version_id: uuid.UUID) -> DraftDetailDTO:
-    return DraftDetailDTO(
+def _draft_detail(*, draft_id: uuid.UUID, version_id: uuid.UUID) -> DraftDetail:
+    return DraftDetail(
         id=draft_id,
         collection_id=None,
         current_version_id=version_id,
@@ -419,8 +419,8 @@ def _draft_detail(*, draft_id: uuid.UUID, version_id: uuid.UUID) -> DraftDetailD
     )
 
 
-def _draft_version(*, draft_id: uuid.UUID, version_id: uuid.UUID) -> DraftVersionDTO:
-    return DraftVersionDTO(
+def _draft_version(*, draft_id: uuid.UUID, version_id: uuid.UUID) -> DraftVersion:
+    return DraftVersion(
         id=version_id,
         draft_id=draft_id,
         version_number=1,

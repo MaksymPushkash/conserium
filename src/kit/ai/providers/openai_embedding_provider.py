@@ -1,12 +1,12 @@
 from openai import AsyncOpenAI
 
-from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
+from src.kit.ai.embedding_provider import EmbeddingProvider
 from src.models.chunk import ChunkModel
 from src.observability.metrics_registry import metrics_registry
 from src.settings import settings
 
 
-class OpenAIEmbeddingProvider(IEmbeddingProvider):
+class OpenAIEmbeddingProvider(EmbeddingProvider):
     def __init__(self) -> None:
         if settings.OPENAI_EMBEDDING_DIMENSIONS != ChunkModel.EMBEDDING_DIMENSIONS:
             raise ValueError(

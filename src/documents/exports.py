@@ -3,30 +3,20 @@ from __future__ import annotations
 from textwrap import wrap
 from typing import TYPE_CHECKING
 
-from fastapi import Depends
-
-from src.documents.activity_repository import DocumentActivityRepository
-from src.documents.document_repository import DocumentRepository
-from src.documents.schemas import ExportedFileDTO, GetDocumentDTO, NotionExportDTO, NotionExportResultDTO
+from src.documents.schemas import ExportedFile, NotionExportResult
 from src.documents.service import ensure_document_owner
 from src.kit.exceptions import DocumentNotFoundException, IntegrationConfigurationException, ValidationException
-from src.postgres import AsyncSession, get_db_session
 
 if TYPE_CHECKING:
-    from src.integrations.clients import NotionExportClientProtocol
+    from uuid import UUID
+
+    from src.documents.activity_repository import DocumentActivityRepository
+    from src.documents.document_repository import DocumentRepository
+    from src.integrations.notion_export_client import NotionExportClient
     from src.integrations.repository import ExternalConnectionRepository
-    from src.kit.ports.security.token_cipher import ITokenCipher
+    from src.kit.security.fernet_token_cipher import FernetTokenCipher
     from src.models.document import DocumentModel
-
-
-def get_document_exporter(
-    session: AsyncSession = Depends(get_db_session),
-) -> DocumentExporter:
-    return DocumentExporter(
-        session,
-        DocumentRepository.from_session(session),
-        DocumentActivityRepository.from_session(session),
-    )
+    from src.postgres import AsyncSession
 
 
 class DocumentExporter:
@@ -40,32 +30,32 @@ class DocumentExporter:
         self._document_repo = document_repo
         self._document_activity_repo = document_activity_repo
 
-    async def __call__(self, dto: GetDocumentDTO, *, export_format: str) -> ExportedFileDTO:
-        document = await self._load_document(dto)
+    async def __call__(self, *, user_id: UUID, document_id: UUID, export_format: str) -> ExportedFile:
+        document = await self._load_document(user_id=user_id, document_id=document_id)
         markdown = document_to_markdown(document)
         normalized_format = export_format.lower()
         filename_stem = safe_filename(document.title)
         if normalized_format in {"md", "markdown"}:
-            return ExportedFileDTO(
+            return ExportedFile(
                 filename=f"{filename_stem}.md",
                 media_type="text/markdown; charset=utf-8",
                 content=markdown.encode("utf-8"),
             )
         if normalized_format == "pdf":
-            return ExportedFileDTO(
+            return ExportedFile(
                 filename=f"{filename_stem}.pdf",
                 media_type="application/pdf",
                 content=markdown_to_pdf(markdown),
             )
         raise ValidationException("unsupported export format")
 
-    async def _load_document(self, dto: GetDocumentDTO) -> DocumentModel:
-        document = await self._document_repo.get_by_id(dto.document_id)
+    async def _load_document(self, *, user_id: UUID, document_id: UUID) -> DocumentModel:
+        document = await self._document_repo.get_by_id(document_id)
         if document is None:
             raise DocumentNotFoundException("document not found")
-        ensure_document_owner(document, dto.user_id)
+        ensure_document_owner(document, user_id)
         await self._document_activity_repo.record_event(
-            user_id=dto.user_id,
+            user_id=user_id,
             document_id=document.id,
             event_type="exported",
         )
@@ -188,17 +178,23 @@ class NotionMarkdownExporter:
     def __init__(
         self,
         external_connection_repo: ExternalConnectionRepository,
-        notion_client: NotionExportClientProtocol,
-        token_cipher: ITokenCipher,
+        notion_client: NotionExportClient,
+        token_cipher: FernetTokenCipher,
     ) -> None:
         self._external_connection_repo = external_connection_repo
         self._notion_client = notion_client
         self._token_cipher = token_cipher
 
-    async def __call__(self, dto: NotionExportDTO) -> NotionExportResultDTO:
+    async def __call__(
+        self,
+        *,
+        user_id: UUID,
+        title: str,
+        markdown: str,
+        parent_page_id: str | None = None,
+    ) -> NotionExportResult:
         access_token = None
-        connection = await self._external_connection_repo.get_by_provider(user_id=dto.user_id, provider="notion")
-        parent_page_id = dto.parent_page_id
+        connection = await self._external_connection_repo.get_by_provider(user_id=user_id, provider="notion")
         if connection is not None:
             try:
                 access_token = self._token_cipher.decrypt(connection.access_token_encrypted)
@@ -209,9 +205,9 @@ class NotionMarkdownExporter:
                 raise IntegrationConfigurationException("set a default Notion parent page before exporting")
 
         page_id, url = await self._notion_client.create_markdown_page(
-            title=dto.title,
-            markdown=dto.markdown,
+            title=title,
+            markdown=markdown,
             parent_page_id=parent_page_id,
             access_token=access_token,
         )
-        return NotionExportResultDTO(page_id=page_id, url=url)
+        return NotionExportResult(page_id=page_id, url=url)

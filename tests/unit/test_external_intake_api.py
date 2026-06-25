@@ -10,13 +10,13 @@ from src.documents.ingestion import (
     ExternalIntakeService,
     ExternalItemIngester,
 )
-from src.documents.schemas import DocumentDTO, ExternalIngestResultDTO, ExternalIntakeItemDTO
+from src.documents.schemas import DocumentResult, ExternalIngestResult, ExternalIntakeItem
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
-from src.integrations.schemas import ApiKeyPrincipalDTO
+from src.integrations.schemas import ApiKeyPrincipal
 from src.integrations.service import ApiKeyAuthenticator
 from src.main import create_app
-from src.query.schemas import QueryDTO, QueryResultDTO, RefragContextPackage
+from src.query.schemas import QueryPayload, QueryResult, RefragContextPackage
 from src.query.service import QueryExecutor
 from tests.dependency_overrides import apply_dependency_overrides
 
@@ -54,35 +54,35 @@ class _AuthenticateApiKey:
         self.api_key_id = api_key_id
         self.received: tuple[str, str] | None = None
 
-    async def __call__(self, token: str, *, required_scope: str) -> ApiKeyPrincipalDTO:
+    async def __call__(self, token: str, *, required_scope: str) -> ApiKeyPrincipal:
         self.received = (token, required_scope)
-        return ApiKeyPrincipalDTO(user_id=self.user_id, api_key_id=self.api_key_id, scopes=[required_scope])
+        return ApiKeyPrincipal(user_id=self.user_id, api_key_id=self.api_key_id, scopes=[required_scope])
 
 
 class _IngestExternalItem:
-    def __init__(self, result: ExternalIngestResultDTO) -> None:
+    def __init__(self, result: ExternalIngestResult) -> None:
         self.result = result
         self.received = None
 
-    async def __call__(self, dto):
-        self.received = dto
+    async def __call__(self, **kwargs):
+        self.received = kwargs
         return self.result
 
 
 class _ExternalIntakeService:
-    def __init__(self, item: ExternalIntakeItemDTO, result: ExternalIngestResultDTO) -> None:
+    def __init__(self, item: ExternalIntakeItem, result: ExternalIngestResult) -> None:
         self.item = item
         self.result = result
         self.received: tuple[uuid.UUID, int, int] | None = None
 
-    async def list(self, *, user_id: uuid.UUID, limit: int = 20, offset: int = 0) -> list[ExternalIntakeItemDTO]:
+    async def list(self, *, user_id: uuid.UUID, limit: int = 20, offset: int = 0) -> list[ExternalIntakeItem]:
         self.received = (user_id, limit, offset)
         return [self.item]
 
-    async def get(self, *, user_id: uuid.UUID, intake_item_id: uuid.UUID) -> ExternalIngestResultDTO:
+    async def get(self, *, user_id: uuid.UUID, intake_item_id: uuid.UUID) -> ExternalIngestResult:
         return self.result
 
-    async def retry(self, *, user_id: uuid.UUID, intake_item_id: uuid.UUID) -> ExternalIngestResultDTO:
+    async def retry(self, *, user_id: uuid.UUID, intake_item_id: uuid.UUID) -> ExternalIngestResult:
         return self.result
 
 
@@ -105,11 +105,11 @@ class _ListCollections:
 
 class _QueryExecutor:
     def __init__(self) -> None:
-        self.received: QueryDTO | None = None
+        self.received: QueryPayload | None = None
 
-    async def __call__(self, dto: QueryDTO) -> QueryResultDTO:
+    async def __call__(self, dto: QueryPayload) -> QueryResult:
         self.received = dto
-        return QueryResultDTO(
+        return QueryResult(
             conversation_id=uuid.uuid4(),
             query=dto.query,
             answer="Saved answer",
@@ -155,10 +155,10 @@ def test_webhook_ingest_authenticates_api_key_and_forwards_tags() -> None:
     assert response.json()["intake_item"]["status"] == "QUEUED"
     assert authenticate.received == ("Bearer ctx_test", "ingest:write")
     assert ingest.received is not None
-    assert ingest.received.user_id == user_id
-    assert ingest.received.api_key_id == api_key_id
-    assert ingest.received.tags == ["notion", "research"]
-    assert ingest.received.provider == "n8n"
+    assert ingest.received["user_id"] == user_id
+    assert ingest.received["api_key_id"] == api_key_id
+    assert ingest.received["tags"] == ["notion", "research"]
+    assert ingest.received["provider"] == "n8n"
 
 
 def test_public_api_ingest_defaults_provider() -> None:
@@ -184,8 +184,8 @@ def test_public_api_ingest_defaults_provider() -> None:
 
     assert response.status_code == 202
     assert ingest.received is not None
-    assert ingest.received.provider == "public-api"
-    assert ingest.received.source_url == "https://example.com"
+    assert ingest.received["provider"] == "public-api"
+    assert ingest.received["source_url"] == "https://example.com"
 
 
 def test_public_api_intake_status_list_and_retry_use_scoped_auth() -> None:
@@ -256,9 +256,9 @@ def _client(dependencies: Mapping[type[object], object]) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _external_result(*, user_id: uuid.UUID, api_key_id: uuid.UUID, document_id: uuid.UUID) -> ExternalIngestResultDTO:
+def _external_result(*, user_id: uuid.UUID, api_key_id: uuid.UUID, document_id: uuid.UUID) -> ExternalIngestResult:
     now = datetime.now(UTC)
-    intake_item = ExternalIntakeItemDTO(
+    intake_item = ExternalIntakeItem(
         id=uuid.uuid4(),
         user_id=user_id,
         api_key_id=api_key_id,
@@ -277,7 +277,7 @@ def _external_result(*, user_id: uuid.UUID, api_key_id: uuid.UUID, document_id: 
         created_at=now,
         updated_at=None,
     )
-    document = DocumentDTO(
+    document = DocumentResult(
         id=document_id,
         user_id=user_id,
         collection_id=None,
@@ -299,4 +299,4 @@ def _external_result(*, user_id: uuid.UUID, api_key_id: uuid.UUID, document_id: 
         updated_at=None,
         tags=["notion"],
     )
-    return ExternalIngestResultDTO(intake_item=intake_item, document=document)
+    return ExternalIngestResult(intake_item=intake_item, document=document)

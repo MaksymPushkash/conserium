@@ -9,7 +9,7 @@ from src.documents.types import DocumentType
 
 
 @dataclass(frozen=True, slots=True)
-class AnswerShareSourceDTO:
+class AnswerShareSource:
     chunk_id: UUID
     document_id: UUID
     document_title: str | None
@@ -21,7 +21,7 @@ class AnswerShareSourceDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class AnswerShareDTO:
+class AnswerShareRecord:
     id: UUID
     slug: str
     user_id: UUID
@@ -31,14 +31,14 @@ class AnswerShareDTO:
     public_collection_slug: str | None
     query_text: str
     answer_text: str
-    sources: list[AnswerShareSourceDTO]
+    sources: list[AnswerShareSource]
     revoked_at: datetime | None
     created_at: datetime
     updated_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
-class CollectionShareDTO:
+class CollectionShareRecord:
     id: UUID
     collection_id: UUID
     user_id: UUID
@@ -53,7 +53,7 @@ class CollectionShareDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class PublicAskEventDTO:
+class PublicAskEventRecord:
     id: UUID
     share_slug: str
     status: str
@@ -64,7 +64,7 @@ class PublicAskEventDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class PublicCollectionDocumentDTO:
+class PublicCollectionDocument:
     id: UUID
     title: str
     type: DocumentType
@@ -79,12 +79,12 @@ class PublicCollectionDocumentDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class PublicCollectionDTO:
+class PublicCollectionResult:
     id: UUID
     name: str
     description: str | None
     color: str | None
-    documents: list[PublicCollectionDocumentDTO]
+    documents: list[PublicCollectionDocument]
     created_at: datetime
     updated_at: datetime | None
 

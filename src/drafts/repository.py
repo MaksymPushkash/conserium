@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import delete, select
 
 from src.models.draft import DraftModel, DraftVersionModel
-from src.query.schemas import QuerySourceDTO
+from src.query.schemas import QuerySource
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -28,7 +28,7 @@ class DraftRecord:
     knowledge_gap_id: str | None
     scope_metadata: dict[str, object]
     markdown: str
-    sources: list[QuerySourceDTO]
+    sources: list[QuerySource]
     gaps: list[str]
     current_version_id: UUID
     version_number: int
@@ -51,7 +51,7 @@ class DraftVersionRecord:
     knowledge_gap_id: str | None
     scope_metadata: dict[str, object]
     markdown: str
-    sources: list[QuerySourceDTO]
+    sources: list[QuerySource]
     gaps: list[str]
     created_at: datetime | None
 
@@ -238,7 +238,7 @@ def version_from_model(model: DraftVersionModel) -> DraftVersionRecord:
     )
 
 
-def sources_to_json(sources: list[QuerySourceDTO]) -> list[dict[str, object]]:
+def sources_to_json(sources: list[QuerySource]) -> list[dict[str, object]]:
     return [
         {
             "chunk_id": str(source.chunk_id),
@@ -254,9 +254,9 @@ def sources_to_json(sources: list[QuerySourceDTO]) -> list[dict[str, object]]:
     ]
 
 
-def sources_from_json(items: list[dict[str, object]]) -> list[QuerySourceDTO]:
+def sources_from_json(items: list[dict[str, object]]) -> list[QuerySource]:
     return [
-        QuerySourceDTO(
+        QuerySource(
             chunk_id=UUID(str(item["chunk_id"])),
             document_id=UUID(str(item["document_id"])),
             document_title=str(item["document_title"]) if item.get("document_title") is not None else None,

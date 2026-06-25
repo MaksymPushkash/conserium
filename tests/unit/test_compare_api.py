@@ -5,19 +5,17 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
-from src.compare.schemas import CompareEvidenceRowDTO, CompareListDTO, CompareResultDTO
+from src.auth.jwt_service import JWTService
+from src.compare.dependencies import get_compare_llm_service, get_compare_query_executor, get_compare_service
+from src.compare.schemas import CompareEvidence, CompareListResult, CompareResult
 from src.compare.service import (
-    get_compare_llm_service,
-    get_compare_query_executor,
-    get_compare_service,
     to_compare_documents_response,
     to_compare_list_response,
 )
 from src.main import create_app
 from src.models.user import UserModel
 from src.postgres import get_db_read_session, get_db_session
-from src.query.schemas import QuerySourceDTO
+from src.query.schemas import QuerySource
 from src.users.repository import UserRepository
 from tests.dependency_overrides import apply_dependency_overrides
 
@@ -69,21 +67,21 @@ class _FakeRepositorySession:
 
 
 class _ReturningCompareService:
-    def __init__(self, result: CompareResultDTO) -> None:
+    def __init__(self, result: CompareResult) -> None:
         self._result = result
         self.received: tuple[uuid.UUID, uuid.UUID, uuid.UUID] | None = None
 
-    async def compare_documents(self, session, *, query_executor, llm_service, dto):
-        self.received = (dto.user_id, dto.left_document_id, dto.right_document_id)
+    async def compare_documents(self, session, *, query_executor, llm_service, user_id, body):
+        self.received = (user_id, body.left_document_id, body.right_document_id)
         return to_compare_documents_response(self._result)
 
 
 class _ReturningCompareHistoryService:
-    def __init__(self, result: CompareResultDTO) -> None:
+    def __init__(self, result: CompareResult) -> None:
         self._result = result
 
     async def list_results(self, session, **kwargs):
-        return to_compare_list_response(CompareListDTO(items=[self._result], total=1))
+        return to_compare_list_response(CompareListResult(items=[self._result], total=1))
 
     async def get_result(self, session, **kwargs):
         return to_compare_documents_response(self._result)
@@ -107,7 +105,7 @@ def test_compare_documents_route_returns_markdown_and_sources() -> None:
     user = _make_user()
     left_document_id = uuid.uuid4()
     right_document_id = uuid.uuid4()
-    source = QuerySourceDTO(
+    source = QuerySource(
         chunk_id=uuid.uuid4(),
         document_id=left_document_id,
         document_title="FastAPI Notes",
@@ -118,7 +116,7 @@ def test_compare_documents_route_returns_markdown_and_sources() -> None:
         used_in_answer=True,
     )
     handler = _ReturningCompareService(
-        CompareResultDTO(
+        CompareResult(
             id=uuid.uuid4(),
             user_id=user.id,
             collection_id=None,
@@ -130,7 +128,7 @@ def test_compare_documents_route_returns_markdown_and_sources() -> None:
             markdown="## Shared ideas\n\nBoth discuss Python web work [1].",
             summary="FastAPI Notes vs Django Notes.",
             evidence_rows=[
-                CompareEvidenceRowDTO(
+                CompareEvidence(
                     dimension="claims",
                     left_evidence="FastAPI focuses on API development.",
                     right_evidence=None,
@@ -146,7 +144,7 @@ def test_compare_documents_route_returns_markdown_and_sources() -> None:
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -187,7 +185,7 @@ def test_compare_result_history_routes_return_persisted_results() -> None:
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -222,8 +220,8 @@ def _make_user() -> UserModel:
     )
 
 
-def _compare_result(*, user_id: uuid.UUID) -> CompareResultDTO:
-    return CompareResultDTO(
+def _compare_result(*, user_id: uuid.UUID) -> CompareResult:
+    return CompareResult(
         id=uuid.uuid4(),
         user_id=user_id,
         collection_id=None,

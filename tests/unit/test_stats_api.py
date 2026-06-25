@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
 from src.main import create_app
 from src.models.user import UserModel
 from src.stats.schemas import (
@@ -159,7 +159,7 @@ def test_stats_overview_route_returns_user_stats(monkeypatch: pytest.MonkeyPatch
     app.dependency_overrides[get_db_read_session] = _fake_read_session
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -202,7 +202,7 @@ def test_stats_timeline_route_returns_monthly_activity(monkeypatch: pytest.Monke
     app.dependency_overrides[get_db_read_session] = _fake_read_session
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -249,7 +249,7 @@ def test_daily_digest_route_returns_stale_document_questions(monkeypatch: pytest
     app.dependency_overrides[get_db_read_session] = _fake_read_session
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -291,7 +291,7 @@ def test_weekly_report_route_returns_actionable_summary(monkeypatch: pytest.Monk
     app.dependency_overrides[get_db_read_session] = _fake_read_session
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)

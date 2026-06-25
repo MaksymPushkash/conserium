@@ -8,7 +8,7 @@ from sqlalchemy import delete, nullsfirst, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.models.repo_sync import RepoSyncItemModel, RepoSyncModel, RepoSyncOutboxModel
-from src.repo_syncs.schemas import RepoSyncDTO, RepoSyncItemDTO, RepoSyncOutboxDTO
+from src.repo_syncs.schemas import RepoSyncItem, RepoSyncOutboxRecord, RepoSyncResult
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -24,15 +24,15 @@ class RepoSyncRepository:
     def from_session(cls, session: AsyncSession) -> RepoSyncRepository:
         return cls(session)
 
-    async def list_by_user_id(self, user_id: UUID) -> list[RepoSyncDTO]:
+    async def list_by_user_id(self, user_id: UUID) -> list[RepoSyncResult]:
         result = await self._session.execute(
             select(RepoSyncModel)
             .where(RepoSyncModel.user_id == user_id)
             .order_by(RepoSyncModel.created_at.desc())
         )
-        return [self._to_sync_dto(model) for model in result.scalars().all()]
+        return [self._to_sync_result(model) for model in result.scalars().all()]
 
-    async def list_due_for_sync(self, *, before: datetime, limit: int) -> list[RepoSyncDTO]:
+    async def list_due_for_sync(self, *, before: datetime, limit: int) -> list[RepoSyncResult]:
         result = await self._session.execute(
             select(RepoSyncModel)
             .where(RepoSyncModel.status.notin_(("running", "queueing")))
@@ -40,12 +40,12 @@ class RepoSyncRepository:
             .order_by(nullsfirst(RepoSyncModel.last_synced_at.asc()), RepoSyncModel.created_at.asc())
             .limit(limit)
         )
-        return [self._to_sync_dto(model) for model in result.scalars().all()]
+        return [self._to_sync_result(model) for model in result.scalars().all()]
 
-    async def get_by_id(self, repo_sync_id: UUID) -> RepoSyncDTO | None:
+    async def get_by_id(self, repo_sync_id: UUID) -> RepoSyncResult | None:
         result = await self._session.execute(select(RepoSyncModel).where(RepoSyncModel.id == repo_sync_id))
         model = result.scalar_one_or_none()
-        return self._to_sync_dto(model) if model else None
+        return self._to_sync_result(model) if model else None
 
     async def get_by_repo(
         self,
@@ -54,7 +54,7 @@ class RepoSyncRepository:
         owner: str,
         repo: str,
         branch: str,
-    ) -> RepoSyncDTO | None:
+    ) -> RepoSyncResult | None:
         result = await self._session.execute(
             select(RepoSyncModel).where(
                 RepoSyncModel.user_id == user_id,
@@ -64,7 +64,7 @@ class RepoSyncRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return self._to_sync_dto(model) if model else None
+        return self._to_sync_result(model) if model else None
 
     async def create(
         self,
@@ -78,7 +78,7 @@ class RepoSyncRepository:
         branch: str,
         include_paths: list[str],
         exclude_paths: list[str],
-    ) -> RepoSyncDTO:
+    ) -> RepoSyncResult:
         model = RepoSyncModel(
             id=id,
             user_id=user_id,
@@ -94,7 +94,7 @@ class RepoSyncRepository:
         self._session.add(model)
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_sync_dto(model)
+        return self._to_sync_result(model)
 
     async def update_filters(
         self,
@@ -102,14 +102,14 @@ class RepoSyncRepository:
         repo_sync_id: UUID,
         include_paths: list[str],
         exclude_paths: list[str],
-    ) -> RepoSyncDTO:
+    ) -> RepoSyncResult:
         result = await self._session.execute(select(RepoSyncModel).where(RepoSyncModel.id == repo_sync_id))
         model = result.scalar_one()
         model.include_paths = include_paths
         model.exclude_paths = exclude_paths
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_sync_dto(model)
+        return self._to_sync_result(model)
 
     async def update_state(
         self,
@@ -118,7 +118,7 @@ class RepoSyncRepository:
         status: str,
         last_error: str | None = None,
         last_synced_at: datetime | None = None,
-    ) -> RepoSyncDTO:
+    ) -> RepoSyncResult:
         result = await self._session.execute(select(RepoSyncModel).where(RepoSyncModel.id == repo_sync_id))
         model = result.scalar_one()
         model.status = status
@@ -127,17 +127,17 @@ class RepoSyncRepository:
             model.last_synced_at = last_synced_at
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_sync_dto(model)
+        return self._to_sync_result(model)
 
-    async def list_items(self, repo_sync_id: UUID) -> list[RepoSyncItemDTO]:
+    async def list_items(self, repo_sync_id: UUID) -> list[RepoSyncItem]:
         result = await self._session.execute(
             select(RepoSyncItemModel)
             .where(RepoSyncItemModel.repo_sync_id == repo_sync_id)
             .order_by(RepoSyncItemModel.path.asc())
         )
-        return [self._to_item_dto(model) for model in result.scalars().all()]
+        return [self._to_item_record(model) for model in result.scalars().all()]
 
-    async def get_item_by_path(self, *, repo_sync_id: UUID, path: str) -> RepoSyncItemDTO | None:
+    async def get_item_by_path(self, *, repo_sync_id: UUID, path: str) -> RepoSyncItem | None:
         result = await self._session.execute(
             select(RepoSyncItemModel).where(
                 RepoSyncItemModel.repo_sync_id == repo_sync_id,
@@ -145,7 +145,7 @@ class RepoSyncRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return self._to_item_dto(model) if model else None
+        return self._to_item_record(model) if model else None
 
     async def upsert_item(
         self,
@@ -156,7 +156,7 @@ class RepoSyncRepository:
         document_id: UUID,
         source_url: str,
         synced_at: datetime,
-    ) -> RepoSyncItemDTO:
+    ) -> RepoSyncItem:
         result = await self._session.execute(
             select(RepoSyncItemModel).where(
                 RepoSyncItemModel.repo_sync_id == repo_sync_id,
@@ -182,7 +182,7 @@ class RepoSyncRepository:
             model.last_synced_at = synced_at
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_item_dto(model)
+        return self._to_item_record(model)
 
     async def delete_item(self, item_id: UUID) -> None:
         await self._session.execute(delete(RepoSyncItemModel).where(RepoSyncItemModel.id == item_id))
@@ -193,7 +193,7 @@ class RepoSyncRepository:
         repo_sync_id: UUID,
         document_id: UUID,
         task_name: str,
-    ) -> RepoSyncOutboxDTO:
+    ) -> RepoSyncOutboxRecord:
         result = await self._session.execute(
             pg_insert(RepoSyncOutboxModel)
             .values(
@@ -220,7 +220,7 @@ class RepoSyncRepository:
             .returning(RepoSyncOutboxModel)
         )
         model = result.scalar_one()
-        return self._to_outbox_dto(model)
+        return self._to_outbox_record(model)
 
     async def claim_outbox_batch(
         self,
@@ -229,7 +229,7 @@ class RepoSyncRepository:
         locked_at: datetime,
         stale_before: datetime,
         max_attempts: int,
-    ) -> list[RepoSyncOutboxDTO]:
+    ) -> list[RepoSyncOutboxRecord]:
         result = await self._session.execute(
             select(RepoSyncOutboxModel)
             .where(
@@ -250,9 +250,9 @@ class RepoSyncRepository:
             model.locked_at = locked_at
             model.attempts += 1
         await self._session.flush()
-        return [self._to_outbox_dto(model) for model in models]
+        return [self._to_outbox_record(model) for model in models]
 
-    async def mark_outbox_dispatched(self, outbox_id: UUID, dispatched_at: datetime) -> RepoSyncOutboxDTO:
+    async def mark_outbox_dispatched(self, outbox_id: UUID, dispatched_at: datetime) -> RepoSyncOutboxRecord:
         result = await self._session.execute(select(RepoSyncOutboxModel).where(RepoSyncOutboxModel.id == outbox_id))
         model = result.scalar_one()
         model.status = "dispatched"
@@ -261,7 +261,7 @@ class RepoSyncRepository:
         model.last_error = None
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_outbox_dto(model)
+        return self._to_outbox_record(model)
 
     async def mark_outbox_failed(
         self,
@@ -269,7 +269,7 @@ class RepoSyncRepository:
         *,
         last_error: str,
         retryable: bool,
-    ) -> RepoSyncOutboxDTO:
+    ) -> RepoSyncOutboxRecord:
         result = await self._session.execute(select(RepoSyncOutboxModel).where(RepoSyncOutboxModel.id == outbox_id))
         model = result.scalar_one()
         model.status = "pending" if retryable else "failed"
@@ -277,7 +277,7 @@ class RepoSyncRepository:
         model.last_error = last_error
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_outbox_dto(model)
+        return self._to_outbox_record(model)
 
     async def has_active_outbox(self, repo_sync_id: UUID) -> bool:
         result = await self._session.execute(
@@ -291,8 +291,8 @@ class RepoSyncRepository:
         return result.scalar_one_or_none() is not None
 
     @staticmethod
-    def _to_sync_dto(model: RepoSyncModel) -> RepoSyncDTO:
-        return RepoSyncDTO(
+    def _to_sync_result(model: RepoSyncModel) -> RepoSyncResult:
+        return RepoSyncResult(
             id=model.id,
             user_id=model.user_id,
             collection_id=model.collection_id,
@@ -310,8 +310,8 @@ class RepoSyncRepository:
         )
 
     @staticmethod
-    def _to_item_dto(model: RepoSyncItemModel) -> RepoSyncItemDTO:
-        return RepoSyncItemDTO(
+    def _to_item_record(model: RepoSyncItemModel) -> RepoSyncItem:
+        return RepoSyncItem(
             id=model.id,
             repo_sync_id=model.repo_sync_id,
             path=model.path,
@@ -324,8 +324,8 @@ class RepoSyncRepository:
         )
 
     @staticmethod
-    def _to_outbox_dto(model: RepoSyncOutboxModel) -> RepoSyncOutboxDTO:
-        return RepoSyncOutboxDTO(
+    def _to_outbox_record(model: RepoSyncOutboxModel) -> RepoSyncOutboxRecord:
+        return RepoSyncOutboxRecord(
             id=model.id,
             repo_sync_id=model.repo_sync_id,
             document_id=model.document_id,

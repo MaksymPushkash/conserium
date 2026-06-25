@@ -4,13 +4,14 @@ from fastapi import Depends, Query, status
 
 from src.auth.auth import CurrentUser
 from src.documents.types import DocumentType
+from src.knowledge_graph.dependencies import get_knowledge_graph_service
 from src.knowledge_graph.schemas import (
     KnowledgeGraphConcernCreateRequest,
     KnowledgeGraphConcernResponse,
     KnowledgeGraphInsightsResponse,
     KnowledgeGraphResponse,
 )
-from src.knowledge_graph.service import KnowledgeGraphFilters, KnowledgeGraphService, get_knowledge_graph_service
+from src.knowledge_graph.service import KnowledgeGraphFilters, KnowledgeGraphService
 from src.routing import APIRouter
 
 router = APIRouter(prefix="/knowledge-graph", tags=["knowledge-graph"])

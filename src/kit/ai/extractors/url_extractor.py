@@ -12,7 +12,7 @@ import structlog
 import trafilatura
 from trafilatura.settings import use_config
 
-from src.kit.ports.ingestion.content_extractor import ExtractedContent, IContentExtractor
+from src.documents.extraction import ContentExtractor, ExtractedContent
 
 logger = structlog.get_logger(__name__)
 
@@ -44,7 +44,7 @@ class UnsafeUrlError(ValueError):
     pass
 
 
-class UrlExtractor(IContentExtractor):
+class UrlExtractor(ContentExtractor):
     def __init__(self, *, timeout_seconds: float = 15.0) -> None:
         self._timeout_seconds = timeout_seconds
 

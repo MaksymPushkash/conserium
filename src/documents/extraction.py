@@ -10,8 +10,7 @@ class ExtractedContent:
     title: str | None = None
     language: str | None = None
     word_count: int = 0
-    page_count: int | None = None  # PDF only
-
+    page_count: int | None = None
     pages: dict[int, str] = field(default_factory=dict)
     visual: dict[str, object] | None = None
 
@@ -22,7 +21,7 @@ class ExtractedContent:
             raise ValueError("page_count must be at least 1")
 
 
-class IContentExtractor(ABC):
+class ContentExtractor(ABC):
     @abstractmethod
     async def extract_from_bytes(
         self,
@@ -30,9 +29,7 @@ class IContentExtractor(ABC):
         *,
         filename: str = "",
         language: str | None = None,
-    ) -> ExtractedContent:
-        """Extract content from raw bytes (e.g. an uploaded file)."""
+    ) -> ExtractedContent: ...
 
     @abstractmethod
-    async def extract_from_url(self, url: str) -> ExtractedContent:
-        """Extract content from a remote URL."""
+    async def extract_from_url(self, url: str) -> ExtractedContent: ...

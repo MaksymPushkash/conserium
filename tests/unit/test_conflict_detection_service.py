@@ -7,7 +7,6 @@ from uuid import uuid4
 import pytest
 
 from src.conflicts import service as conflict_service_module
-from src.conflicts.schemas import ConflictDetectionDTO
 from src.conflicts.service import ConflictService, detect_conflicts, extract_conflict_claims
 from src.documents.document_repository import DocumentRepository
 from src.documents.status import DocumentStatus
@@ -17,7 +16,7 @@ from src.models.document import DocumentModel
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-    from src.kit.ports.ai.llm_service import ILLMService
+    from src.kit.ai.llm_service import LLMService
 
 
 class _FakeDocumentRepository:
@@ -129,7 +128,9 @@ async def test_detect_conflicts_loads_ready_documents(monkeypatch: MonkeyPatch) 
 
     result = await ConflictService().detect(
         session,
-        dto=ConflictDetectionDTO(user_id=uuid4(), limit=20),
+        user_id=uuid4(),
+        collection_id=None,
+        limit=20,
         llm_service=None,
     )
 
@@ -151,8 +152,10 @@ async def test_detect_conflicts_can_filter_with_llm_validation(monkeypatch: Monk
 
     result = await ConflictService().detect(
         session,
-        dto=ConflictDetectionDTO(user_id=uuid4(), limit=20),
-        llm_service=cast("ILLMService", _RejectingLLMService()),
+        user_id=uuid4(),
+        collection_id=None,
+        limit=20,
+        llm_service=cast("LLMService", _RejectingLLMService()),
     )
 
     assert result.conflicts == []

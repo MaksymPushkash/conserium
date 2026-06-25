@@ -9,11 +9,11 @@ from src.documents.status import DocumentStatus
 from src.kit.exceptions import IntegrationRequestException, ValidationException
 from src.repo_syncs.github_repository_client import GitHubRepositoryClient
 from src.repo_syncs.schemas import (
-    MarkdownRepoFetchResultDTO,
-    MarkdownRepoFileDTO,
-    RepoSyncDTO,
-    RepoSyncItemDTO,
-    RunRepoSyncDTO,
+    MarkdownRepoFetchResult,
+    MarkdownRepoFile,
+    RepoSyncItem,
+    RepoSyncResult,
+    RunRepoSyncPayload,
 )
 from src.repo_syncs.service import (
     RepoSyncOutboxDrainer,
@@ -157,7 +157,7 @@ async def test_run_repo_sync_marks_failed_when_database_sync_fails() -> None:
     )
 
     with pytest.raises(IntegrationRequestException):
-        await handler(RunRepoSyncDTO(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id))
+        await handler(RunRepoSyncPayload(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id))
 
     assert repository_session.repo_sync_repo.states == ["running", "failed"]
 
@@ -179,7 +179,7 @@ async def test_run_repo_sync_logs_when_failed_state_persistence_fails(caplog: py
         caplog.at_level(logging.ERROR, logger="src.repo_syncs.service"),
         pytest.raises(IntegrationRequestException),
     ):
-        await handler(RunRepoSyncDTO(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id))
+        await handler(RunRepoSyncPayload(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id))
 
     assert "repo_sync_failed_state_persistence_failed" in caplog.text
 
@@ -197,7 +197,7 @@ async def test_run_repo_sync_keeps_queueing_when_outbox_drain_enqueue_fails() ->
         task_dispatcher=_FailingTaskDispatcher(),  # type: ignore[arg-type]
     )
 
-    result = await handler(RunRepoSyncDTO(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id))
+    result = await handler(RunRepoSyncPayload(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id))
 
     assert result.repo_sync.status == "queueing"
     assert repository_session.repo_sync_repo.states == ["running", "queueing"]
@@ -298,9 +298,9 @@ async def test_outbox_drainer_marks_repo_sync_failed_after_retry_budget() -> Non
     assert repository_session.repo_sync_repo.states == ["failed"]
 
 
-def _repo_item(path: str) -> RepoSyncItemDTO:
+def _repo_item(path: str) -> RepoSyncItem:
     now = datetime(2026, 5, 17, tzinfo=UTC)
-    return RepoSyncItemDTO(
+    return RepoSyncItem(
         id=uuid4(),
         repo_sync_id=uuid4(),
         path=path,
@@ -313,13 +313,13 @@ def _repo_item(path: str) -> RepoSyncItemDTO:
     )
 
 
-def _repo_file(path: str, sha: str) -> MarkdownRepoFileDTO:
-    return MarkdownRepoFileDTO(path=path, sha=sha, content="content", html_url=f"https://github.com/example/docs/blob/main/{path}")
+def _repo_file(path: str, sha: str) -> MarkdownRepoFile:
+    return MarkdownRepoFile(path=path, sha=sha, content="content", html_url=f"https://github.com/example/docs/blob/main/{path}")
 
 
-def _repo_sync() -> RepoSyncDTO:
+def _repo_sync() -> RepoSyncResult:
     now = datetime(2026, 5, 17, tzinfo=UTC)
-    return RepoSyncDTO(
+    return RepoSyncResult(
         id=uuid4(),
         user_id=uuid4(),
         collection_id=uuid4(),
@@ -398,12 +398,12 @@ class _PartialRawClient:
 
 
 class _SuccessfulGitHubClient:
-    async def fetch_markdown_files(self, **kwargs: object) -> MarkdownRepoFetchResultDTO:
-        return MarkdownRepoFetchResultDTO(files=[_repo_file("docs/readme.md", "sha")], warnings=[])
+    async def fetch_markdown_files(self, **kwargs: object) -> MarkdownRepoFetchResult:
+        return MarkdownRepoFetchResult(files=[_repo_file("docs/readme.md", "sha")], warnings=[])
 
 
 class _FailingSyncUow:
-    def __init__(self, repo_sync: RepoSyncDTO) -> None:
+    def __init__(self, repo_sync: RepoSyncResult) -> None:
         self.repo_sync_repo = _FailingRepoSyncRepo(repo_sync)
         self.service = _repo_sync_service(self, repo_sync_repo=self.repo_sync_repo)
 
@@ -418,7 +418,7 @@ class _FailingSyncUow:
 
 
 class _FailingRepoSyncRepo:
-    def __init__(self, repo_sync: RepoSyncDTO) -> None:
+    def __init__(self, repo_sync: RepoSyncResult) -> None:
         self._repo_sync = repo_sync
         self.states: list[str] = []
 
@@ -434,7 +434,7 @@ class _FailingRepoSyncRepo:
 
 
 class _FailedStatePersistenceUow:
-    def __init__(self, repo_sync: RepoSyncDTO) -> None:
+    def __init__(self, repo_sync: RepoSyncResult) -> None:
         self.repo_sync_repo = _FailedStatePersistenceRepo(repo_sync)
         self.service = _repo_sync_service(self, repo_sync_repo=self.repo_sync_repo)
 
@@ -449,7 +449,7 @@ class _FailedStatePersistenceUow:
 
 
 class _FailedStatePersistenceRepo:
-    def __init__(self, repo_sync: RepoSyncDTO) -> None:
+    def __init__(self, repo_sync: RepoSyncResult) -> None:
         self._repo_sync = repo_sync
 
     async def get_by_id(self, repo_sync_id):
@@ -473,7 +473,7 @@ class _NoopTaskDispatcher:
 
 
 class _QueueFailureUow:
-    def __init__(self, repo_sync: RepoSyncDTO) -> None:
+    def __init__(self, repo_sync: RepoSyncResult) -> None:
         self.repo_sync_repo = _QueueFailureRepoSyncRepo(repo_sync)
         self.document_repo = _QueueFailureDocumentRepo()
         self.document_activity_repo = _QueueFailureActivityRepo()
@@ -495,7 +495,7 @@ class _QueueFailureUow:
 
 
 class _QueueFailureRepoSyncRepo:
-    def __init__(self, repo_sync: RepoSyncDTO) -> None:
+    def __init__(self, repo_sync: RepoSyncResult) -> None:
         self._repo_sync = repo_sync
         self.states: list[str] = []
         self.outbox: list[_Outbox] = []
@@ -505,7 +505,7 @@ class _QueueFailureRepoSyncRepo:
 
     async def update_state(self, *, repo_sync_id, status, last_error=None, last_synced_at=None):
         self.states.append(status)
-        return RepoSyncDTO(
+        return RepoSyncResult(
             id=self._repo_sync.id,
             user_id=self._repo_sync.user_id,
             collection_id=self._repo_sync.collection_id,
@@ -594,7 +594,7 @@ class _RecordingTaskDispatcher:
 
 
 class _DrainUow:
-    def __init__(self, repo_sync: RepoSyncDTO, outbox: "_Outbox", document: "_DispatchDocument") -> None:
+    def __init__(self, repo_sync: RepoSyncResult, outbox: "_Outbox", document: "_DispatchDocument") -> None:
         self.repo_sync_repo = _DrainRepoSyncRepo(repo_sync, outbox)
         self.document_repo = _DrainDocumentRepo(document)
         self.service = _repo_sync_service(
@@ -614,7 +614,7 @@ class _DrainUow:
 
 
 class _DrainRepoSyncRepo:
-    def __init__(self, repo_sync: RepoSyncDTO, outbox: "_Outbox") -> None:
+    def __init__(self, repo_sync: RepoSyncResult, outbox: "_Outbox") -> None:
         self._repo_sync = repo_sync
         self._outbox = outbox
         self.states: list[str] = []

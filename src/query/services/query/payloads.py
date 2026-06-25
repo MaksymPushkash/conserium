@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from src.query.schemas import QueryDebugDTO, QuerySourceDTO
+from src.query.schemas import QueryDebug, QuerySource
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from src.query.schemas import RefragChunk, RefragContextPackage
 
 
-def source_payload(source: QuerySourceDTO) -> dict[str, object]:
+def source_payload(source: QuerySource) -> dict[str, object]:
     return {
         "chunk_id": str(source.chunk_id),
         "document_id": str(source.document_id),
@@ -25,11 +25,11 @@ def source_payload(source: QuerySourceDTO) -> dict[str, object]:
     }
 
 
-def sources_payload(sources: list[QuerySourceDTO]) -> list[dict[str, object]]:
+def sources_payload(sources: list[QuerySource]) -> list[dict[str, object]]:
     return [source_payload(source) for source in sources]
 
 
-def stream_metadata_payload(query_id: UUID, conversation_id: UUID, query: str, sources: list[QuerySourceDTO]) -> dict[str, object]:
+def stream_metadata_payload(query_id: UUID, conversation_id: UUID, query: str, sources: list[QuerySource]) -> dict[str, object]:
     return {
         "query_id": str(query_id),
         "conversation_id": str(conversation_id),
@@ -38,13 +38,13 @@ def stream_metadata_payload(query_id: UUID, conversation_id: UUID, query: str, s
     }
 
 
-def stream_sources_payload(sources: list[QuerySourceDTO]) -> dict[str, object]:
+def stream_sources_payload(sources: list[QuerySource]) -> dict[str, object]:
     return {
         "sources": [stream_source_payload(source, index, include_content=True) for index, source in enumerate(sources, start=1)]
     }
 
 
-def stream_source_payload(source: QuerySourceDTO, citation_index: int, *, include_content: bool) -> dict[str, object]:
+def stream_source_payload(source: QuerySource, citation_index: int, *, include_content: bool) -> dict[str, object]:
     payload: dict[str, object] = {
         "citation": f"[{citation_index}]",
         "chunk_id": str(source.chunk_id),
@@ -60,8 +60,8 @@ def stream_source_payload(source: QuerySourceDTO, citation_index: int, *, includ
     return payload
 
 
-def query_debug(original_query: str, state: ConseriumQueryState) -> QueryDebugDTO:
-    return QueryDebugDTO(
+def query_debug(original_query: str, state: ConseriumQueryState) -> QueryDebug:
+    return QueryDebug(
         original_query=original_query,
         retrieval_query=state.retrieval_query or original_query,
         selected_collection_id=state.collection_id,
@@ -89,7 +89,7 @@ def query_debug_payload(original_query: str, state: ConseriumQueryState) -> dict
     }
 
 
-def build_follow_up_questions(answer: str, sources: list[QuerySourceDTO]) -> list[str]:
+def build_follow_up_questions(answer: str, sources: list[QuerySource]) -> list[str]:
     if not answer.strip() or not any(source.used_in_answer for source in sources):
         return []
 
@@ -151,10 +151,10 @@ def stream_refrag_chunk_payload(chunk: RefragChunk, citation_index: int | None) 
     return payload
 
 
-def mark_sources_used_in_answer(sources: list[QuerySourceDTO], answer: str) -> list[QuerySourceDTO]:
+def mark_sources_used_in_answer(sources: list[QuerySource], answer: str) -> list[QuerySource]:
     used_citations = {int(match) for match in re.findall(r"\[(\d+)\]", answer)}
     return [
-        QuerySourceDTO(
+        QuerySource(
             chunk_id=source.chunk_id,
             document_id=source.document_id,
             document_title=source.document_title,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.documents.schemas import CategoryDTO
+    from src.documents.schemas import CategoryMetadata
 
 
 def build_suggested_questions(
@@ -11,7 +11,7 @@ def build_suggested_questions(
     title: str,
     text: str,
     tags: list[str],
-    categories: list[CategoryDTO],
+    categories: list[CategoryMetadata],
 ) -> list[str]:
     clean_title = title.strip() or "this document"
     questions = [

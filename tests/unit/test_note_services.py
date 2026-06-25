@@ -12,7 +12,7 @@ from src.documents.notes import (
 )
 from src.documents.processing import DocumentProcessingService
 from src.documents.repository import NoteVersionRecord
-from src.documents.schemas import CreateNoteDTO, UpdateNoteDTO
+from src.documents.schemas import CreateNoteRequest, UpdateNoteRequest
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
 from src.models.document import DocumentModel
@@ -20,8 +20,8 @@ from src.models.document import DocumentModel
 if TYPE_CHECKING:
     from src.documents.access import DocumentCollectionAccess
     from src.documents.document_repository import DocumentRepository
-    from src.documents.status_cache import IDocumentStatusCache
-    from src.worker.dispatcher import ITaskDispatcher
+    from src.documents.status_cache import RedisDocumentStatusCache
+    from src.worker.dispatcher import CeleryTaskDispatcher
 
 
 @pytest.mark.asyncio
@@ -31,7 +31,7 @@ async def test_create_empty_note_stays_ready_without_queueing() -> None:
     dispatcher = _RecordingDispatcher()
     service = _note_service(repository_session, _RecordingStatusCache(), dispatcher)
 
-    result = await service.create(CreateNoteDTO(user_id=user_id, title="", content="   "))
+    result = await service.create(user_id=user_id, body=CreateNoteRequest(title="", content="   "))
 
     assert result.title == "Untitled"
     assert result.status == DocumentStatus.READY
@@ -49,9 +49,9 @@ async def test_update_note_versions_previous_content_and_requeues_processing() -
     service = _note_service(repository_session, status_cache, dispatcher)
 
     result = await service.update(
-        UpdateNoteDTO(
-            user_id=user_id,
-            note_id=note.id,
+        user_id=user_id,
+        note_id=note.id,
+        body=UpdateNoteRequest(
             title="New title",
             content="New content",
             language="en",
@@ -253,8 +253,8 @@ def _processing_service(
         session,  # type: ignore[arg-type]
         session.document_repo,  # type: ignore[arg-type]
         session.document_processing_outbox_repo,  # type: ignore[arg-type]
-        cast("IDocumentStatusCache", status_cache),
-        cast("ITaskDispatcher", dispatcher),
+        cast("RedisDocumentStatusCache", status_cache),
+        cast("CeleryTaskDispatcher", dispatcher),
     )
 
 

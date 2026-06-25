@@ -4,7 +4,7 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.query.schemas import QuerySourceDTO
+    from src.query.schemas import QuerySource
 
 _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _MIN_ALNUM_CHARS = 24
@@ -75,12 +75,12 @@ _STOP_WORDS = {
 
 
 class ChunkQualityFilter:
-    def filter_sources(self, sources: list[QuerySourceDTO]) -> list[QuerySourceDTO]:
+    def filter_sources(self, sources: list[QuerySource]) -> list[QuerySource]:
         return [source for source in sources if is_quality_chunk(source.content)]
 
 
 class ChunkRelevanceFilter:
-    def filter_sources(self, query: str, sources: list[QuerySourceDTO]) -> list[QuerySourceDTO]:
+    def filter_sources(self, query: str, sources: list[QuerySource]) -> list[QuerySource]:
         query_terms = _meaningful_terms(query)
         if not query_terms:
             return sources
@@ -117,7 +117,7 @@ def _meaningful_terms(text: str) -> set[str]:
     }
 
 
-def _source_query_overlap(query_terms: set[str], source: QuerySourceDTO) -> int:
+def _source_query_overlap(query_terms: set[str], source: QuerySource) -> int:
     title = source.document_title or ""
     content_terms = _meaningful_terms(f"{title} {source.content}")
     return len(query_terms & content_terms)

@@ -1,13 +1,13 @@
 from uuid import UUID
 
 from src.documents.activity_repository import DocumentActivityRepository
-from src.query.schemas import QuerySourceDTO
+from src.query.schemas import QuerySource
 
 
 async def record_document_activity(
     document_activity_repo: DocumentActivityRepository,
     user_id: UUID,
-    sources: list[QuerySourceDTO],
+    sources: list[QuerySource],
 ) -> None:
     queried_document_ids = {source.document_id for source in sources}
     cited_document_ids = {source.document_id for source in sources if source.used_in_answer}

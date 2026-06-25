@@ -9,16 +9,16 @@ from src.query.agents.router_agent import RouterAgent
 from src.query.agents.state import ConseriumQueryState, QueryType
 from src.query.agents.synthesis_agent import ABSTENTION_ANSWER, SynthesisAgent
 from src.query.schemas import (
-    ConversationSourceDTO,
-    ConversationTurnDTO,
-    QuerySourceDTO,
+    ConversationSource,
+    ConversationTurn,
+    QuerySource,
     RefragChunk,
     RefragContextPackage,
     RefragRepresentation,
 )
 
 if TYPE_CHECKING:
-    from src.kit.ports.ai.llm_service import ILLMService
+    from src.kit.ai.llm_service import LLMService
     from src.query.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
 
 
@@ -108,11 +108,11 @@ def test_conversation_context_agent_rewrites_follow_up_query_and_promotes_source
         conversation_id=uuid.uuid4(),
         limit=5,
         conversation_turns=[
-            ConversationTurnDTO(
+            ConversationTurn(
                 query="What did I read about Clean Architecture?",
                 answer="You read that dependencies should point inward.",
                 sources=[
-                    ConversationSourceDTO(
+                    ConversationSource(
                         chunk_id=uuid.uuid4(),
                         document_id=document_id,
                         document_title="Architecture Notes",
@@ -141,7 +141,7 @@ def test_conversation_context_agent_keeps_standalone_query_unchanged() -> None:
         conversation_id=uuid.uuid4(),
         limit=5,
         conversation_turns=[
-            ConversationTurnDTO(
+            ConversationTurn(
                 query="Unrelated previous question",
                 answer="Unrelated previous answer",
                 sources=[],
@@ -164,7 +164,7 @@ def test_conversation_context_agent_preserves_explicit_retrieval_query() -> None
         conversation_id=uuid.uuid4(),
         limit=5,
         conversation_turns=[
-            ConversationTurnDTO(
+            ConversationTurn(
                 query="Previous question",
                 answer="Previous answer",
                 sources=[],
@@ -187,11 +187,11 @@ def test_conversation_context_agent_does_not_rewrite_short_standalone_query() ->
         conversation_id=uuid.uuid4(),
         limit=5,
         conversation_turns=[
-            ConversationTurnDTO(
+            ConversationTurn(
                 query="What did I read about Clean Architecture?",
                 answer="You read that dependencies should point inward.",
                 sources=[
-                    ConversationSourceDTO(
+                    ConversationSource(
                         chunk_id=uuid.uuid4(),
                         document_id=previous_document_id,
                         document_title="Architecture Notes",
@@ -219,11 +219,11 @@ def test_conversation_context_agent_does_not_treat_connective_search_as_follow_u
         conversation_id=uuid.uuid4(),
         limit=5,
         conversation_turns=[
-            ConversationTurnDTO(
+            ConversationTurn(
                 query="What did I read about Clean Architecture?",
                 answer="You read that dependencies should point inward.",
                 sources=[
-                    ConversationSourceDTO(
+                    ConversationSource(
                         chunk_id=uuid.uuid4(),
                         document_id=previous_document_id,
                         document_title="Architecture Notes",
@@ -260,7 +260,7 @@ class _FakeRetrievalService:
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
         document_ids: tuple[uuid.UUID, ...] | None = None,
-    ) -> list[QuerySourceDTO]:
+    ) -> list[QuerySource]:
         self.received_query = query
         self.received_tag_names = tag_names
         self.received_document_types = document_types
@@ -268,7 +268,7 @@ class _FakeRetrievalService:
         promoted_document_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
         other_document_id = uuid.UUID("00000000-0000-0000-0000-000000000002")
         return [
-            QuerySourceDTO(
+            QuerySource(
                 chunk_id=uuid.uuid4(),
                 document_id=other_document_id,
                 document_title="Other",
@@ -277,7 +277,7 @@ class _FakeRetrievalService:
                 chunk_index=0,
                 score=0.9,
             ),
-            QuerySourceDTO(
+            QuerySource(
                 chunk_id=uuid.uuid4(),
                 document_id=promoted_document_id,
                 document_title="Previous Source",
@@ -316,9 +316,9 @@ class _DraftRetrievalService:
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
         document_ids: tuple[uuid.UUID, ...] | None = None,
-    ) -> list[QuerySourceDTO]:
+    ) -> list[QuerySource]:
         return [
-            QuerySourceDTO(
+            QuerySource(
                 chunk_id=uuid.uuid4(),
                 document_id=uuid.uuid4(),
                 document_title="Python Generators",
@@ -403,9 +403,9 @@ class _NoiseRetrievalService:
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
         document_ids: tuple[uuid.UUID, ...] | None = None,
-    ) -> list[QuerySourceDTO]:
+    ) -> list[QuerySource]:
         return [
-            QuerySourceDTO(
+            QuerySource(
                 chunk_id=uuid.uuid4(),
                 document_id=uuid.uuid4(),
                 document_title="Architecture",
@@ -414,7 +414,7 @@ class _NoiseRetrievalService:
                 chunk_index=0,
                 score=0.9,
             ),
-            QuerySourceDTO(
+            QuerySource(
                 chunk_id=uuid.uuid4(),
                 document_id=uuid.uuid4(),
                 document_title="Noise",
@@ -451,9 +451,9 @@ class _AuthNoiseRetrievalService:
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
         document_ids: tuple[uuid.UUID, ...] | None = None,
-    ) -> list[QuerySourceDTO]:
+    ) -> list[QuerySource]:
         return [
-            QuerySourceDTO(
+            QuerySource(
                 chunk_id=uuid.uuid4(),
                 document_id=uuid.uuid4(),
                 document_title="Live Eval - Refresh Token Revocation",
@@ -462,7 +462,7 @@ class _AuthNoiseRetrievalService:
                 chunk_index=0,
                 score=0.9,
             ),
-            QuerySourceDTO(
+            QuerySource(
                 chunk_id=uuid.uuid4(),
                 document_id=uuid.uuid4(),
                 document_title="Live Eval Noise - Storage Archive",
@@ -521,7 +521,7 @@ async def test_synthesis_agent_abstains_without_selected_context() -> None:
         ),
     )
 
-    result = await SynthesisAgent(cast("ILLMService", llm_service)).synthesize(state)
+    result = await SynthesisAgent(cast("LLMService", llm_service)).synthesize(state)
 
     assert result.answer == ABSTENTION_ANSWER
     assert llm_service.called is False
@@ -560,6 +560,6 @@ async def test_synthesis_agent_applies_answer_language_preference() -> None:
         ),
     )
 
-    await SynthesisAgent(cast("ILLMService", llm_service)).synthesize(state)
+    await SynthesisAgent(cast("LLMService", llm_service)).synthesize(state)
 
     assert llm_service.received_query == "Summarize the source\n\nAnswer language: Ukrainian."

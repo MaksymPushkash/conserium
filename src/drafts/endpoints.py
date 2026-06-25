@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import Depends, Query, Response, status
 
 from src.auth.auth import CurrentUser
+from src.drafts.dependencies import get_draft_service
 from src.drafts.schemas import (
     DraftDetailResponse,
     DraftGenerateRequest,
@@ -12,7 +13,7 @@ from src.drafts.schemas import (
     DraftTemplateListResponse,
     DraftVersionListResponse,
 )
-from src.drafts.service import DraftService, get_draft_service
+from src.drafts.service import DraftService
 from src.routing import APIRouter
 
 router = APIRouter(prefix="/drafts", tags=["drafts"])

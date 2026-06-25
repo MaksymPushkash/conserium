@@ -1,12 +1,12 @@
 from collections.abc import AsyncIterator
 
-from src.kit.ports.ai.llm_service import IStreamingLLMService
+from src.kit.ai.llm_service import StreamingLLMService
 from src.query.agents.state import ConseriumQueryState
 from src.query.agents.synthesis_agent import ABSTENTION_ANSWER, query_with_language_preference
 
 
 class StreamingSynthesisAgent:
-    def __init__(self, llm_service: IStreamingLLMService) -> None:
+    def __init__(self, llm_service: StreamingLLMService) -> None:
         self._llm_service = llm_service
 
     def stream(self, state: ConseriumQueryState) -> AsyncIterator[str]:

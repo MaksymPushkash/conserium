@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from src.documents.chunk_repository import ChunkRepository
-    from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
+    from src.kit.ai.embedding_provider import EmbeddingProvider
     from src.models.chunk import ChunkModel
     from src.models.document import DocumentModel
 
@@ -17,7 +17,7 @@ class DocumentEmbeddingService:
     def __init__(
         self,
         chunk_repo: ChunkRepository,
-        embedding_provider: IEmbeddingProvider,
+        embedding_provider: EmbeddingProvider,
         *,
         full_text_max_chars: int | None = None,
     ) -> None:

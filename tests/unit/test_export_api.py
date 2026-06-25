@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
 from src.main import create_app
 from src.models.user import UserModel
 from src.users.repository import UserRepository
@@ -63,7 +63,7 @@ def test_markdown_export_route_returns_attachment() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    apply_dependency_overrides(app, _FakeDependencyContainer({JWTServiceProtocol: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
+    apply_dependency_overrides(app, _FakeDependencyContainer({JWTService: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
@@ -85,7 +85,7 @@ def test_pdf_export_route_returns_pdf_attachment() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    apply_dependency_overrides(app, _FakeDependencyContainer({JWTServiceProtocol: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
+    apply_dependency_overrides(app, _FakeDependencyContainer({JWTService: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
     client = TestClient(app, raise_server_exceptions=False)
 
     try:

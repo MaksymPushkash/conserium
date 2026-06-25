@@ -1,8 +1,6 @@
 # Conserium Architecture
 
-Conserium is a feature-first modular monolith. The backend follows the useful parts of
-Polar's FastAPI structure without copying Polar's scale, Dramatiq worker choice, or
-JavaScript monorepo.
+Conserium is a feature-first modular monolith.
 
 ## System Boundaries
 

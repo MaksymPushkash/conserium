@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 @final
 @dataclass(frozen=True, slots=True)
-class LearningGoalResourceRecordDTO:
+class LearningGoalResourceRecord:
     goal_id: UUID
     area: str
     title: str
@@ -30,7 +30,7 @@ class LearningGoalResourceRecordDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class LearningGoalRecordDTO:
+class LearningGoalRecord:
     id: UUID
     user_id: UUID
     topic: str
@@ -49,18 +49,18 @@ class LearningGoalRepository:
     def from_session(cls, session: AsyncSession) -> LearningGoalRepository:
         return cls(session)
 
-    async def list_by_user_id(self, user_id: UUID) -> list[LearningGoalRecordDTO]:
+    async def list_by_user_id(self, user_id: UUID) -> list[LearningGoalRecord]:
         result = await self._session.execute(
             select(LearningGoalModel)
             .where(LearningGoalModel.user_id == user_id)
             .order_by(LearningGoalModel.created_at.desc())
         )
-        return [self._to_dto(model) for model in result.scalars().all()]
+        return [self._to_record(model) for model in result.scalars().all()]
 
-    async def get_by_id(self, goal_id: UUID) -> LearningGoalRecordDTO | None:
+    async def get_by_id(self, goal_id: UUID) -> LearningGoalRecord | None:
         result = await self._session.execute(select(LearningGoalModel).where(LearningGoalModel.id == goal_id))
         model = result.scalar_one_or_none()
-        return self._to_dto(model) if model else None
+        return self._to_record(model) if model else None
 
     async def create(
         self,
@@ -70,7 +70,7 @@ class LearningGoalRepository:
         topic: str,
         description: str | None,
         target_date: date | None,
-    ) -> LearningGoalRecordDTO:
+    ) -> LearningGoalRecord:
         model = LearningGoalModel(
             id=goal_id,
             user_id=user_id,
@@ -82,7 +82,7 @@ class LearningGoalRepository:
         self._session.add(model)
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_dto(model)
+        return self._to_record(model)
 
     async def update(
         self,
@@ -92,7 +92,7 @@ class LearningGoalRepository:
         description: str | None,
         target_date: date | None,
         status: str,
-    ) -> LearningGoalRecordDTO:
+    ) -> LearningGoalRecord:
         result = await self._session.execute(select(LearningGoalModel).where(LearningGoalModel.id == goal_id))
         model = result.scalar_one()
         model.topic = topic
@@ -102,7 +102,7 @@ class LearningGoalRepository:
         await self.delete_cached_resources(goal_id)
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_dto(model)
+        return self._to_record(model)
 
     async def delete(self, goal_id: UUID) -> None:
         await self._session.execute(delete(LearningGoalModel).where(LearningGoalModel.id == goal_id))
@@ -112,7 +112,7 @@ class LearningGoalRepository:
         *,
         goal_id: UUID,
         refreshed_after: datetime,
-    ) -> list[LearningGoalResourceRecordDTO]:
+    ) -> list[LearningGoalResourceRecord]:
         result = await self._session.execute(
             select(LearningGoalResourceModel)
             .where(
@@ -121,13 +121,13 @@ class LearningGoalRepository:
             )
             .order_by(LearningGoalResourceModel.score.desc())
         )
-        return [self._resource_to_dto(model) for model in result.scalars().all()]
+        return [self._resource_record(model) for model in result.scalars().all()]
 
     async def replace_cached_resources(
         self,
         *,
         goal_id: UUID,
-        resources: list[LearningGoalResourceRecordDTO],
+        resources: list[LearningGoalResourceRecord],
     ) -> None:
         await self.delete_cached_resources(goal_id)
         self._session.add_all(
@@ -150,8 +150,8 @@ class LearningGoalRepository:
         await self._session.execute(delete(LearningGoalResourceModel).where(LearningGoalResourceModel.goal_id == goal_id))
 
     @staticmethod
-    def _to_dto(model: LearningGoalModel) -> LearningGoalRecordDTO:
-        return LearningGoalRecordDTO(
+    def _to_record(model: LearningGoalModel) -> LearningGoalRecord:
+        return LearningGoalRecord(
             id=model.id,
             user_id=model.user_id,
             topic=model.topic,
@@ -163,8 +163,8 @@ class LearningGoalRepository:
         )
 
     @staticmethod
-    def _resource_to_dto(model: LearningGoalResourceModel) -> LearningGoalResourceRecordDTO:
-        return LearningGoalResourceRecordDTO(
+    def _resource_record(model: LearningGoalResourceModel) -> LearningGoalResourceRecord:
+        return LearningGoalResourceRecord(
             goal_id=model.goal_id,
             area=model.area,
             title=model.title,
@@ -178,7 +178,7 @@ class LearningGoalRepository:
 
 
 __all__ = [
-    "LearningGoalRecordDTO",
+    "LearningGoalRecord",
     "LearningGoalRepository",
-    "LearningGoalResourceRecordDTO",
+    "LearningGoalResourceRecord",
 ]

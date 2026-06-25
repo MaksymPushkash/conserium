@@ -5,16 +5,16 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from src.documents.document_repository import DocumentRepository
-from src.documents.schemas import CreateNoteDTO
+from src.documents.schemas import CreateNoteRequest
 from src.documents.schemas import NoteResponse as DocumentNoteResponse
 from src.documents.status import DocumentStatus
 from src.kit.exceptions import ResourceNotFoundException, ValidationException
 from src.knowledge_gaps.schemas import (
-    KnowledgeGapAreaDTO,
+    KnowledgeGap,
+    KnowledgeGapArea,
     KnowledgeGapAreaResponse,
-    KnowledgeGapDTO,
-    KnowledgeGapListDTO,
     KnowledgeGapListResponse,
+    KnowledgeGapListResult,
     KnowledgeGapResponse,
     NoteResponse,
 )
@@ -51,17 +51,17 @@ class KnowledgeGapService:
             )
             collection_gaps = collection_topic_gaps(documents, collection_id=collection_id)
             return to_knowledge_gap_list_response(
-                KnowledgeGapListDTO(items=collection_gaps[:limit], total=len(collection_gaps))
+                KnowledgeGapListResult(items=collection_gaps[:limit], total=len(collection_gaps))
             )
 
         topic_repository = TopicRepository.from_session(session)
         topics = await topic_repository.list_by_user_id(user_id, limit=limit, offset=0)
-        gaps: list[KnowledgeGapDTO] = []
+        gaps: list[KnowledgeGap] = []
         for topic in topics:
             detail = await topic_repository.get_detail_by_name(user_id, name=topic.name, document_limit=200)
             if detail is not None:
-                gaps.append(knowledge_gap_dto(topic=detail.topic.name, documents=detail.documents, collection_id=None))
-        return to_knowledge_gap_list_response(KnowledgeGapListDTO(items=gaps, total=len(gaps)))
+                gaps.append(knowledge_gap_result(topic=detail.topic.name, documents=detail.documents, collection_id=None))
+        return to_knowledge_gap_list_response(KnowledgeGapListResult(items=gaps, total=len(gaps)))
 
     async def get(
         self,
@@ -93,7 +93,7 @@ class KnowledgeGapService:
             if not topic_documents:
                 raise ResourceNotFoundException("topic not found")
             return to_knowledge_gap_response(
-                knowledge_gap_dto(topic=normalized_topic, documents=topic_documents, collection_id=collection_id)
+                knowledge_gap_result(topic=normalized_topic, documents=topic_documents, collection_id=collection_id)
             )
 
         detail = await TopicRepository.from_session(session).get_detail_by_name(
@@ -104,7 +104,7 @@ class KnowledgeGapService:
         if detail is None:
             raise ResourceNotFoundException("topic not found")
         return to_knowledge_gap_response(
-            knowledge_gap_dto(topic=detail.topic.name, documents=detail.documents, collection_id=None)
+            knowledge_gap_result(topic=detail.topic.name, documents=detail.documents, collection_id=None)
         )
 
     async def create_note(
@@ -122,13 +122,13 @@ class KnowledgeGapService:
         if not normalized_topic or not normalized_area:
             raise ValidationException("topic and area are required")
         note = await note_service.create(
-            CreateNoteDTO(
-                user_id=user_id,
+            user_id=user_id,
+            body=CreateNoteRequest(
                 collection_id=collection_id,
                 title=f"Fill gap: {normalized_topic} - {normalized_area}",
                 content=gap_note_content(gap_id=gap_id, topic=normalized_topic, area_name=normalized_area),
                 language="en",
-            )
+            ),
         )
         return to_note_response(note)
 
@@ -259,14 +259,14 @@ def rubric_for_topic(topic: str) -> tuple[RubricArea, ...]:
     return _DEFAULT_RUBRIC
 
 
-def area_coverage(area: RubricArea, documents: list[TopicDocumentRecord], *, topic: str = "") -> KnowledgeGapAreaDTO:
+def area_coverage(area: RubricArea, documents: list[TopicDocumentRecord], *, topic: str = "") -> KnowledgeGapArea:
     evidence_titles: list[str] = []
     for document in documents:
         if document_matches_area(document, area):
             evidence_titles.append(document.title)
     covered = bool(evidence_titles)
     severity = area_severity(covered=covered, evidence_count=len(evidence_titles), document_count=len(documents))
-    return KnowledgeGapAreaDTO(
+    return KnowledgeGapArea(
         id=gap_id(topic=topic, area=area.name),
         name=area.name,
         covered=covered,
@@ -294,12 +294,12 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9+#]+", " ", value.casefold())).strip()
 
 
-def knowledge_gap_dto(
+def knowledge_gap_result(
     *,
     topic: str,
     documents: list[TopicDocumentRecord],
     collection_id: UUID | None,
-) -> KnowledgeGapDTO:
+) -> KnowledgeGap:
     rubric = rubric_for_topic(topic)
     areas = [area_coverage(area, documents, topic=topic) for area in rubric]
     covered_count = sum(1 for area in areas if area.covered)
@@ -307,7 +307,7 @@ def knowledge_gap_dto(
     coverage_ratio = covered_count / len(areas) if areas else 0
     missing_source_types = sorted({source_type for area in areas for source_type in area.missing_source_types})
     severity = gap_severity(coverage_ratio=coverage_ratio, missing_count=missing_count, document_count=len(documents))
-    return KnowledgeGapDTO(
+    return KnowledgeGap(
         id=gap_id(topic=topic, area="summary"),
         topic=topic,
         collection_id=collection_id,
@@ -328,13 +328,13 @@ def knowledge_gap_dto(
     )
 
 
-def collection_topic_gaps(documents: list[DocumentModel], *, collection_id: UUID) -> list[KnowledgeGapDTO]:
+def collection_topic_gaps(documents: list[DocumentModel], *, collection_id: UUID) -> list[KnowledgeGap]:
     by_topic: dict[str, list[TopicDocumentRecord]] = {}
     for document in documents:
         for tag in document.tags:
             by_topic.setdefault(tag, []).append(topic_document_from_document(document))
     gaps = [
-        knowledge_gap_dto(topic=topic, documents=topic_documents, collection_id=collection_id)
+        knowledge_gap_result(topic=topic, documents=topic_documents, collection_id=collection_id)
         for topic, topic_documents in by_topic.items()
     ]
     return sorted(gaps, key=lambda gap: (gap.coverage_ratio, -gap.missing_count, gap.topic.casefold()))
@@ -448,14 +448,14 @@ def get_knowledge_gap_service() -> KnowledgeGapService:
     return knowledge_gaps
 
 
-def to_knowledge_gap_list_response(dto: KnowledgeGapListDTO) -> KnowledgeGapListResponse:
+def to_knowledge_gap_list_response(dto: KnowledgeGapListResult) -> KnowledgeGapListResponse:
     return KnowledgeGapListResponse(
         items=[to_knowledge_gap_response(item) for item in dto.items],
         total=dto.total,
     )
 
 
-def to_knowledge_gap_response(dto: KnowledgeGapDTO) -> KnowledgeGapResponse:
+def to_knowledge_gap_response(dto: KnowledgeGap) -> KnowledgeGapResponse:
     return KnowledgeGapResponse(
         id=dto.id,
         topic=dto.topic,
@@ -472,7 +472,7 @@ def to_knowledge_gap_response(dto: KnowledgeGapDTO) -> KnowledgeGapResponse:
     )
 
 
-def to_knowledge_gap_area_response(dto: KnowledgeGapAreaDTO) -> KnowledgeGapAreaResponse:
+def to_knowledge_gap_area_response(dto: KnowledgeGapArea) -> KnowledgeGapAreaResponse:
     return KnowledgeGapAreaResponse(
         id=dto.id,
         name=dto.name,
@@ -510,7 +510,7 @@ __all__ = [
     "document_matches_area",
     "gap_note_content",
     "get_knowledge_gap_service",
-    "knowledge_gap_dto",
+    "knowledge_gap_result",
     "knowledge_gaps",
     "rubric_for_topic",
     "to_knowledge_gap_list_response",

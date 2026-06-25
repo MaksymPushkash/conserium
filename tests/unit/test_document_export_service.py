@@ -10,24 +10,23 @@ from src.documents.exports import (
     markdown_to_pdf,
     safe_filename,
 )
-from src.documents.schemas import NotionExportDTO
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
 from src.integrations.notion_export_client import markdown_to_notion_blocks
-from src.integrations.schemas import ExternalConnectionDTO
+from src.integrations.schemas import ExternalConnectionRecord
 from src.kit.exceptions import IntegrationConfigurationException
 from src.models.document import DocumentModel
 
 if TYPE_CHECKING:
-    from src.integrations.clients import NotionExportClientProtocol
-    from src.kit.ports.security.token_cipher import ITokenCipher
+    from src.integrations.notion_export_client import NotionExportClient
+    from src.kit.security.fernet_token_cipher import FernetTokenCipher
 
 
 class _FakeExternalConnectionRepository:
-    def __init__(self, connection: ExternalConnectionDTO | None) -> None:
+    def __init__(self, connection: ExternalConnectionRecord | None) -> None:
         self._connection = connection
 
-    async def get_by_provider(self, *, user_id: uuid.UUID, provider: str) -> ExternalConnectionDTO | None:
+    async def get_by_provider(self, *, user_id: uuid.UUID, provider: str) -> ExternalConnectionRecord | None:
         return self._connection
 
 
@@ -95,7 +94,7 @@ def test_markdown_to_notion_blocks_converts_basic_markdown() -> None:
 @pytest.mark.asyncio
 async def test_notion_export_uses_connected_user_token() -> None:
     user_id = uuid.uuid4()
-    connection = ExternalConnectionDTO(
+    connection = ExternalConnectionRecord(
         id=uuid.uuid4(),
         user_id=user_id,
         provider="notion",
@@ -110,11 +109,11 @@ async def test_notion_export_uses_connected_user_token() -> None:
     client = _FakeNotionClient()
     handler = NotionMarkdownExporter(
         _FakeExternalConnectionRepository(connection),  # type: ignore[arg-type]
-        cast("NotionExportClientProtocol", client),
-        cast("ITokenCipher", _FakeTokenCipher()),
+        cast("NotionExportClient", client),
+        cast("FernetTokenCipher", _FakeTokenCipher()),
     )
 
-    result = await handler(NotionExportDTO(user_id=user_id, title="Draft", markdown="# Draft"))
+    result = await handler(user_id=user_id, title="Draft", markdown="# Draft")
 
     assert result.page_id == "page-id"
     assert client.access_token == "decrypted:encrypted-token"
@@ -124,7 +123,7 @@ async def test_notion_export_uses_connected_user_token() -> None:
 @pytest.mark.asyncio
 async def test_notion_export_requires_parent_page_for_connected_user() -> None:
     user_id = uuid.uuid4()
-    connection = ExternalConnectionDTO(
+    connection = ExternalConnectionRecord(
         id=uuid.uuid4(),
         user_id=user_id,
         provider="notion",
@@ -138,12 +137,12 @@ async def test_notion_export_requires_parent_page_for_connected_user() -> None:
     )
     handler = NotionMarkdownExporter(
         _FakeExternalConnectionRepository(connection),  # type: ignore[arg-type]
-        cast("NotionExportClientProtocol", _FakeNotionClient()),
-        cast("ITokenCipher", _FakeTokenCipher()),
+        cast("NotionExportClient", _FakeNotionClient()),
+        cast("FernetTokenCipher", _FakeTokenCipher()),
     )
 
     with pytest.raises(IntegrationConfigurationException, match="default Notion parent page"):
-        await handler(NotionExportDTO(user_id=user_id, title="Draft", markdown="# Draft"))
+        await handler(user_id=user_id, title="Draft", markdown="# Draft")
 
 
 def _make_document() -> DocumentModel:

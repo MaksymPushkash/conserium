@@ -4,7 +4,16 @@ from fastapi import Depends, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from src.auth.auth import CurrentUser
-from src.auth.oauth_clients import GithubOAuthClient, GoogleOAuthClient, OAuthProviderClient
+from src.auth.dependencies import (
+    get_auth_session_service,
+    get_github_oauth_client,
+    get_google_oauth_client,
+    get_oauth_login_completer,
+    get_refresh_token_rotator,
+    get_user_authenticator,
+    get_user_registrar,
+)
+from src.auth.oauth_clients import GithubOAuthClient, GoogleOAuthClient, OAuthProvider
 from src.auth.oauth_redirects import (
     OAUTH_REFRESH_COOKIE,
     OAUTH_STATE_COOKIE,
@@ -22,17 +31,6 @@ from src.auth.service import (
     RefreshTokenRotator,
     UserAuthenticator,
     UserRegistrar,
-    get_auth_session_service,
-    get_github_oauth_client,
-    get_google_oauth_client,
-    get_oauth_login_completer,
-    get_refresh_token_rotator,
-    get_user_authenticator,
-    get_user_registrar,
-    to_complete_oauth_login_dto,
-    to_login_dto,
-    to_refresh_dto,
-    to_register_dto,
     to_token_response,
 )
 from src.kit.exceptions import InvalidTokenException, OAuthAuthenticationException, UserInactiveException
@@ -48,7 +46,7 @@ async def register(
     body: RegisterRequest,
     handler: UserRegistrar = Depends(get_user_registrar),
 ) -> TokenResponse:
-    result = await handler(to_register_dto(body))
+    result = await handler(body)
     set_oauth_refresh_cookie(response, request, result.refresh_token)
     return to_token_response(result)
 
@@ -60,7 +58,7 @@ async def login(
     body: LoginRequest,
     handler: UserAuthenticator = Depends(get_user_authenticator),
 ) -> TokenResponse:
-    result = await handler(to_login_dto(body))
+    result = await handler(body)
     set_oauth_refresh_cookie(response, request, result.refresh_token)
     return to_token_response(result)
 
@@ -75,7 +73,7 @@ async def refresh(
     refresh_token = (body.refresh_token if body else None) or request.cookies.get(OAUTH_REFRESH_COOKIE)
     if refresh_token is None:
         raise InvalidTokenException("refresh token invalid")
-    result = await handler(to_refresh_dto(refresh_token))
+    result = await handler(refresh_token)
     set_oauth_refresh_cookie(response, request, result.refresh_token)
     return to_token_response(result)
 
@@ -89,7 +87,7 @@ async def logout(
 ) -> Response:
     refresh_token = (body.refresh_token if body else None) or request.cookies.get(OAUTH_REFRESH_COOKIE)
     if refresh_token is not None:
-        await service.logout(to_refresh_dto(refresh_token))
+        await service.logout(refresh_token)
     clear_oauth_refresh_cookie(response, request)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
@@ -152,7 +150,7 @@ async def github_callback(
     )
 
 
-def _start_oauth(request: Request, provider: OAuthProviderClient, callback_path: str) -> RedirectResponse:
+def _start_oauth(request: Request, provider: OAuthProvider, callback_path: str) -> RedirectResponse:
     state = secrets.token_urlsafe(32)
     redirect_uri = build_callback_uri(request, callback_path)
     response = RedirectResponse(provider.authorization_url(redirect_uri=redirect_uri, state=state), status_code=307)
@@ -163,7 +161,7 @@ def _start_oauth(request: Request, provider: OAuthProviderClient, callback_path:
 async def _complete_oauth(
     *,
     request: Request,
-    provider: OAuthProviderClient,
+    provider: OAuthProvider,
     handler: OAuthLoginCompleter,
     callback_path: str,
 ) -> RedirectResponse:
@@ -178,11 +176,9 @@ async def _complete_oauth(
 
     try:
         tokens = await handler(
-            to_complete_oauth_login_dto(
-                code=code,
-                redirect_uri=build_callback_uri(request, callback_path),
-            ),
-            provider,
+            code=code,
+            redirect_uri=build_callback_uri(request, callback_path),
+            provider=provider,
         )
     except OAuthAuthenticationException as exc:
         response = RedirectResponse(build_frontend_error_redirect(exc.code), status_code=302)

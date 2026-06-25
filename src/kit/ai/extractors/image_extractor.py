@@ -4,16 +4,16 @@ import asyncio
 from functools import partial
 from typing import Any
 
+from src.documents.extraction import ContentExtractor, ExtractedContent
 from src.kit.ai.extractors.image_preprocessing import (
     load_preprocessed_image,
     tesseract_config,
     tesseract_language_for,
 )
 from src.kit.ai.extractors.image_visual_analysis import ImageVisualAnalyzer
-from src.kit.ports.ingestion.content_extractor import ExtractedContent, IContentExtractor
 
 
-class ImageExtractor(IContentExtractor):
+class ImageExtractor(ContentExtractor):
     def __init__(self, visual_analyzer: ImageVisualAnalyzer | None = None) -> None:
         self._visual_analyzer = visual_analyzer or ImageVisualAnalyzer()
 

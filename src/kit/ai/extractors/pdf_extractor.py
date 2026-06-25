@@ -5,7 +5,7 @@ from functools import partial
 import pdfplumber
 import structlog
 
-from src.kit.ports.ingestion.content_extractor import ExtractedContent, IContentExtractor
+from src.documents.extraction import ContentExtractor, ExtractedContent
 
 logger = structlog.get_logger(__name__)
 
@@ -13,7 +13,7 @@ logger = structlog.get_logger(__name__)
 _STRIP_CHARS = " \t\r\n\x0c"
 
 
-class PdfExtractor(IContentExtractor):
+class PdfExtractor(ContentExtractor):
     def __init__(self, *, min_page_chars: int = 10) -> None:
         self._min_page_chars = min_page_chars
 

@@ -6,30 +6,28 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import Depends
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.kit.exceptions import ApplicationStateException, ResourceNotFoundException, ValidationException
 from src.postgres import AsyncSession
 from src.public_shares.repository import AnswerShareRepository, CollectionShareRepository
 from src.public_shares.schemas import (
-    AnswerShareDTO,
     AnswerShareListResponse,
+    AnswerShareRecord,
     AnswerShareResponse,
-    AnswerShareSourceDTO,
+    AnswerShareSource,
     AnswerShareSourceResponse,
-    CollectionShareDTO,
+    CollectionShareRecord,
     PublicAnswerShareResponse,
     PublicAnswerShareSourceResponse,
-    PublicCollectionDocumentDTO,
+    PublicCollectionDocument,
     PublicCollectionDocumentResponse,
-    PublicCollectionDTO,
     PublicCollectionResponse,
+    PublicCollectionResult,
 )
 from src.query.agents.graph_runner import QueryGraphRunner
 from src.query.agents.state import ConseriumQueryState
-from src.query.schemas import PublicCollectionQueryResponse, PublicQuerySourceResponse, QueryResultDTO, QuerySourceDTO
-from src.query.service import get_query_graph_runner
+from src.query.schemas import PublicCollectionQueryResponse, PublicQuerySourceResponse, QueryResult, QuerySource
 from src.query.services.query.payloads import build_follow_up_questions, mark_sources_used_in_answer, query_debug
 
 _PUBLIC_COLLECTION_OWNER_DAILY_CAP = 500
@@ -38,14 +36,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class PublicCollectionQueryResult:
-    result: QueryResultDTO
-    share: AnswerShareDTO
+    result: QueryResult
+    share: AnswerShareRecord
 
 
 @dataclass(frozen=True, slots=True)
 class PublicAskReservation:
     id: UUID
-    share: CollectionShareDTO
+    share: CollectionShareRecord
 
 
 class PublicAskLedger:
@@ -85,7 +83,7 @@ class PublicAskLedger:
             await session.commit()
             return PublicAskReservation(id=reservation_id, share=share)
 
-    async def complete(self, reservation: PublicAskReservation, *, result: QueryResultDTO) -> AnswerShareDTO:
+    async def complete(self, reservation: PublicAskReservation, *, result: QueryResult) -> AnswerShareRecord:
         async with self._session_factory() as session:
             answer_share = await _create_answer_share(
                 session,
@@ -170,11 +168,11 @@ class PublicShareService:
         user_id: UUID,
         query_text: str,
         answer_text: str,
-        sources: Sequence[QuerySourceDTO],
+        sources: Sequence[QuerySource],
         collection_id: UUID | None = None,
         conversation_id: UUID | None = None,
         public_collection_slug: str | None = None,
-    ) -> AnswerShareDTO:
+    ) -> AnswerShareRecord:
         return await _create_answer_share(
             session,
             user_id=user_id,
@@ -248,7 +246,7 @@ class PublicShareService:
                 raise ApplicationStateException("public query did not produce refrag_context")
 
             state.sources = mark_sources_used_in_answer(state.sources, state.answer)
-            result = QueryResultDTO(
+            result = QueryResult(
                 conversation_id=conversation_id,
                 query=normalized_query,
                 answer=state.answer,
@@ -264,13 +262,7 @@ class PublicShareService:
             raise
 
 
-def get_public_query_graph_runner(
-    graph_runner: QueryGraphRunner = Depends(get_query_graph_runner),
-) -> QueryGraphRunner:
-    return graph_runner
-
-
-def to_public_collection_response(dto: PublicCollectionDTO) -> PublicCollectionResponse:
+def to_public_collection_response(dto: PublicCollectionResult) -> PublicCollectionResponse:
     return PublicCollectionResponse(
         id=dto.id,
         name=dto.name,
@@ -282,7 +274,7 @@ def to_public_collection_response(dto: PublicCollectionDTO) -> PublicCollectionR
     )
 
 
-def to_public_collection_document_response(dto: PublicCollectionDocumentDTO) -> PublicCollectionDocumentResponse:
+def to_public_collection_document_response(dto: PublicCollectionDocument) -> PublicCollectionDocumentResponse:
     return PublicCollectionDocumentResponse(
         id=dto.id,
         title=dto.title,
@@ -298,7 +290,7 @@ def to_public_collection_document_response(dto: PublicCollectionDocumentDTO) -> 
     )
 
 
-def to_answer_share_response(dto: AnswerShareDTO) -> AnswerShareResponse:
+def to_answer_share_response(dto: AnswerShareRecord) -> AnswerShareResponse:
     return AnswerShareResponse(
         slug=dto.slug,
         url_path=f"/public/answers/{dto.slug}",
@@ -313,11 +305,11 @@ def to_answer_share_response(dto: AnswerShareDTO) -> AnswerShareResponse:
     )
 
 
-def to_answer_share_list_response(dtos: list[AnswerShareDTO]) -> AnswerShareListResponse:
+def to_answer_share_list_response(dtos: list[AnswerShareRecord]) -> AnswerShareListResponse:
     return AnswerShareListResponse(items=[to_answer_share_response(dto) for dto in dtos])
 
 
-def to_public_answer_share_response(dto: AnswerShareDTO) -> PublicAnswerShareResponse:
+def to_public_answer_share_response(dto: AnswerShareRecord) -> PublicAnswerShareResponse:
     return PublicAnswerShareResponse(
         slug=dto.slug,
         url_path=f"/public/answers/{dto.slug}",
@@ -329,7 +321,7 @@ def to_public_answer_share_response(dto: AnswerShareDTO) -> PublicAnswerShareRes
     )
 
 
-def to_public_answer_share_source_response(dto: AnswerShareSourceDTO) -> PublicAnswerShareSourceResponse:
+def to_public_answer_share_source_response(dto: AnswerShareSource) -> PublicAnswerShareSourceResponse:
     return PublicAnswerShareSourceResponse(
         document_title=dto.document_title,
         content=dto.content,
@@ -340,7 +332,7 @@ def to_public_answer_share_source_response(dto: AnswerShareSourceDTO) -> PublicA
     )
 
 
-def to_answer_share_source_response(dto: AnswerShareSourceDTO) -> AnswerShareSourceResponse:
+def to_answer_share_source_response(dto: AnswerShareSource) -> AnswerShareSourceResponse:
     return AnswerShareSourceResponse(
         chunk_id=dto.chunk_id,
         document_id=dto.document_id,
@@ -353,7 +345,7 @@ def to_answer_share_source_response(dto: AnswerShareSourceDTO) -> AnswerShareSou
     )
 
 
-def to_public_query_source_response(dto: QuerySourceDTO, index: int) -> PublicQuerySourceResponse:
+def to_public_query_source_response(dto: QuerySource, index: int) -> PublicQuerySourceResponse:
     return PublicQuerySourceResponse(
         document_title=dto.document_title,
         content=dto.content,
@@ -364,8 +356,8 @@ def to_public_query_source_response(dto: QuerySourceDTO, index: int) -> PublicQu
     )
 
 
-def to_answer_share_source(source: QuerySourceDTO, index: int) -> AnswerShareSourceDTO:
-    return AnswerShareSourceDTO(
+def to_answer_share_source(source: QuerySource, index: int) -> AnswerShareSource:
+    return AnswerShareSource(
         chunk_id=source.chunk_id,
         document_id=source.document_id,
         document_title=source.document_title,
@@ -383,11 +375,11 @@ async def _create_answer_share(
     user_id: UUID,
     query_text: str,
     answer_text: str,
-    sources: Sequence[QuerySourceDTO],
+    sources: Sequence[QuerySource],
     collection_id: UUID | None,
     conversation_id: UUID | None,
     public_collection_slug: str | None,
-) -> AnswerShareDTO:
+) -> AnswerShareRecord:
     repository = AnswerShareRepository.from_session(session)
     share_sources = [to_answer_share_source(source, index) for index, source in enumerate(sources, start=1)]
     for _ in range(5):
@@ -410,7 +402,7 @@ async def _create_answer_share(
 
 async def _record_public_ask_event(
     repository: CollectionShareRepository,
-    share: CollectionShareDTO,
+    share: CollectionShareRecord,
     client_key: str,
     query_text: str,
     status: str,

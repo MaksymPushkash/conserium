@@ -5,16 +5,16 @@ from typing import Any, cast
 import pytest
 
 from src.documents.document_repository import DocumentRepository
+from src.documents.extraction import ContentExtractor, ExtractedContent
 from src.documents.processing import DocumentIngestionProcessor
 from src.documents.repository import RelatedDocumentRecord
-from src.documents.schemas import TextChunkDTO
+from src.documents.schemas import TextChunk
 from src.documents.status import DocumentStatus
-from src.documents.status_cache import IDocumentStatusCache
+from src.documents.status_cache import RedisDocumentStatusCache
 from src.documents.types import DocumentType
-from src.kit.ports.ingestion.content_extractor import ExtractedContent, IContentExtractor
-from src.kit.ports.ingestion.file_storage import IFileStorage, StoredFile
+from src.kit.storage.file_storage import FileStorage, StoredFile
 from src.models.document import DocumentModel
-from src.worker.dispatcher import ITaskDispatcher
+from src.worker.dispatcher import CeleryTaskDispatcher
 
 
 class _FakeDocumentRepository(DocumentRepository):
@@ -112,7 +112,7 @@ class _FakeRepositorySession:
         return None
 
 
-class _FakeStatusCache(IDocumentStatusCache):
+class _FakeStatusCache(RedisDocumentStatusCache):
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, str]] = []
 
@@ -126,7 +126,7 @@ class _FakeStatusCache(IDocumentStatusCache):
         raise NotImplementedError
 
 
-class _FakeTaskDispatcher(ITaskDispatcher):
+class _FakeTaskDispatcher(CeleryTaskDispatcher):
     def __init__(self) -> None:
         self.embed_calls: list[dict[str, Any]] = []
         self.image_calls: list[str] = []
@@ -162,9 +162,9 @@ class _FakeTaskDispatcher(ITaskDispatcher):
 
 
 class _FakeTextChunker:
-    def chunk_text(self, text: str) -> list[TextChunkDTO]:
+    def chunk_text(self, text: str) -> list[TextChunk]:
         return [
-            TextChunkDTO(
+            TextChunk(
                 content=text,
                 chunk_index=0,
                 start_char=0,
@@ -174,7 +174,7 @@ class _FakeTextChunker:
         ]
 
 
-class _FakeFileStorage(IFileStorage):
+class _FakeFileStorage(FileStorage):
     async def save_document_file(self, *, user_id: uuid.UUID, filename: str, content: bytes) -> StoredFile:
         raise NotImplementedError
 
@@ -185,7 +185,7 @@ class _FakeFileStorage(IFileStorage):
         return None
 
 
-class _UnusedExtractor(IContentExtractor):
+class _UnusedExtractor(ContentExtractor):
     async def extract_from_bytes(
         self,
         data: bytes,
@@ -199,7 +199,7 @@ class _UnusedExtractor(IContentExtractor):
         raise NotImplementedError
 
 
-class _FakeUrlExtractor(IContentExtractor):
+class _FakeUrlExtractor(ContentExtractor):
     def __init__(self, extracted_content: ExtractedContent) -> None:
         self.extracted_content = extracted_content
         self.called_url: str | None = None

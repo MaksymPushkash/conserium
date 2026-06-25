@@ -1,7 +1,7 @@
-from src.query.schemas import QuerySourceDTO, RefragChunk, RefragContextPackage, RefragRepresentation
+from src.query.schemas import QuerySource, RefragChunk, RefragContextPackage, RefragRepresentation
 
 
-def refrag_context_from_sources(query: str, sources: list[QuerySourceDTO]) -> RefragContextPackage:
+def refrag_context_from_sources(query: str, sources: list[QuerySource]) -> RefragContextPackage:
     chunks = [
         RefragChunk(
             chunk_id=source.chunk_id,

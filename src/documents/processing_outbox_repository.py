@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from src.documents.schemas import DocumentProcessingOutboxDTO
+from src.documents.schemas import DocumentProcessingOutboxRecord
 from src.models.document_processing_outbox import DocumentProcessingOutboxModel
 
 if TYPE_CHECKING:
@@ -24,7 +24,7 @@ class DocumentProcessingOutboxRepository:
     def from_session(cls, session: AsyncSession) -> DocumentProcessingOutboxRepository:
         return cls(session)
 
-    async def create_outbox(self, *, document_id: UUID, task_name: str) -> DocumentProcessingOutboxDTO:
+    async def create_outbox(self, *, document_id: UUID, task_name: str) -> DocumentProcessingOutboxRecord:
         result = await self._session.execute(
             pg_insert(DocumentProcessingOutboxModel)
             .values(
@@ -48,7 +48,7 @@ class DocumentProcessingOutboxRepository:
             )
             .returning(DocumentProcessingOutboxModel)
         )
-        return self._to_dto(result.scalar_one())
+        return self._to_record(result.scalar_one())
 
     async def claim_batch(
         self,
@@ -57,7 +57,7 @@ class DocumentProcessingOutboxRepository:
         locked_at: datetime,
         stale_before: datetime,
         max_attempts: int,
-    ) -> list[DocumentProcessingOutboxDTO]:
+    ) -> list[DocumentProcessingOutboxRecord]:
         result = await self._session.execute(
             select(DocumentProcessingOutboxModel)
             .where(
@@ -78,15 +78,15 @@ class DocumentProcessingOutboxRepository:
             model.locked_at = locked_at
             model.attempts += 1
         await self._session.flush()
-        return [self._to_dto(model) for model in models]
+        return [self._to_record(model) for model in models]
 
 
-    async def get_by_id(self, outbox_id: UUID) -> DocumentProcessingOutboxDTO | None:
+    async def get_by_id(self, outbox_id: UUID) -> DocumentProcessingOutboxRecord | None:
         result = await self._session.execute(select(DocumentProcessingOutboxModel).where(DocumentProcessingOutboxModel.id == outbox_id))
         model = result.scalar_one_or_none()
-        return self._to_dto(model) if model is not None else None
+        return self._to_record(model) if model is not None else None
 
-    async def mark_dispatching(self, outbox_id: UUID, locked_at: datetime) -> DocumentProcessingOutboxDTO:
+    async def mark_dispatching(self, outbox_id: UUID, locked_at: datetime) -> DocumentProcessingOutboxRecord:
         result = await self._session.execute(select(DocumentProcessingOutboxModel).where(DocumentProcessingOutboxModel.id == outbox_id))
         model = result.scalar_one()
         model.status = "dispatching"
@@ -94,9 +94,9 @@ class DocumentProcessingOutboxRepository:
         model.last_error = None
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_dto(model)
+        return self._to_record(model)
 
-    async def mark_dispatched(self, outbox_id: UUID, dispatched_at: datetime) -> DocumentProcessingOutboxDTO:
+    async def mark_dispatched(self, outbox_id: UUID, dispatched_at: datetime) -> DocumentProcessingOutboxRecord:
         result = await self._session.execute(select(DocumentProcessingOutboxModel).where(DocumentProcessingOutboxModel.id == outbox_id))
         model = result.scalar_one()
         model.status = "dispatched"
@@ -105,9 +105,9 @@ class DocumentProcessingOutboxRepository:
         model.last_error = None
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_dto(model)
+        return self._to_record(model)
 
-    async def mark_failed(self, outbox_id: UUID, *, last_error: str, retryable: bool) -> DocumentProcessingOutboxDTO:
+    async def mark_failed(self, outbox_id: UUID, *, last_error: str, retryable: bool) -> DocumentProcessingOutboxRecord:
         result = await self._session.execute(select(DocumentProcessingOutboxModel).where(DocumentProcessingOutboxModel.id == outbox_id))
         model = result.scalar_one()
         model.status = "pending" if retryable else "failed"
@@ -115,11 +115,11 @@ class DocumentProcessingOutboxRepository:
         model.last_error = last_error
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_dto(model)
+        return self._to_record(model)
 
     @staticmethod
-    def _to_dto(model: DocumentProcessingOutboxModel) -> DocumentProcessingOutboxDTO:
-        return DocumentProcessingOutboxDTO(
+    def _to_record(model: DocumentProcessingOutboxModel) -> DocumentProcessingOutboxRecord:
+        return DocumentProcessingOutboxRecord(
             id=model.id,
             document_id=model.document_id,
             task_name=model.task_name,

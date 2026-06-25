@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from src.kit.exceptions import ResourceNotFoundException
-from src.query.schemas import ConversationSourceDTO, ConversationTurnDTO
+from src.query.schemas import ConversationSource, ConversationTurn
 from src.settings import settings
 
 if TYPE_CHECKING:
@@ -12,9 +12,9 @@ if TYPE_CHECKING:
 
     from src.chats.repository import ChatRepository
     from src.collections.repository import CollectionRepository
-    from src.kit.ports.conversations.conversation_store import IConversationStore
+    from src.kit.cache.redis_conversation_store import RedisConversationStore
     from src.postgres import AsyncSession
-    from src.query.schemas import QueryDTO, QuerySourceDTO
+    from src.query.schemas import QueryPayload, QuerySource
 
 
 class QueryConversationService:
@@ -22,7 +22,7 @@ class QueryConversationService:
 
     def __init__(
         self,
-        conversation_store: IConversationStore,
+        conversation_store: RedisConversationStore,
         session: AsyncSession,
         chat_repo: ChatRepository,
         collection_repo: CollectionRepository,
@@ -32,7 +32,7 @@ class QueryConversationService:
         self._chat_repo = chat_repo
         self._collection_repo = collection_repo
 
-    async def prepare_context(self, dto: QueryDTO, *, query: str, conversation_id: UUID) -> list[ConversationTurnDTO]:
+    async def prepare_context(self, dto: QueryPayload, *, query: str, conversation_id: UUID) -> list[ConversationTurn]:
         if dto.collection_id is not None:
             collection = await self._collection_repo.get_by_id(dto.collection_id)
             if collection is None or collection.user_id != dto.user_id:
@@ -54,16 +54,16 @@ class QueryConversationService:
         conversation_id: UUID,
         query: str,
         answer: str,
-        sources: list[QuerySourceDTO],
+        sources: list[QuerySource],
     ) -> None:
         await self._conversation_store.append_turn(
             user_id=user_id,
             conversation_id=conversation_id,
-            turn=ConversationTurnDTO(
+            turn=ConversationTurn(
                 query=query,
                 answer=answer,
                 sources=[
-                    ConversationSourceDTO(
+                    ConversationSource(
                         chunk_id=source.chunk_id,
                         document_id=source.document_id,
                         document_title=source.document_title,
@@ -88,7 +88,7 @@ class QueryConversationService:
             )
             await self._session.flush()
 
-    async def get_persisted_recent_turns(self, *, user_id: UUID, conversation_id: UUID) -> list[ConversationTurnDTO]:
+    async def get_persisted_recent_turns(self, *, user_id: UUID, conversation_id: UUID) -> list[ConversationTurn]:
         return await self._chat_repo.get_recent_turns(
             user_id=user_id,
             chat_id=conversation_id,

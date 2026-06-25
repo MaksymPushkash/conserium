@@ -6,7 +6,7 @@ from urllib.parse import quote
 import httpx
 
 from src.kit.exceptions import IntegrationRequestException, ValidationException
-from src.repo_syncs.schemas import MarkdownRepoFetchResultDTO, MarkdownRepoFileDTO
+from src.repo_syncs.schemas import MarkdownRepoFetchResult, MarkdownRepoFile
 from src.settings import settings
 
 _GITHUB_API_BASE_URL = "https://api.github.com"
@@ -27,7 +27,7 @@ class GitHubRepositoryClient:
         repo: str,
         branch: str,
         max_files: int,
-    ) -> MarkdownRepoFetchResultDTO:
+    ) -> MarkdownRepoFetchResult:
         async with httpx.AsyncClient(timeout=20) as client:
             tree = await self._fetch_tree(client, owner=owner, repo=repo, branch=branch)
             candidates = [
@@ -40,7 +40,7 @@ class GitHubRepositoryClient:
                 *(self._fetch_markdown_file(client, owner=owner, repo=repo, branch=branch, item=item, semaphore=semaphore) for item in candidates),
                 return_exceptions=True,
             )
-            files: list[MarkdownRepoFileDTO] = []
+            files: list[MarkdownRepoFile] = []
             failed = 0
             skipped_large = 0
             for result in results:
@@ -56,7 +56,7 @@ class GitHubRepositoryClient:
                 warnings.append(f"Skipped {failed} Markdown file{'s' if failed != 1 else ''} that could not be fetched.")
             if skipped_large:
                 warnings.append(f"Skipped {skipped_large} Markdown file{'s' if skipped_large != 1 else ''} larger than 1 MB.")
-            return MarkdownRepoFetchResultDTO(files=files, warnings=warnings)
+            return MarkdownRepoFetchResult(files=files, warnings=warnings)
 
     async def _fetch_markdown_file(
         self,
@@ -67,13 +67,13 @@ class GitHubRepositoryClient:
         branch: str,
         item: dict[str, object],
         semaphore: asyncio.Semaphore,
-    ) -> MarkdownRepoFileDTO | _SkippedLargeFile:
+    ) -> MarkdownRepoFile | _SkippedLargeFile:
         path = str(item["path"])
         if _tree_item_size(item) > _MAX_FILE_BYTES:
             return _SkippedLargeFile()
         async with semaphore:
             content = await self._fetch_raw_file(client, owner=owner, repo=repo, branch=branch, path=path)
-        return MarkdownRepoFileDTO(
+        return MarkdownRepoFile(
             path=path,
             sha=str(item["sha"]),
             content=content,

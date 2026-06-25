@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 @dataclass(frozen=True)
-class CollectionMemberDTO:
+class CollectionMemberRecord:
     id: UUID
     collection_id: UUID
     user_id: UUID | None
@@ -18,12 +18,7 @@ class CollectionMemberDTO:
 
 
 @dataclass(frozen=True)
-class CollectionMemberListDTO:
-    items: list[CollectionMemberDTO]
-
-
-@dataclass(frozen=True)
-class CollectionAuditEventDTO:
+class CollectionAuditEventRecord:
     id: UUID
     collection_id: UUID
     actor_user_id: UUID
@@ -33,38 +28,7 @@ class CollectionAuditEventDTO:
 
 
 @dataclass(frozen=True)
-class CollectionAuditEventListDTO:
-    items: list[CollectionAuditEventDTO]
-    total: int
-    limit: int
-    offset: int
-
-
-@dataclass(frozen=True)
-class InviteCollectionMemberDTO:
-    collection_id: UUID
-    actor_user_id: UUID
-    email: str
-    role: str
-
-
-@dataclass(frozen=True)
-class UpdateCollectionMemberRoleDTO:
-    collection_id: UUID
-    member_id: UUID
-    actor_user_id: UUID
-    role: str
-
-
-@dataclass(frozen=True)
-class RemoveCollectionMemberDTO:
-    collection_id: UUID
-    member_id: UUID
-    actor_user_id: UUID
-
-
-@dataclass(frozen=True)
-class WorkspaceDTO:
+class WorkspaceRecord:
     id: UUID
     user_id: UUID
     name: str
@@ -76,15 +40,7 @@ class WorkspaceDTO:
 
 
 @dataclass(frozen=True)
-class WorkspaceListDTO:
-    items: list[WorkspaceDTO]
-    total: int
-    limit: int
-    offset: int
-
-
-@dataclass(frozen=True)
-class WorkspaceMemberDTO:
+class WorkspaceMemberRecord:
     id: UUID
     workspace_id: UUID
     user_id: UUID | None
@@ -97,77 +53,13 @@ class WorkspaceMemberDTO:
 
 
 @dataclass(frozen=True)
-class WorkspaceMemberListDTO:
-    items: list[WorkspaceMemberDTO]
-
-
-@dataclass(frozen=True)
-class WorkspaceAuditEventDTO:
+class WorkspaceAuditEventRecord:
     id: UUID
     workspace_id: UUID
     actor_user_id: UUID
     event_type: str
     metadata: dict[str, object]
     created_at: datetime
-
-
-@dataclass(frozen=True)
-class WorkspaceAuditEventListDTO:
-    items: list[WorkspaceAuditEventDTO]
-    total: int
-    limit: int
-    offset: int
-
-
-@dataclass(frozen=True)
-class CreateWorkspaceDTO:
-    user_id: UUID
-    name: str
-    description: str | None = None
-
-
-@dataclass(frozen=True)
-class UpdateWorkspaceDTO:
-    workspace_id: UUID
-    actor_user_id: UUID
-    name: str
-    description: str | None = None
-
-
-@dataclass(frozen=True)
-class DeleteWorkspaceDTO:
-    workspace_id: UUID
-    actor_user_id: UUID
-
-
-@dataclass(frozen=True)
-class InviteWorkspaceMemberDTO:
-    workspace_id: UUID
-    actor_user_id: UUID
-    email: str
-    role: str
-
-
-@dataclass(frozen=True)
-class UpdateWorkspaceMemberRoleDTO:
-    workspace_id: UUID
-    member_id: UUID
-    actor_user_id: UUID
-    role: str
-
-
-@dataclass(frozen=True)
-class RemoveWorkspaceMemberDTO:
-    workspace_id: UUID
-    member_id: UUID
-    actor_user_id: UUID
-
-
-@dataclass(frozen=True)
-class TransferWorkspaceOwnershipDTO:
-    workspace_id: UUID
-    actor_user_id: UUID
-    member_id: UUID
 
 
 class WorkspaceRequest(BaseModel):

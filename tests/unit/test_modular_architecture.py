@@ -120,6 +120,7 @@ def test_users_do_not_reintroduce_parallel_entity_or_email_value_object() -> Non
 
 def test_external_client_contracts_stay_with_client_modules() -> None:
     assert not Path("src/auth/repository.py").exists()
+    assert not Path("src/integrations/clients.py").exists()
     repository_source = Path("src/integrations/repository.py").read_text()
     forbidden_names = (
         "I" + "GitHubRepositoryClient",
@@ -130,6 +131,63 @@ def test_external_client_contracts_stay_with_client_modules() -> None:
     )
     for name in forbidden_names:
         assert name not in repository_source
+
+
+def test_clean_architecture_ports_are_not_reintroduced() -> None:
+    assert not Path("src/kit/ports").exists()
+    forbidden_names = {
+        "I" + "Cache",
+        "I" + "ConversationStore",
+        "I" + "DocumentStatusCache",
+        "I" + "NotificationSender",
+        "I" + "QueryTracer",
+        "I" + "TaskDispatcher",
+        "I" + "TokenCipher",
+        "JWTService" + "Protocol",
+    }
+    for path in Path("src").rglob("*.py"):
+        source = path.read_text()
+        assert "src.kit.ports" not in source, str(path)
+        for name in forbidden_names:
+            assert name not in source, f"{path}: {name}"
+
+
+def test_dto_layer_is_not_reintroduced() -> None:
+    for path in Path("src").rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                assert not node.name.endswith("DTO"), f"DTO reintroduced: {path}:{node.lineno}"
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                assert "_dto" not in node.name, f"DTO mapper reintroduced: {path}:{node.lineno}"
+
+
+def test_command_mapping_layer_is_not_reintroduced() -> None:
+    for path in Path("src").rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                assert not node.name.endswith("Command"), f"command payload reintroduced: {path}:{node.lineno}"
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                assert not node.name.startswith("to_") or not node.name.endswith("_command"), (
+                    f"command mapper reintroduced: {path}:{node.lineno}"
+                )
+
+
+def test_business_services_are_framework_independent() -> None:
+    service_paths = list(Path("src").rglob("service.py"))
+    service_paths.extend(
+        (
+            Path("src/documents/exports.py"),
+            Path("src/documents/ingestion.py"),
+            Path("src/documents/notes.py"),
+        )
+    )
+    for path in service_paths:
+        source = path.read_text()
+        assert "from fastapi" not in source, str(path)
+        assert "import fastapi" not in source, str(path)
+        assert "Depends(" not in source, str(path)
 
 
 def test_collapsed_response_contracts_are_not_duplicated_as_dtos() -> None:
@@ -260,11 +318,10 @@ def test_removed_layers_have_been_removed() -> None:
 
 
 def test_feature_local_layer_folders_are_not_reintroduced() -> None:
-    allowed = {Path("src/kit/ports")}
     forbidden_names = {"dtos", "ports", "use" + "_cases"}
 
     for path in Path("src").rglob("*"):
-        if not path.is_dir() or path in allowed:
+        if not path.is_dir():
             continue
         if path.name in forbidden_names:
             raise AssertionError(f"feature-local layer folder was reintroduced: {path}")
@@ -282,7 +339,6 @@ def test_feature_local_layer_imports_are_not_reintroduced() -> None:
                 for line in path.read_text().splitlines()
                 if line.startswith("from src.") or line.startswith("import src.")
             ]
-            import_lines = [line for line in import_lines if "src.kit.ports." not in line]
             for line in import_lines:
                 for fragment in forbidden_import_fragments:
                     assert fragment not in line, f"{path}: {line}"

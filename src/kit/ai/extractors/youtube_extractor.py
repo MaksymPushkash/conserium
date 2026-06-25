@@ -4,10 +4,10 @@ import asyncio
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
-from src.kit.ports.ingestion.content_extractor import ExtractedContent, IContentExtractor
+from src.documents.extraction import ContentExtractor, ExtractedContent
 
 
-class YoutubeExtractor(IContentExtractor):
+class YoutubeExtractor(ContentExtractor):
     async def extract_from_bytes(
         self,
         data: bytes,

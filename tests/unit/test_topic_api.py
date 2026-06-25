@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
 from src.main import create_app
 from src.models.user import UserModel
 from src.topics.schemas import (
@@ -164,7 +164,7 @@ def test_list_topics_route_returns_topic_groups(monkeypatch: pytest.MonkeyPatch)
     _override_sessions(app)
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -207,7 +207,7 @@ def test_get_topic_detail_route_returns_representative_documents(monkeypatch: py
     _override_sessions(app)
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -247,7 +247,7 @@ def test_topic_management_routes_forward_authenticated_user_and_payloads(monkeyp
     _override_sessions(app)
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)

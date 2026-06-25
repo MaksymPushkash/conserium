@@ -1,16 +1,10 @@
-from typing import Any, Protocol
+from typing import Any
 from urllib.parse import urlencode
 
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 
-from src.auth.schemas import OAuthProfileDTO
+from src.auth.schemas import OAuthProfile
 from src.kit.exceptions import OAuthAuthenticationException
-
-
-class OAuthProviderClient(Protocol):
-    def authorization_url(self, *, redirect_uri: str, state: str) -> str: ...
-
-    async def fetch_user_profile(self, *, code: str, redirect_uri: str) -> OAuthProfileDTO: ...
 
 
 class GoogleOAuthClient:
@@ -30,7 +24,7 @@ class GoogleOAuthClient:
         }
         return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
-    async def fetch_user_profile(self, *, code: str, redirect_uri: str) -> OAuthProfileDTO:
+    async def fetch_user_profile(self, *, code: str, redirect_uri: str) -> OAuthProfile:
         async with AsyncOAuth2Client(client_id=self._client_id, client_secret=self._client_secret) as client:
             await client.fetch_token(
                 "https://oauth2.googleapis.com/token",
@@ -43,7 +37,7 @@ class GoogleOAuthClient:
         email = _string_value(profile.get("email"))
         if email is None:
             raise OAuthAuthenticationException("no_email", "oauth provider did not return an email")
-        return OAuthProfileDTO(email=email, display_name=_string_value(profile.get("name")) or email)
+        return OAuthProfile(email=email, display_name=_string_value(profile.get("name")) or email)
 
 
 class GithubOAuthClient:
@@ -60,7 +54,7 @@ class GithubOAuthClient:
         }
         return f"https://github.com/login/oauth/authorize?{urlencode(params)}"
 
-    async def fetch_user_profile(self, *, code: str, redirect_uri: str) -> OAuthProfileDTO:
+    async def fetch_user_profile(self, *, code: str, redirect_uri: str) -> OAuthProfile:
         async with AsyncOAuth2Client(client_id=self._client_id, client_secret=self._client_secret) as client:
             token_data = await client.fetch_token(
                 "https://github.com/login/oauth/access_token",
@@ -80,7 +74,7 @@ class GithubOAuthClient:
 
         if email is None:
             raise OAuthAuthenticationException("no_email", "oauth provider did not return an email")
-        return OAuthProfileDTO(email=email, display_name=_string_value(user_info.get("name")) or email)
+        return OAuthProfile(email=email, display_name=_string_value(user_info.get("name")) or email)
 
 
 def _primary_github_email(emails: Any) -> str | None:
@@ -103,3 +97,6 @@ def _string_value(value: object) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+OAuthProvider = GoogleOAuthClient | GithubOAuthClient

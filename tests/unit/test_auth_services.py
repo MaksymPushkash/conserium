@@ -3,8 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.auth.oauth_clients import OAuthProviderClient
-from src.auth.schemas import CompleteOAuthLoginDTO, LoginDTO, OAuthProfileDTO, RefreshDTO, RegisterDTO
+from src.auth.schemas import LoginRequest, OAuthProfile, RegisterRequest
 from src.auth.service import OAuthLoginCompleter, RefreshTokenRotator, UserAuthenticator, UserRegistrar
 from src.kit.exceptions import (
     EmailAlreadyExistsException,
@@ -69,14 +68,14 @@ def _make_user_entity(*, is_active: bool = True) -> UserModel:
     )
 
 
-class _FakeOAuthProvider(OAuthProviderClient):
-    def __init__(self, profile: OAuthProfileDTO) -> None:
+class _FakeOAuthProvider:
+    def __init__(self, profile: OAuthProfile) -> None:
         self.profile = profile
 
     def authorization_url(self, *, redirect_uri: str, state: str) -> str:
         return f"https://provider.example/auth?redirect_uri={redirect_uri}&state={state}"
 
-    async def fetch_user_profile(self, *, code: str, redirect_uri: str) -> OAuthProfileDTO:
+    async def fetch_user_profile(self, *, code: str, redirect_uri: str) -> OAuthProfile:
         return self.profile
 
 
@@ -92,7 +91,7 @@ class TestUserRegistrar:
             mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
-        result = await handler(RegisterDTO(email="new@example.com", password="securepass123"))
+        result = await handler(RegisterRequest(email="new@example.com", password="securepass123"))
 
         assert result.access_token == "access-token-123"
         assert result.refresh_token == "refresh-token-456"
@@ -115,7 +114,7 @@ class TestUserRegistrar:
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(EmailAlreadyExistsException):
-            await handler(RegisterDTO(email="existing@example.com", password="securepass123"))
+            await handler(RegisterRequest(email="existing@example.com", password="securepass123"))
 
         mock_uow.user_repo.create.assert_not_awaited()
         mock_uow.flush.assert_not_awaited()
@@ -132,7 +131,7 @@ class TestUserRegistrar:
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         result = await handler(
-            RegisterDTO(
+            RegisterRequest(
                 email="new@example.com",
                 password="securepass123",
                 display_name="John Doe",
@@ -153,7 +152,7 @@ class TestUserRegistrar:
             mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
-        await handler(RegisterDTO(email="new@example.com", password="securepass123"))
+        await handler(RegisterRequest(email="new@example.com", password="securepass123"))
 
         mock_cache.set.assert_awaited_once()
         call_kwargs = mock_cache.set.call_args
@@ -173,7 +172,7 @@ class TestUserAuthenticator:
             mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
-        result = await handler(LoginDTO(email="user@example.com", password="password"))
+        result = await handler(LoginRequest(email="user@example.com", password="password"))
 
         assert result.access_token == "access-token-123"
         assert result.refresh_token == "refresh-token-456"
@@ -190,7 +189,7 @@ class TestUserAuthenticator:
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(InvalidCredentialsException):
-            await handler(LoginDTO(email="nonexistent@example.com", password="password"))
+            await handler(LoginRequest(email="nonexistent@example.com", password="password"))
 
     async def test_login_wrong_password_raises(self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache):
         user = _make_user_entity()
@@ -205,7 +204,7 @@ class TestUserAuthenticator:
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(InvalidCredentialsException):
-            await handler(LoginDTO(email="user@example.com", password="wrong"))
+            await handler(LoginRequest(email="user@example.com", password="wrong"))
 
     async def test_login_inactive_user_raises(self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache):
         user = _make_user_entity(is_active=False)
@@ -219,7 +218,7 @@ class TestUserAuthenticator:
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(UserInactiveException):
-            await handler(LoginDTO(email="user@example.com", password="password"))
+            await handler(LoginRequest(email="user@example.com", password="password"))
 
 
 class TestOAuthLoginCompleter:
@@ -227,7 +226,7 @@ class TestOAuthLoginCompleter:
         self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache
     ):
         mock_uow.user_repo.get_by_email.return_value = None
-        provider = _FakeOAuthProvider(OAuthProfileDTO(email="oauth@example.com", display_name="OAuth User"))
+        provider = _FakeOAuthProvider(OAuthProfile(email="oauth@example.com", display_name="OAuth User"))
 
         handler = OAuthLoginCompleter(
             mock_uow.user_repo,
@@ -238,8 +237,9 @@ class TestOAuthLoginCompleter:
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         result = await handler(
-            CompleteOAuthLoginDTO(code="oauth-code", redirect_uri="https://api.example/callback"),
-            provider,
+            code="oauth-code",
+            redirect_uri="https://api.example/callback",
+            provider=provider,
         )
 
         assert result.access_token == "access-token-123"
@@ -255,7 +255,7 @@ class TestOAuthLoginCompleter:
     ):
         existing_user = _make_user_entity()
         mock_uow.user_repo.get_by_email.return_value = existing_user
-        provider = _FakeOAuthProvider(OAuthProfileDTO(email="user@example.com", display_name="OAuth User"))
+        provider = _FakeOAuthProvider(OAuthProfile(email="user@example.com", display_name="OAuth User"))
 
         handler = OAuthLoginCompleter(
             mock_uow.user_repo,
@@ -266,8 +266,9 @@ class TestOAuthLoginCompleter:
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         result = await handler(
-            CompleteOAuthLoginDTO(code="oauth-code", redirect_uri="https://api.example/callback"),
-            provider,
+            code="oauth-code",
+            redirect_uri="https://api.example/callback",
+            provider=provider,
         )
 
         assert result.access_token == "access-token-123"
@@ -280,7 +281,7 @@ class TestOAuthLoginCompleter:
         self, mock_uow, mock_password_hasher, mock_jwt_service, mock_cache
     ):
         mock_uow.user_repo.get_by_email.return_value = _make_user_entity(is_active=False)
-        provider = _FakeOAuthProvider(OAuthProfileDTO(email="user@example.com", display_name="OAuth User"))
+        provider = _FakeOAuthProvider(OAuthProfile(email="user@example.com", display_name="OAuth User"))
 
         handler = OAuthLoginCompleter(
             mock_uow.user_repo,
@@ -293,8 +294,9 @@ class TestOAuthLoginCompleter:
 
         with pytest.raises(UserInactiveException):
             await handler(
-                CompleteOAuthLoginDTO(code="oauth-code", redirect_uri="https://api.example/callback"),
-                provider,
+                code="oauth-code",
+                redirect_uri="https://api.example/callback",
+                provider=provider,
             )
 
 
@@ -309,7 +311,7 @@ class TestRefreshTokenRotator:
             mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
-        result = await handler(RefreshDTO(refresh_token="old-refresh-token"))
+        result = await handler("old-refresh-token")
 
         assert result.access_token == "access-token-123"
         assert result.refresh_token == "refresh-token-456"
@@ -330,7 +332,7 @@ class TestRefreshTokenRotator:
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
         with pytest.raises(InvalidTokenException):
-            await handler(RefreshDTO(refresh_token="expired-cache-token"))
+            await handler("expired-cache-token")
 
         mock_jwt_service.verify_refresh_token.assert_called_once_with("expired-cache-token")
         mock_cache.get_del.assert_awaited_once_with("refresh:expired-cache-token")
@@ -346,7 +348,7 @@ class TestRefreshTokenRotator:
             mock_cache,
             refresh_token_ttl_seconds=REFRESH_TTL,
         )
-        await handler(RefreshDTO(refresh_token="old-token"))
+        await handler("old-token")
 
         mock_cache.get_del.assert_awaited_once_with("refresh:old-token")
 
@@ -363,7 +365,7 @@ class TestRefreshTokenRotator:
         )
 
         with pytest.raises(InvalidTokenException):
-            await handler(RefreshDTO(refresh_token="access-token"))
+            await handler("access-token")
 
         mock_jwt_service.verify_refresh_token.assert_called_once_with("access-token")
         mock_cache.get_del.assert_not_awaited()
@@ -379,7 +381,7 @@ class TestRefreshTokenRotator:
         )
 
         with pytest.raises(InvalidTokenException):
-            await handler(RefreshDTO(refresh_token="refresh-token"))
+            await handler("refresh-token")
 
         mock_cache.get_del.assert_awaited_once_with("refresh:refresh-token")
 
@@ -394,6 +396,6 @@ class TestRefreshTokenRotator:
         )
 
         with pytest.raises(InvalidTokenException):
-            await handler(RefreshDTO(refresh_token="refresh-token"))
+            await handler("refresh-token")
 
         mock_cache.get_del.assert_awaited_once_with("refresh:refresh-token")

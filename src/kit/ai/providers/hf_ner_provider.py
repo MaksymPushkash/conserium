@@ -4,20 +4,18 @@ import asyncio
 from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from src.kit.ports.ai.ner_provider import INERProvider
-
 if TYPE_CHECKING:
-    from src.documents.schemas import EntityDTO
+    from src.documents.schemas import EntityMetadata
 
 
-class HFNERProvider(INERProvider):
+class HFNERProvider:
     _pipeline: ClassVar[Any | None] = None
 
-    async def extract_entities(self, text: str) -> list[EntityDTO]:
+    async def extract_entities(self, text: str) -> list[EntityMetadata]:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, partial(self._extract_sync, text))
 
-    def _extract_sync(self, text: str) -> list[EntityDTO]:
+    def _extract_sync(self, text: str) -> list[EntityMetadata]:
         if HFNERProvider._pipeline is None:
             from transformers import pipeline
 

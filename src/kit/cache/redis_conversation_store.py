@@ -4,18 +4,17 @@ import uuid
 from datetime import datetime
 from uuid import UUID
 
-from src.kit.ports.cache.cache import ICache
-from src.kit.ports.conversations.conversation_store import IConversationStore
-from src.query.schemas import ConversationSourceDTO, ConversationTurnDTO
+from src.kit.cache.redis_cache import RedisCache
+from src.query.schemas import ConversationSource, ConversationTurn
 
 
-class RedisConversationStore(IConversationStore):
+class RedisConversationStore:
     MAX_STORED_TURNS = 50
     _LOCK_TTL_SECONDS = 10
     _LOCK_RETRY_DELAY_SECONDS = 0.01
     _LOCK_RETRY_LIMIT = 200
 
-    def __init__(self, cache: ICache) -> None:
+    def __init__(self, cache: RedisCache) -> None:
         self._cache = cache
 
     async def get_recent_turns(
@@ -24,7 +23,7 @@ class RedisConversationStore(IConversationStore):
         user_id: UUID,
         conversation_id: UUID,
         limit: int,
-    ) -> list[ConversationTurnDTO]:
+    ) -> list[ConversationTurn]:
         raw_value = await self._cache.get(_conversation_key(user_id, conversation_id))
         if raw_value is None:
             return []
@@ -42,7 +41,7 @@ class RedisConversationStore(IConversationStore):
         *,
         user_id: UUID,
         conversation_id: UUID,
-        turn: ConversationTurnDTO,
+        turn: ConversationTurn,
         ttl_seconds: int,
     ) -> None:
         turns = await self.get_recent_turns(
@@ -76,7 +75,7 @@ def _conversation_key(user_id: UUID, conversation_id: UUID) -> str:
     return f"conversation:{user_id}:{conversation_id}"
 
 
-def _turn_to_payload(turn: ConversationTurnDTO) -> dict[str, object]:
+def _turn_to_payload(turn: ConversationTurn) -> dict[str, object]:
     return {
         "query": turn.query,
         "answer": turn.answer,
@@ -95,12 +94,12 @@ def _turn_to_payload(turn: ConversationTurnDTO) -> dict[str, object]:
     }
 
 
-def _turn_from_payload(payload: dict[str, object]) -> ConversationTurnDTO:
+def _turn_from_payload(payload: dict[str, object]) -> ConversationTurn:
     raw_sources = payload.get("sources", [])
     sources = []
     if isinstance(raw_sources, list):
         sources = [_source_from_payload(source) for source in raw_sources if isinstance(source, dict)]
-    return ConversationTurnDTO(
+    return ConversationTurn(
         query=str(payload.get("query", "")),
         answer=str(payload.get("answer", "")),
         sources=sources,
@@ -108,8 +107,8 @@ def _turn_from_payload(payload: dict[str, object]) -> ConversationTurnDTO:
     )
 
 
-def _source_from_payload(payload: dict[str, object]) -> ConversationSourceDTO:
-    return ConversationSourceDTO(
+def _source_from_payload(payload: dict[str, object]) -> ConversationSource:
+    return ConversationSource(
         chunk_id=UUID(str(payload["chunk_id"])),
         document_id=UUID(str(payload["document_id"])),
         document_title=str(payload["document_title"]) if payload.get("document_title") is not None else None,
@@ -119,7 +118,7 @@ def _source_from_payload(payload: dict[str, object]) -> ConversationSourceDTO:
     )
 
 
-async def _acquire_lock(cache: ICache, *, lock_key: str, lock_token: str) -> None:
+async def _acquire_lock(cache: RedisCache, *, lock_key: str, lock_token: str) -> None:
     for _attempt in range(RedisConversationStore._LOCK_RETRY_LIMIT):
         acquired = await cache.set_if_absent(lock_key, lock_token, RedisConversationStore._LOCK_TTL_SECONDS)
         if acquired:

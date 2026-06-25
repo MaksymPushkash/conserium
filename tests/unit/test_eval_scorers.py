@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, cast
 
-from src.query.service import get_eval_scorer
+from src.query.dependencies import get_eval_scorer
 from src.query.services.evaluation.heuristic_ragas_scorer import HeuristicRagasScorer
 from src.query.services.evaluation.ragas_eval_scorer import RagasEvalScorer
 from src.settings import settings
@@ -8,8 +8,8 @@ from src.settings import settings
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-    from src.kit.ports.evaluation.eval_scorer import IEvalScorer
     from src.query.schemas import RefragContextPackage
+    from src.query.services.evaluation.scorer import EvalScorer
 
 
 class _FallbackScorer:
@@ -34,7 +34,7 @@ def test_eval_scorer_dependency_uses_ragas_adapter_when_configured(monkeypatch: 
 
 
 async def test_ragas_scorer_falls_back_when_external_ragas_fails(monkeypatch: "MonkeyPatch") -> None:
-    scorer = RagasEvalScorer(fallback=cast("IEvalScorer", _FallbackScorer()))
+    scorer = RagasEvalScorer(fallback=cast("EvalScorer", _FallbackScorer()))
 
     def _raise(*, query: str, answer: str, context: object) -> dict[str, float]:
         raise RuntimeError("ragas unavailable")

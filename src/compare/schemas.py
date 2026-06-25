@@ -4,21 +4,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from src.query.schemas import QuerySourceDTO, QuerySourceResponse
+from src.query.schemas import QuerySource, QuerySourceResponse
 
 
 @dataclass(frozen=True, slots=True)
-class CompareDocumentsDTO:
-    user_id: UUID
-    left_document_id: UUID
-    right_document_id: UUID
-    prompt: str | None = None
-    dimensions: tuple[str, ...] | None = None
-    limit: int = 12
-
-
-@dataclass(frozen=True, slots=True)
-class CompareEvidenceRowDTO:
+class CompareEvidence:
     dimension: str
     left_evidence: str | None
     right_evidence: str | None
@@ -33,7 +23,7 @@ class CompareEvidenceRowDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class CompareResultDTO:
+class CompareResult:
     id: UUID
     user_id: UUID
     collection_id: UUID | None
@@ -44,35 +34,15 @@ class CompareResultDTO:
     dimensions: list[str]
     markdown: str
     summary: str
-    evidence_rows: list[CompareEvidenceRowDTO]
-    sources: list[QuerySourceDTO]
+    evidence_rows: list[CompareEvidence]
+    sources: list[QuerySource]
     created_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class CompareListDTO:
-    items: list[CompareResultDTO]
+class CompareListResult:
+    items: list[CompareResult]
     total: int
-
-
-@dataclass(frozen=True, slots=True)
-class ListCompareResultsDTO:
-    user_id: UUID
-    collection_id: UUID | None = None
-    limit: int = 20
-    offset: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class GetCompareResultDTO:
-    user_id: UUID
-    comparison_id: UUID
-
-
-@dataclass(frozen=True, slots=True)
-class DeleteCompareResultDTO:
-    user_id: UUID
-    comparison_id: UUID
 
 
 class CompareDocumentsRequest(BaseModel):

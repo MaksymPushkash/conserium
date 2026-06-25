@@ -3,10 +3,8 @@ import hashlib
 
 from cryptography.fernet import Fernet
 
-from src.kit.ports.security.token_cipher import ITokenCipher
 
-
-class FernetTokenCipher(ITokenCipher):
+class FernetTokenCipher:
     def __init__(self, secret: str, *, key_version: str = "v1") -> None:
         if not secret:
             raise ValueError("token encryption secret is required")

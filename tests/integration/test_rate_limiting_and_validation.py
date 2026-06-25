@@ -1,7 +1,7 @@
 """Integration tests for rate limiting and input validation."""
 
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI
@@ -9,13 +9,13 @@ from fastapi.testclient import TestClient
 
 from src.auth.auth import get_current_user
 from src.documents.ingestion import DocumentIngester
-from src.documents.schemas import DocumentDTO, IngestDocumentDTO
+from src.documents.schemas import DocumentResult
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
 from src.kit.exceptions import InvalidPasswordException
 from src.main import create_app
 from src.models.user import UserModel
-from src.query.schemas import QueryDTO, QueryResultDTO, RefragContextPackage
+from src.query.schemas import QueryPayload, QueryResult, RefragContextPackage
 from src.query.service import QueryExecutor
 
 
@@ -27,9 +27,9 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     async def override_current_user() -> UserModel:
         return UserModel.create(id=uuid4(), email="tester@example.com", password="hashed-password")
 
-    async def fake_query_call(self: QueryExecutor, dto: QueryDTO) -> QueryResultDTO:
+    async def fake_query_call(self: QueryExecutor, dto: QueryPayload) -> QueryResult:
         conversation_id = dto.conversation_id or uuid4()
-        return QueryResultDTO(
+        return QueryResult(
             conversation_id=conversation_id,
             query=dto.query,
             answer="test answer",
@@ -45,25 +45,39 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
             ),
         )
 
-    async def fake_ingest_call(self: DocumentIngester, dto: IngestDocumentDTO) -> DocumentDTO:
-        if not dto.title.strip():
+    async def fake_ingest_call(
+        self: DocumentIngester,
+        *,
+        user_id: UUID,
+        title: str,
+        type: DocumentType,
+        collection_id: UUID | None = None,
+        tags: list[str] | None = None,
+        source_url: str | None = None,
+        file_path: str | None = None,
+        file_size_bytes: int | None = None,
+        raw_content: str | None = None,
+        language: str | None = None,
+    ) -> DocumentResult:
+        _ = tags
+        if not title.strip():
             raise InvalidPasswordException("title cannot be empty")
         now = datetime.now(UTC)
         document_id = uuid4()
-        return DocumentDTO(
+        return DocumentResult(
             id=document_id,
-            user_id=dto.user_id,
-            collection_id=dto.collection_id,
-            title=dto.title,
-            type=dto.type if dto.type is not None else DocumentType.TEXT,
+            user_id=user_id,
+            collection_id=collection_id,
+            title=title,
+            type=type,
             status=DocumentStatus.QUEUED,
-            source_url=dto.source_url,
-            file_path=dto.file_path,
-            file_size_bytes=dto.file_size_bytes,
-            raw_content=dto.raw_content,
+            source_url=source_url,
+            file_path=file_path,
+            file_size_bytes=file_size_bytes,
+            raw_content=raw_content,
             summary=None,
-            word_count=len(dto.raw_content.split()) if dto.raw_content else None,
-            language=dto.language,
+            word_count=len(raw_content.split()) if raw_content else None,
+            language=language,
             entities=None,
             categories=None,
             is_duplicate=False,

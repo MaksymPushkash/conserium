@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
 from src.main import create_app
 from src.models.user import UserModel
 from src.review.dependencies import get_review_service
@@ -13,11 +13,6 @@ from src.review.schemas import (
     FlashcardListResponse,
     FlashcardResponse,
     GenerateFlashcardsResponse,
-)
-from src.review.service import (
-    to_flashcard_list_response,
-    to_flashcard_response,
-    to_generate_flashcards_response,
 )
 from src.users.repository import UserRepository
 from tests.dependency_overrides import apply_dependency_overrides
@@ -97,7 +92,7 @@ class _ReturningReviewService:
 def test_generate_flashcards_route_returns_created_cards() -> None:
     user = _make_user()
     card = _flashcard(user.id)
-    service = _ReturningReviewService(to_generate_flashcards_response(GenerateFlashcardsResponse(items=[card], created_count=1)))
+    service = _ReturningReviewService(GenerateFlashcardsResponse(items=[card], created_count=1))
     client = _make_client(user, service)
 
     try:
@@ -118,7 +113,7 @@ def test_generate_flashcards_route_returns_created_cards() -> None:
 def test_due_flashcards_route_returns_due_cards() -> None:
     user = _make_user()
     card = _flashcard(user.id)
-    service = _ReturningReviewService(to_flashcard_list_response(FlashcardListResponse(items=[card], total=1, limit=10)))
+    service = _ReturningReviewService(FlashcardListResponse(items=[card], total=1, limit=10))
     client = _make_client(user, service)
 
     try:
@@ -136,7 +131,7 @@ def test_due_flashcards_route_returns_due_cards() -> None:
 def test_review_flashcard_route_returns_updated_card() -> None:
     user = _make_user()
     card = _flashcard(user.id)
-    service = _ReturningReviewService(to_flashcard_response(card))
+    service = _ReturningReviewService(card)
     client = _make_client(user, service)
 
     try:
@@ -159,7 +154,7 @@ def _make_client(user: UserModel, service: _ReturningReviewService) -> TestClien
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)

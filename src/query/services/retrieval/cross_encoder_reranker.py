@@ -4,20 +4,20 @@ import logging
 from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
-from src.kit.ports.ai.reranker import IReranker
 from src.observability.metrics_registry import metrics_registry
+from src.query.services.retrieval.reranker import Reranker
 
 if TYPE_CHECKING:
-    from src.query.schemas import QuerySourceDTO
+    from src.query.schemas import QuerySource
 
 logger = logging.getLogger(__name__)
 
 
-class CrossEncoderReranker(IReranker):
+class CrossEncoderReranker(Reranker):
     def __init__(
         self,
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
-        fallback: IReranker | None = None,
+        fallback: Reranker | None = None,
     ) -> None:
         self._model_name = model_name
         self._fallback = fallback
@@ -26,9 +26,9 @@ class CrossEncoderReranker(IReranker):
     async def rerank(
         self,
         query: str,
-        sources: list[QuerySourceDTO],
+        sources: list[QuerySource],
         top_k: int,
-    ) -> list[QuerySourceDTO]:
+    ) -> list[QuerySource]:
         if not sources:
             return []
             

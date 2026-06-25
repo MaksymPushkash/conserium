@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import Depends, status
 
 from src.auth.auth import CurrentUser
+from src.repo_syncs.dependencies import get_repo_sync_executor, get_repo_sync_service
 from src.repo_syncs.schemas import (
     CreateRepoSyncRequest,
     RepoSyncListResponse,
@@ -10,7 +11,7 @@ from src.repo_syncs.schemas import (
     RepoSyncRunResponse,
     RunRepoSyncRequest,
 )
-from src.repo_syncs.service import RepoSyncExecutor, RepoSyncService, get_repo_sync_executor, get_repo_sync_service
+from src.repo_syncs.service import RepoSyncExecutor, RepoSyncService
 from src.routing import APIRouter
 
 router = APIRouter(prefix="/repo-syncs", tags=["repo-syncs"])

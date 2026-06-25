@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import httpx
 
-from src.kit.ports.notifications import INotificationSender, NotificationDeliveryUnavailable
 from src.settings import settings
 
 
-class TelegramNotificationSender(INotificationSender):
+class NotificationDeliveryUnavailable(Exception):
+    pass
+
+
+class TelegramNotificationSender:
     async def send_telegram(self, *, chat_id: str, subject: str, body: str) -> None:
         if not settings.TELEGRAM_BOT_TOKEN:
             raise NotificationDeliveryUnavailable("TELEGRAM_BOT_TOKEN is not configured")

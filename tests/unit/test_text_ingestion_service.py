@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from src.documents.ingestion import TextDocumentIngester
-from src.documents.schemas import IngestTextDocumentDTO
 from src.documents.status import DocumentStatus
 from src.documents.text_chunker import SimpleTextChunker
 from src.documents.types import DocumentType
@@ -117,13 +116,11 @@ async def test_ingest_text_document_service_persists_document_chunks_and_marks_r
     user_id = uuid.uuid4()
 
     result = await handler(
-        IngestTextDocumentDTO(
-            user_id=user_id,
-            title="Research note",
-            raw_text="First paragraph.\n\nSecond paragraph.",
-            type=DocumentType.TEXT,
-            language="en",
-        )
+        user_id=user_id,
+        title="Research note",
+        raw_text="First paragraph.\n\nSecond paragraph.",
+        type=DocumentType.TEXT,
+        language="en",
     )
 
     assert result.user_id == user_id
@@ -153,4 +150,4 @@ async def test_ingest_text_document_service_rejects_blank_text() -> None:
     )
 
     with pytest.raises(DocumentValidationException, match="raw_text cannot be empty"):
-        await handler(IngestTextDocumentDTO(user_id=uuid.uuid4(), title="Blank", raw_text="  \n"))
+        await handler(user_id=uuid.uuid4(), title="Blank", raw_text="  \n")

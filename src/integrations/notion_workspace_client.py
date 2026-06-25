@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 
-from src.integrations.schemas import NotionPageContentDTO, NotionPageResponse
+from src.integrations.schemas import NotionPageContent, NotionPageResponse
 from src.kit.exceptions import IntegrationRequestException
 
 _NOTION_API_BASE_URL = "https://api.notion.com/v1"
@@ -38,7 +38,7 @@ class NotionWorkspaceClient:
             return []
         return [page for item in results if (page := notion_page_from_payload(item)) is not None]
 
-    async def get_page_markdown(self, *, access_token: str, page_id: str) -> NotionPageContentDTO:
+    async def get_page_markdown(self, *, access_token: str, page_id: str) -> NotionPageContent:
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 page_response = await client.get(
@@ -55,7 +55,7 @@ class NotionWorkspaceClient:
         page_payload = page_response.json()
         title = notion_page_title(page_payload) or "Untitled"
         markdown = notion_blocks_to_markdown(blocks)
-        return NotionPageContentDTO(id=page_id, title=title, markdown=markdown or f"# {title}\n")
+        return NotionPageContent(id=page_id, title=title, markdown=markdown or f"# {title}\n")
 
 
 def notion_page_from_payload(payload: Any) -> NotionPageResponse | None:

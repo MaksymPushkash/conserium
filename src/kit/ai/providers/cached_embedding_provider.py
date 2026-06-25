@@ -4,16 +4,16 @@ import hashlib
 import json
 from typing import TYPE_CHECKING
 
-from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
+from src.kit.ai.embedding_provider import EmbeddingProvider
 from src.observability.metrics_registry import metrics_registry
 from src.settings import settings
 
 if TYPE_CHECKING:
-    from src.kit.ports.cache.cache import ICache
+    from src.kit.cache.redis_cache import RedisCache
 
 
-class CachedEmbeddingProvider(IEmbeddingProvider):
-    def __init__(self, inner: IEmbeddingProvider, cache: ICache) -> None:
+class CachedEmbeddingProvider(EmbeddingProvider):
+    def __init__(self, inner: EmbeddingProvider, cache: RedisCache) -> None:
         self._inner = inner
         self._cache = cache
 

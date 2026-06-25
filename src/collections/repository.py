@@ -16,14 +16,14 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from src.compare.schemas import CompareResultDTO
+    from src.compare.schemas import CompareResult
 
 
 @dataclass(frozen=True, slots=True)
 class CollectionWorkspaceRecentActivity:
     questions: list[SearchQuerySummaryRecord]
     drafts: list[DraftRecord]
-    comparisons: list[CompareResultDTO]
+    comparisons: list[CompareResult]
 
 
 class CollectionRepository:

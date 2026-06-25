@@ -6,17 +6,14 @@ from src.postgres import AsyncSession
 from src.users.repository import UserRepository
 from src.workspaces.repository import SharedWorkspaceRepository
 from src.workspaces.schemas import (
-    WorkspaceAuditEventDTO,
-    WorkspaceAuditEventListDTO,
     WorkspaceAuditEventListResponse,
+    WorkspaceAuditEventRecord,
     WorkspaceAuditEventResponse,
-    WorkspaceDTO,
-    WorkspaceListDTO,
     WorkspaceListResponse,
-    WorkspaceMemberDTO,
-    WorkspaceMemberListDTO,
     WorkspaceMemberListResponse,
+    WorkspaceMemberRecord,
     WorkspaceMemberResponse,
+    WorkspaceRecord,
     WorkspaceResponse,
 )
 
@@ -54,7 +51,12 @@ class WorkspaceService:
     async def list(self, session: AsyncSession, *, user_id: UUID, limit: int, offset: int) -> WorkspaceListResponse:
         repository = SharedWorkspaceRepository.from_session(session)
         items, total = await repository.list_workspaces_for_user(user_id=user_id, limit=limit, offset=offset)
-        return to_workspace_list_response(WorkspaceListDTO(items=items, total=total, limit=limit, offset=offset))
+        return WorkspaceListResponse(
+            items=[to_workspace_response(item) for item in items],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
 
     async def update(
         self,
@@ -110,7 +112,7 @@ class WorkspaceService:
         repository = SharedWorkspaceRepository.from_session(session)
         await ensure_workspace_visible(repository, workspace_id=workspace_id, user_id=user_id)
         members = await repository.list_workspace_members(workspace_id=workspace_id)
-        return to_workspace_member_list_response(WorkspaceMemberListDTO(items=members))
+        return WorkspaceMemberListResponse(items=[to_workspace_member_response(member) for member in members])
 
     async def invite_member(
         self,
@@ -260,8 +262,11 @@ class WorkspaceService:
             limit=limit,
             offset=offset,
         )
-        return to_workspace_audit_event_list_response(
-            WorkspaceAuditEventListDTO(items=events, total=total, limit=limit, offset=offset)
+        return WorkspaceAuditEventListResponse(
+            items=[to_workspace_audit_event_response(event) for event in events],
+            total=total,
+            limit=limit,
+            offset=offset,
         )
 
 
@@ -270,9 +275,9 @@ async def ensure_workspace_owner(
     *,
     workspace_id: UUID,
     user_id: UUID,
-) -> WorkspaceDTO:
+) -> WorkspaceRecord:
     repository = _shared_workspace_repo(accessor)
-    workspace = cast("WorkspaceDTO | None", await repository.get_workspace(workspace_id=workspace_id))
+    workspace = cast("WorkspaceRecord | None", await repository.get_workspace(workspace_id=workspace_id))
     if workspace is None or workspace.user_id != user_id:
         raise ResourceNotFoundException("workspace not found")
     return workspace
@@ -285,7 +290,7 @@ async def ensure_workspace_visible(
     user_id: UUID,
 ) -> str:
     repository = _shared_workspace_repo(accessor)
-    workspace = cast("WorkspaceDTO | None", await repository.get_workspace(workspace_id=workspace_id))
+    workspace = cast("WorkspaceRecord | None", await repository.get_workspace(workspace_id=workspace_id))
     if workspace is None:
         raise ResourceNotFoundException("workspace not found")
     if workspace.user_id == user_id:
@@ -296,9 +301,9 @@ async def ensure_workspace_visible(
     return cast("str", member.role)
 
 
-async def ensure_workspace_write_access(accessor: Any, *, workspace_id: UUID, user_id: UUID) -> WorkspaceDTO:
+async def ensure_workspace_write_access(accessor: Any, *, workspace_id: UUID, user_id: UUID) -> WorkspaceRecord:
     repository = _shared_workspace_repo(accessor)
-    workspace = cast("WorkspaceDTO | None", await repository.get_workspace(workspace_id=workspace_id))
+    workspace = cast("WorkspaceRecord | None", await repository.get_workspace(workspace_id=workspace_id))
     if workspace is None:
         raise ResourceNotFoundException("workspace not found")
     if workspace.user_id == user_id:
@@ -362,7 +367,7 @@ def normalize_member_role(role: str) -> str:
     return normalized
 
 
-def to_workspace_response(dto: WorkspaceDTO) -> WorkspaceResponse:
+def to_workspace_response(dto: WorkspaceRecord) -> WorkspaceResponse:
     return WorkspaceResponse(
         id=dto.id,
         user_id=dto.user_id,
@@ -375,16 +380,7 @@ def to_workspace_response(dto: WorkspaceDTO) -> WorkspaceResponse:
     )
 
 
-def to_workspace_list_response(dto: WorkspaceListDTO) -> WorkspaceListResponse:
-    return WorkspaceListResponse(
-        items=[to_workspace_response(item) for item in dto.items],
-        total=dto.total,
-        limit=dto.limit,
-        offset=dto.offset,
-    )
-
-
-def to_workspace_member_response(dto: WorkspaceMemberDTO) -> WorkspaceMemberResponse:
+def to_workspace_member_response(dto: WorkspaceMemberRecord) -> WorkspaceMemberResponse:
     return WorkspaceMemberResponse(
         id=dto.id,
         workspace_id=dto.workspace_id,
@@ -398,11 +394,7 @@ def to_workspace_member_response(dto: WorkspaceMemberDTO) -> WorkspaceMemberResp
     )
 
 
-def to_workspace_member_list_response(dto: WorkspaceMemberListDTO) -> WorkspaceMemberListResponse:
-    return WorkspaceMemberListResponse(items=[to_workspace_member_response(item) for item in dto.items])
-
-
-def to_workspace_audit_event_response(dto: WorkspaceAuditEventDTO) -> WorkspaceAuditEventResponse:
+def to_workspace_audit_event_response(dto: WorkspaceAuditEventRecord) -> WorkspaceAuditEventResponse:
     return WorkspaceAuditEventResponse(
         id=dto.id,
         workspace_id=dto.workspace_id,
@@ -412,14 +404,6 @@ def to_workspace_audit_event_response(dto: WorkspaceAuditEventDTO) -> WorkspaceA
         created_at=dto.created_at,
     )
 
-
-def to_workspace_audit_event_list_response(dto: WorkspaceAuditEventListDTO) -> WorkspaceAuditEventListResponse:
-    return WorkspaceAuditEventListResponse(
-        items=[to_workspace_audit_event_response(item) for item in dto.items],
-        total=dto.total,
-        limit=dto.limit,
-        offset=dto.offset,
-    )
 
 workspaces = WorkspaceService()
 

@@ -7,12 +7,12 @@ from uuid import UUID  # noqa: TC003
 
 from pydantic import BaseModel, Field
 
-from src.knowledge_gaps.schemas import KnowledgeGapAreaDTO, KnowledgeGapAreaResponse  # noqa: TC001
+from src.knowledge_gaps.schemas import KnowledgeGapArea, KnowledgeGapAreaResponse  # noqa: TC001
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class SuggestedLearningResourceDTO:
+class SuggestedLearningResource:
     area: str
     title: str
     search_query: str
@@ -22,7 +22,7 @@ class SuggestedLearningResourceDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class RankedLearningResourceDTO:
+class RankedLearningResource:
     area: str
     title: str
     search_query: str
@@ -37,7 +37,7 @@ class RankedLearningResourceDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class LearningGoalDTO:
+class LearningGoalResult:
     id: UUID
     user_id: UUID
     topic: str
@@ -47,9 +47,9 @@ class LearningGoalDTO:
     progress_ratio: float
     covered_count: int
     missing_count: int
-    gaps: list[KnowledgeGapAreaDTO]
+    gaps: list[KnowledgeGapArea]
     recommended_next_areas: list[str]
-    suggested_resources: list[SuggestedLearningResourceDTO]
+    suggested_resources: list[SuggestedLearningResource]
     deadline_status: str
     days_remaining: int | None
     created_at: datetime
@@ -58,7 +58,7 @@ class LearningGoalDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class CreateLearningGoalDTO:
+class CreateLearningGoalPayload:
     user_id: UUID
     topic: str
     description: str | None = None
@@ -67,7 +67,7 @@ class CreateLearningGoalDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class UpdateLearningGoalDTO:
+class UpdateLearningGoalPayload:
     user_id: UUID
     goal_id: UUID
     topic: str | None = None

@@ -3,10 +3,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from src.kit.cache.redis_conversation_store import RedisConversationStore
-from src.query.schemas import ConversationSourceDTO, ConversationTurnDTO
+from src.query.schemas import ConversationSource, ConversationTurn
 
 if TYPE_CHECKING:
-    from src.kit.ports.cache.cache import ICache
+    from src.kit.cache.redis_cache import RedisCache
 
 
 class _FakeCache:
@@ -40,10 +40,10 @@ class _FakeCache:
 
 async def test_redis_conversation_store_appends_and_reads_recent_turns() -> None:
     cache = _FakeCache()
-    store = RedisConversationStore(cast("ICache", cache))
+    store = RedisConversationStore(cast("RedisCache", cache))
     user_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
-    source = ConversationSourceDTO(
+    source = ConversationSource(
         chunk_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         document_title="Architecture Notes",
@@ -55,7 +55,7 @@ async def test_redis_conversation_store_appends_and_reads_recent_turns() -> None
     await store.append_turn(
         user_id=user_id,
         conversation_id=conversation_id,
-        turn=ConversationTurnDTO(
+        turn=ConversationTurn(
             query="What did I read?",
             answer="You read about dependency direction.",
             sources=[source],

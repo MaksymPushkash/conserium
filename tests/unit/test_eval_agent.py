@@ -7,8 +7,8 @@ from src.query.agents.state import ConseriumQueryState
 from src.query.schemas import RefragChunk, RefragContextPackage, RefragRepresentation
 
 if TYPE_CHECKING:
-    from src.kit.ports.evaluation.eval_scorer import IEvalScorer
-    from src.kit.ports.observability.query_trace import IQueryTracer
+    from src.observability.langfuse_tracer import LangfuseQueryTracer
+    from src.query.services.evaluation.scorer import EvalScorer
 
 
 class _EvalScorer:
@@ -68,7 +68,7 @@ async def test_eval_agent_records_scores_trace_id_and_metrics() -> None:
         answer="Clean Architecture keeps dependencies inward.",
     )
 
-    result = await EvalAgent(cast("IEvalScorer", _EvalScorer()), cast("IQueryTracer", _QueryTracer())).evaluate(state)
+    result = await EvalAgent(cast("EvalScorer", _EvalScorer()), cast("LangfuseQueryTracer", _QueryTracer())).evaluate(state)
 
     assert result.eval_scores == {"faithfulness": 0.9, "answer_relevancy": 0.8, "context_recall": 0.7}
     assert result.trace_id == "trace-123"
@@ -91,7 +91,7 @@ async def test_eval_agent_keeps_scores_when_tracing_fails() -> None:
         answer="Clean Architecture keeps dependencies inward.",
     )
 
-    result = await EvalAgent(cast("IEvalScorer", _EvalScorer()), cast("IQueryTracer", _FailingQueryTracer())).evaluate(state)
+    result = await EvalAgent(cast("EvalScorer", _EvalScorer()), cast("LangfuseQueryTracer", _FailingQueryTracer())).evaluate(state)
 
     assert result.eval_scores == {"faithfulness": 0.9, "answer_relevancy": 0.8, "context_recall": 0.7}
     assert result.trace_id is None

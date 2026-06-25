@@ -8,7 +8,7 @@ import pytest
 
 from src.integrations.schemas import FetchedWebResource
 from src.kit.exceptions import ResourceNotFoundException, ValidationException
-from src.learning_goals.repository import LearningGoalRecordDTO, LearningGoalRepository, LearningGoalResourceRecordDTO
+from src.learning_goals.repository import LearningGoalRecord, LearningGoalRepository, LearningGoalResourceRecord
 from src.learning_goals.schemas import (
     LearningGoalRequest,
     LearningGoalUpdateRequest,
@@ -17,19 +17,19 @@ from src.learning_goals.service import LearningGoalService
 from src.topics.repository import TopicDetailRecord, TopicDocumentRecord, TopicRecord, TopicRepository
 
 if TYPE_CHECKING:
-    from src.integrations.clients import WebResourceFetcherProtocol
+    from src.integrations.web_resource_fetcher import HTTPWebResourceFetcher
 
 
 class _FakeLearningGoalRepository:
-    def __init__(self, records: list[LearningGoalRecordDTO] | None = None) -> None:
+    def __init__(self, records: list[LearningGoalRecord] | None = None) -> None:
         self.records = records or []
-        self.cached_resources: dict[UUID, list[LearningGoalResourceRecordDTO]] = {}
+        self.cached_resources: dict[UUID, list[LearningGoalResourceRecord]] = {}
         self.deleted_id: UUID | None = None
 
-    async def list_by_user_id(self, user_id: UUID) -> list[LearningGoalRecordDTO]:
+    async def list_by_user_id(self, user_id: UUID) -> list[LearningGoalRecord]:
         return [record for record in self.records if record.user_id == user_id]
 
-    async def get_by_id(self, goal_id: UUID) -> LearningGoalRecordDTO | None:
+    async def get_by_id(self, goal_id: UUID) -> LearningGoalRecord | None:
         return next((record for record in self.records if record.id == goal_id), None)
 
     async def create(
@@ -40,7 +40,7 @@ class _FakeLearningGoalRepository:
         topic: str,
         description: str | None,
         target_date: date | None,
-    ) -> LearningGoalRecordDTO:
+    ) -> LearningGoalRecord:
         record = _goal_record(goal_id=goal_id, user_id=user_id, topic=topic, description=description, target_date=target_date)
         self.records.append(record)
         return record
@@ -53,7 +53,7 @@ class _FakeLearningGoalRepository:
         description: str | None,
         target_date: date | None,
         status: str,
-    ) -> LearningGoalRecordDTO:
+    ) -> LearningGoalRecord:
         existing = next(record for record in self.records if record.id == goal_id)
         updated = _goal_record(
             goal_id=existing.id,
@@ -76,7 +76,7 @@ class _FakeLearningGoalRepository:
         *,
         goal_id: UUID,
         refreshed_after: datetime,
-    ) -> list[LearningGoalResourceRecordDTO]:
+    ) -> list[LearningGoalResourceRecord]:
         return [
             resource
             for resource in self.cached_resources.get(goal_id, [])
@@ -87,7 +87,7 @@ class _FakeLearningGoalRepository:
         self,
         *,
         goal_id: UUID,
-        resources: list[LearningGoalResourceRecordDTO],
+        resources: list[LearningGoalResourceRecord],
     ) -> None:
         self.cached_resources[goal_id] = resources
 
@@ -152,9 +152,9 @@ def _goal_record(
     description: str | None = None,
     target_date: date | None = None,
     status: str = "active",
-) -> LearningGoalRecordDTO:
+) -> LearningGoalRecord:
     now = datetime(2026, 5, 17, tzinfo=UTC)
-    return LearningGoalRecordDTO(
+    return LearningGoalRecord(
         id=goal_id,
         user_id=user_id,
         topic=topic,
@@ -289,7 +289,7 @@ async def test_rank_learning_goal_resources_fetches_live_metadata(monkeypatch: p
         user_id=user_id,
         goal_id=goal.id,
         refresh=False,
-        web_resource_fetcher=cast("WebResourceFetcherProtocol", fetcher),
+        web_resource_fetcher=cast("HTTPWebResourceFetcher", fetcher),
     )
 
     assert result[0].title == "Python Tutorial"
@@ -308,7 +308,7 @@ async def test_rank_learning_goal_resources_uses_fresh_cache(monkeypatch: pytest
     goal = _goal_record(goal_id=uuid4(), user_id=user_id, topic="Python")
     goals = _FakeLearningGoalRepository([goal])
     goals.cached_resources[goal.id] = [
-        LearningGoalResourceRecordDTO(
+        LearningGoalResourceRecord(
             goal_id=goal.id,
             area="Testing",
             title="Cached resource",
@@ -328,7 +328,7 @@ async def test_rank_learning_goal_resources_uses_fresh_cache(monkeypatch: pytest
         user_id=user_id,
         goal_id=goal.id,
         refresh=False,
-        web_resource_fetcher=cast("WebResourceFetcherProtocol", fetcher),
+        web_resource_fetcher=cast("HTTPWebResourceFetcher", fetcher),
     )
 
     assert result[0].title == "Cached resource"
@@ -350,7 +350,7 @@ async def test_rank_learning_goal_resources_keeps_results_when_one_fetch_fails(m
         user_id=user_id,
         goal_id=goal.id,
         refresh=True,
-        web_resource_fetcher=cast("WebResourceFetcherProtocol", fetcher),
+        web_resource_fetcher=cast("HTTPWebResourceFetcher", fetcher),
     )
 
     assert len(result) == 3

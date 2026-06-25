@@ -10,11 +10,10 @@ from src.documents.repository import (
     DocumentActivitySummary,
 )
 from src.documents.types import DocumentType
+from src.kit.ai.embedding_provider import EmbeddingProvider
+from src.kit.ai.llm_service import LLMService
+from src.kit.cache.redis_conversation_store import RedisConversationStore
 from src.kit.exceptions import QueryValidationException, ResourceNotFoundException
-from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
-from src.kit.ports.ai.llm_service import ILLMService
-from src.kit.ports.conversations.conversation_store import IConversationStore
-from src.kit.ports.refrag.refrag_context_builder import IRefragContextBuilder
 from src.models.chunk import ChunkModel
 from src.query.agents.conversation_context_agent import ConversationContextAgent
 from src.query.agents.graph_runner import QueryGraphRunner
@@ -23,7 +22,7 @@ from src.query.agents.retrieval_agent import RetrievalAgent
 from src.query.agents.router_agent import RouterAgent
 from src.query.agents.state import ConseriumQueryState
 from src.query.agents.synthesis_agent import SynthesisAgent
-from src.query.schemas import ConversationTurnDTO, QueryDTO, RefragContextPackage
+from src.query.schemas import ConversationTurn, QueryPayload, RefragContextPackage
 from src.query.service import QueryExecutor
 from src.query.services.query.conversation import QueryConversationService
 from src.query.services.query.orchestration import QueryOrchestrationService
@@ -33,7 +32,7 @@ from src.query.services.retrieval.hybrid_retrieval_service import HybridRetrieva
 
 if TYPE_CHECKING:
     from src.query.agents.eval_agent import EvalAgent
-    from src.query.schemas import QueryEvaluationRecordDTO
+    from src.query.schemas import QueryEvaluationRecord
 
 
 class _FakeEmbeddingProvider:
@@ -148,7 +147,7 @@ class _FakeChatRepository:
     def __init__(self) -> None:
         self.session: object | None = None
         self.created_sessions: list[tuple[uuid.UUID, uuid.UUID | None, str]] = []
-        self.persisted_turns: list[ConversationTurnDTO] = []
+        self.persisted_turns: list[ConversationTurn] = []
         self.messages: list[tuple[str, str]] = []
         self.get_recent_turns_count = 0
 
@@ -160,7 +159,7 @@ class _FakeChatRepository:
         self.session = object()
         return self.session
 
-    async def get_recent_turns(self, *, user_id: uuid.UUID, chat_id: uuid.UUID, limit: int) -> list[ConversationTurnDTO]:
+    async def get_recent_turns(self, *, user_id: uuid.UUID, chat_id: uuid.UUID, limit: int) -> list[ConversationTurn]:
         self.get_recent_turns_count += 1
         return self.persisted_turns
 
@@ -209,10 +208,10 @@ class _FakeCollectionRepository:
 
 class _FakeConversationStore:
     def __init__(self) -> None:
-        self.recent_turns: list[ConversationTurnDTO] = []
+        self.recent_turns: list[ConversationTurn] = []
         self.requested_conversation_id: uuid.UUID | None = None
         self.appended_conversation_id: uuid.UUID | None = None
-        self.appended_turn: ConversationTurnDTO | None = None
+        self.appended_turn: ConversationTurn | None = None
 
     async def get_recent_turns(
         self,
@@ -220,7 +219,7 @@ class _FakeConversationStore:
         user_id: uuid.UUID,
         conversation_id: uuid.UUID,
         limit: int,
-    ) -> list[ConversationTurnDTO]:
+    ) -> list[ConversationTurn]:
         self.requested_conversation_id = conversation_id
         return self.recent_turns
 
@@ -229,7 +228,7 @@ class _FakeConversationStore:
         *,
         user_id: uuid.UUID,
         conversation_id: uuid.UUID,
-        turn: ConversationTurnDTO,
+        turn: ConversationTurn,
         ttl_seconds: int,
     ) -> None:
         self.appended_conversation_id = conversation_id
@@ -241,16 +240,16 @@ class _FakeEvalAgent:
         return state
 
 
-def _as_embedding_provider(provider: _FakeEmbeddingProvider) -> IEmbeddingProvider:
-    return cast("IEmbeddingProvider", provider)
+def _as_embedding_provider(provider: _FakeEmbeddingProvider) -> EmbeddingProvider:
+    return cast("EmbeddingProvider", provider)
 
 
-def _as_llm_service(service: _FakeLLMService) -> ILLMService:
-    return cast("ILLMService", service)
+def _as_llm_service(service: _FakeLLMService) -> LLMService:
+    return cast("LLMService", service)
 
 
-def _as_refrag_builder(builder: HeuristicRefragContextBuilder) -> IRefragContextBuilder:
-    return cast("IRefragContextBuilder", builder)
+def _as_refrag_builder(builder: HeuristicRefragContextBuilder) -> HeuristicRefragContextBuilder:
+    return cast("HeuristicRefragContextBuilder", builder)
 
 
 def _query_orchestration(
@@ -273,8 +272,8 @@ def _query_orchestration(
     )
 
 
-def _as_conversation_store(store: _FakeConversationStore) -> IConversationStore:
-    return cast("IConversationStore", store)
+def _as_conversation_store(store: _FakeConversationStore) -> RedisConversationStore:
+    return cast("RedisConversationStore", store)
 
 
 def _make_graph_runner(
@@ -317,7 +316,7 @@ async def test_query_service_embeds_query_and_returns_sources() -> None:
     handler = QueryExecutor(graph_runner, _query_orchestration(repository_session, conversation_store))
 
     result = await handler(
-        QueryDTO(user_id=user_id, conversation_id=conversation_id, query="  Clean Architecture  ", limit=5)
+        QueryPayload(user_id=user_id, conversation_id=conversation_id, query="  Clean Architecture  ", limit=5)
     )
 
     assert embedding_provider.embedded_texts == ["Clean Architecture"]
@@ -358,9 +357,9 @@ async def test_query_service_scopes_retrieval_to_document_id() -> None:
     repository_session = _FakeRepositorySession(chunk_repo)
     handler = QueryExecutor(graph_runner, _query_orchestration(repository_session, _FakeConversationStore()))
 
-    await handler(QueryDTO(user_id=user_id, query="Explain this", document_ids=(document_id,), limit=5))
+    await handler(QueryPayload(user_id=user_id, query="Explain this", document_ids=(document_id,), limit=5))
 
-    record = cast("QueryEvaluationRecordDTO", repository_session.search_query_repo.records[0])
+    record = cast("QueryEvaluationRecord", repository_session.search_query_repo.records[0])
     assert chunk_repo.received_document_ids == (document_id,)
     assert record.document_ids == (document_id,)
 
@@ -378,7 +377,7 @@ async def test_query_service_rejects_blank_query() -> None:
     )
 
     with pytest.raises(QueryValidationException, match="query cannot be empty"):
-        await handler(QueryDTO(user_id=uuid.uuid4(), query="  "))
+        await handler(QueryPayload(user_id=uuid.uuid4(), query="  "))
 
 
 async def test_query_interaction_persistence_uses_single_flush() -> None:
@@ -389,7 +388,7 @@ async def test_query_interaction_persistence_uses_single_flush() -> None:
     state = ConseriumQueryState(query="hello", user_id=user_id, conversation_id=conversation_id, limit=5, answer="answer")
 
     await service.record_interaction(
-        QueryDTO(user_id=user_id, query="hello", limit=5),
+        QueryPayload(user_id=user_id, query="hello", limit=5),
         query="hello",
         state=state,
         latency_ms=10,
@@ -412,7 +411,7 @@ async def test_query_interaction_does_not_flush_partial_state_when_chat_write_fa
 
     with pytest.raises(RuntimeError, match="chat write failed"):
         await service.record_interaction(
-            QueryDTO(user_id=user_id, query="hello", limit=5),
+            QueryPayload(user_id=user_id, query="hello", limit=5),
             query="hello",
             state=state,
             latency_ms=10,
@@ -430,7 +429,7 @@ async def test_query_orchestration_creates_chat_session_if_missing() -> None:
     service = _query_orchestration(repository_session, _FakeConversationStore())
 
     await service.prepare_context(
-        QueryDTO(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        QueryPayload(user_id=user_id, query="Explain Clean Architecture", limit=5),
         query="Explain Clean Architecture",
         conversation_id=conversation_id,
     )
@@ -446,7 +445,7 @@ async def test_query_orchestration_does_not_recreate_existing_chat_session() -> 
     service = _query_orchestration(repository_session, _FakeConversationStore())
 
     await service.prepare_context(
-        QueryDTO(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        QueryPayload(user_id=user_id, query="Explain Clean Architecture", limit=5),
         query="Explain Clean Architecture",
         conversation_id=conversation_id,
     )
@@ -457,8 +456,8 @@ async def test_query_orchestration_does_not_recreate_existing_chat_session() -> 
 async def test_query_orchestration_loads_redis_turns_before_persisted_turns() -> None:
     user_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
-    redis_turn = ConversationTurnDTO(query="redis", answer="turn", sources=[], created_at=datetime.now(UTC))
-    persisted_turn = ConversationTurnDTO(query="db", answer="turn", sources=[], created_at=datetime.now(UTC))
+    redis_turn = ConversationTurn(query="redis", answer="turn", sources=[], created_at=datetime.now(UTC))
+    persisted_turn = ConversationTurn(query="db", answer="turn", sources=[], created_at=datetime.now(UTC))
     repository_session = _FakeRepositorySession(_FakeChunkRepository([]))
     repository_session.chat_repo.persisted_turns = [persisted_turn]
     conversation_store = _FakeConversationStore()
@@ -466,7 +465,7 @@ async def test_query_orchestration_loads_redis_turns_before_persisted_turns() ->
     service = _query_orchestration(repository_session, conversation_store)
 
     turns = await service.prepare_context(
-        QueryDTO(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        QueryPayload(user_id=user_id, query="Explain Clean Architecture", limit=5),
         query="Explain Clean Architecture",
         conversation_id=conversation_id,
     )
@@ -478,13 +477,13 @@ async def test_query_orchestration_loads_redis_turns_before_persisted_turns() ->
 async def test_query_orchestration_falls_back_to_persisted_turns() -> None:
     user_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
-    persisted_turn = ConversationTurnDTO(query="db", answer="turn", sources=[], created_at=datetime.now(UTC))
+    persisted_turn = ConversationTurn(query="db", answer="turn", sources=[], created_at=datetime.now(UTC))
     repository_session = _FakeRepositorySession(_FakeChunkRepository([]))
     repository_session.chat_repo.persisted_turns = [persisted_turn]
     service = _query_orchestration(repository_session, _FakeConversationStore())
 
     turns = await service.prepare_context(
-        QueryDTO(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        QueryPayload(user_id=user_id, query="Explain Clean Architecture", limit=5),
         query="Explain Clean Architecture",
         conversation_id=conversation_id,
     )
@@ -502,7 +501,7 @@ async def test_query_orchestration_collection_ownership_failure_stops_before_ses
 
     with pytest.raises(ResourceNotFoundException, match="collection not found"):
         await service.prepare_context(
-            QueryDTO(user_id=user_id, query="Explain Clean Architecture", collection_id=collection_id, limit=5),
+            QueryPayload(user_id=user_id, query="Explain Clean Architecture", collection_id=collection_id, limit=5),
             query="Explain Clean Architecture",
             conversation_id=uuid.uuid4(),
         )

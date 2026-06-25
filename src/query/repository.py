@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from src.postgres import AsyncSession
-    from src.query.schemas import QueryEvaluationRecordDTO
+    from src.query.schemas import QueryEvaluationRecord
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +33,7 @@ class SearchQueryRepository:
     def from_session(cls, session: AsyncSession) -> SearchQueryRepository:
         return cls(session)
 
-    async def record_query(self, record: QueryEvaluationRecordDTO) -> None:
+    async def record_query(self, record: QueryEvaluationRecord) -> None:
         self._session.add(
             SearchQueryModel(
                 user_id=record.user_id,

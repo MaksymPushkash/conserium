@@ -1,13 +1,10 @@
 from fastapi import Depends, Header, status
 
-from src.documents.ingestion import (
-    ExternalItemIngester,
-    get_external_item_ingester,
-)
+from src.documents.ingestion import ExternalItemIngester
+from src.documents.ingestion_dependencies import get_external_item_ingester
 from src.documents.schemas import (
-    ExternalIngestDTO,
-    ExternalIngestResultDTO,
-    ExternalIntakeItemDTO,
+    ExternalIngestResult,
+    ExternalIntakeItem,
 )
 from src.documents.service import to_document_response
 from src.integrations.dependencies import get_api_key_authenticator
@@ -27,26 +24,24 @@ async def webhook_ingest(
 ) -> ExternalIngestResponse:
     principal = await authenticate_api_key(authorization, required_scope="ingest:write")
     result = await ingest_external_item(
-        ExternalIngestDTO(
-            user_id=principal.user_id,
-            api_key_id=principal.api_key_id,
-            provider=body.provider or "webhook",
-            title=body.title,
-            type=body.type,
-            collection_id=body.collection_id,
-            tags=body.tags,
-            source_url=body.source_url,
-            raw_content=body.raw_content,
-            language=body.language,
-            external_id=body.external_id,
-            idempotency_key=body.idempotency_key,
-            payload_metadata=body.metadata,
-        )
+        user_id=principal.user_id,
+        api_key_id=principal.api_key_id,
+        provider=body.provider or "webhook",
+        title=body.title,
+        type=body.type,
+        collection_id=body.collection_id,
+        tags=body.tags,
+        source_url=body.source_url,
+        raw_content=body.raw_content,
+        language=body.language,
+        external_id=body.external_id,
+        idempotency_key=body.idempotency_key,
+        payload_metadata=body.metadata,
     )
     return to_external_ingest_response(result)
 
 
-def to_external_intake_item_response(dto: ExternalIntakeItemDTO) -> ExternalIntakeItemResponse:
+def to_external_intake_item_response(dto: ExternalIntakeItem) -> ExternalIntakeItemResponse:
     return ExternalIntakeItemResponse(
         id=dto.id,
         provider=dto.provider,
@@ -66,7 +61,7 @@ def to_external_intake_item_response(dto: ExternalIntakeItemDTO) -> ExternalInta
     )
 
 
-def to_external_ingest_response(dto: ExternalIngestResultDTO) -> ExternalIngestResponse:
+def to_external_ingest_response(dto: ExternalIngestResult) -> ExternalIngestResponse:
     return ExternalIngestResponse(
         intake_item=to_external_intake_item_response(dto.intake_item),
         document=to_document_response(dto.document) if dto.document is not None else None,

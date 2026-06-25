@@ -5,31 +5,27 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from fastapi import Depends
-
 from src.collections.service import WRITE_ROLES, ensure_collection_visible
 from src.conflicts.repository import ConflictRepository
 from src.conflicts.schemas import (
-    ConflictClaimRecordDTO,
-    ConflictDetectionDTO,
+    ConflictClaimRecord,
     ConflictDetectionResponse,
-    ConflictDetectionResultDTO,
-    ConflictDocumentDTO,
+    ConflictDetectionResult,
+    ConflictDocument,
     ConflictDocumentResponse,
-    ConflictFindingDTO,
+    ConflictFinding,
     ConflictFindingResponse,
-    PersistedConflictRecordDTO,
+    PersistedConflictRecord,
 )
 from src.documents.document_repository import DocumentRepository
 from src.documents.status import DocumentStatus
 from src.kit.exceptions import ResourceNotFoundException
 from src.query.schemas import RefragChunk, RefragContextPackage, RefragRepresentation
-from src.query.service import get_llm_service
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from src.kit.ports.ai.llm_service import ILLMService
+    from src.kit.ai.llm_service import LLMService
     from src.models.document import DocumentModel
     from src.postgres import AsyncSession
 
@@ -39,62 +35,72 @@ class ConflictService:
         self,
         session: AsyncSession,
         *,
-        dto: ConflictDetectionDTO,
-        llm_service: ILLMService | None,
+        user_id: UUID,
+        collection_id: UUID | None,
+        limit: int,
+        llm_service: LLMService | None,
     ) -> ConflictDetectionResponse:
-        documents = await self._load_documents(session, dto)
+        documents = await self._load_documents(session, user_id=user_id, collection_id=collection_id, limit=limit)
         claims = extract_conflict_claims(documents)
         conflicts = detect_conflicts(claims)
         conflicts = await validate_conflicts(conflicts, llm_service)
-        await self._persist_results(session, dto, documents, claims, conflicts)
+        await self._persist_results(
+            session,
+            user_id=user_id,
+            collection_id=collection_id,
+            documents=documents,
+            claims=claims,
+            conflicts=conflicts,
+        )
         return to_conflict_detection_response(
-            ConflictDetectionResultDTO(
-                collection_id=dto.collection_id,
+            ConflictDetectionResult(
+                collection_id=collection_id,
                 analyzed_document_count=len(documents),
                 conflicts=conflicts,
             )
         )
 
-    async def _load_documents(self, session: AsyncSession, dto: ConflictDetectionDTO) -> list[DocumentModel]:
-        if dto.collection_id is not None:
-            role = await ensure_collection_visible(session, collection_id=dto.collection_id, user_id=dto.user_id)
+    async def _load_documents(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: UUID,
+        collection_id: UUID | None,
+        limit: int,
+    ) -> list[DocumentModel]:
+        if collection_id is not None:
+            role = await ensure_collection_visible(session, collection_id=collection_id, user_id=user_id)
             if role != "owner" and role not in WRITE_ROLES:
                 raise ResourceNotFoundException("collection not found")
         return await DocumentRepository.from_session(session).get_by_user_id(
-            dto.user_id,
-            limit=dto.limit,
-            collection_id=dto.collection_id,
+            user_id,
+            limit=limit,
+            collection_id=collection_id,
             status=DocumentStatus.READY,
         )
 
     async def _persist_results(
         self,
         session: AsyncSession,
-        dto: ConflictDetectionDTO,
+        *,
+        user_id: UUID,
+        collection_id: UUID | None,
         documents: list[DocumentModel],
         claims: list[ConflictClaim],
-        conflicts: list[ConflictFindingDTO],
+        conflicts: list[ConflictFinding],
     ) -> None:
         repository = ConflictRepository(session)
         await repository.replace_claims_for_documents(
-            user_id=dto.user_id,
+            user_id=user_id,
             document_ids=[document.id for document in documents],
             claims=[claim.to_record() for claim in claims],
         )
         await repository.replace_conflicts(
-            user_id=dto.user_id,
-            collection_id=dto.collection_id,
+            user_id=user_id,
+            collection_id=collection_id,
             conflicts=[persisted_conflict(conflict) for conflict in conflicts],
         )
         await session.flush()
-
-
-def get_conflict_llm_service(llm_service: ILLMService = Depends(get_llm_service)) -> ILLMService:
-    return llm_service
-
-
-def get_conflict_service() -> ConflictService:
-    return conflicts
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,8 +118,8 @@ class ConflictClaim:
     polarity: str
     evidence: str
 
-    def to_record(self) -> ConflictClaimRecordDTO:
-        return ConflictClaimRecordDTO(
+    def to_record(self) -> ConflictClaimRecord:
+        return ConflictClaimRecord(
             document_id=self.document_id,
             subject=self.subject,
             polarity=self.polarity,
@@ -181,8 +187,8 @@ def extract_conflict_claims(documents: list[DocumentModel]) -> list[ConflictClai
     return claims
 
 
-def detect_conflicts(claims: list[ConflictClaim]) -> list[ConflictFindingDTO]:
-    findings: list[ConflictFindingDTO] = []
+def detect_conflicts(claims: list[ConflictClaim]) -> list[ConflictFinding]:
+    findings: list[ConflictFinding] = []
     for subject in sorted({claim.subject for claim in claims}):
         positives = _unique_claims(
             claim for claim in claims if claim.subject == subject and claim.polarity == "positive"
@@ -194,7 +200,7 @@ def detect_conflicts(claims: list[ConflictClaim]) -> list[ConflictFindingDTO]:
             continue
         documents = _conflict_documents([*positives, *negatives])
         findings.append(
-            ConflictFindingDTO(
+            ConflictFinding(
                 subject=subject,
                 summary=f"Saved materials contain opposing guidance about {subject.lower()}.",
                 documents=documents,
@@ -211,12 +217,12 @@ def document_sentences(document: DocumentModel) -> list[str]:
 
 
 async def validate_conflicts(
-    conflicts: list[ConflictFindingDTO],
-    llm_service: ILLMService | None,
-) -> list[ConflictFindingDTO]:
+    conflicts: list[ConflictFinding],
+    llm_service: LLMService | None,
+) -> list[ConflictFinding]:
     if llm_service is None:
         return conflicts
-    validated: list[ConflictFindingDTO] = []
+    validated: list[ConflictFinding] = []
     for conflict in conflicts:
         answer = await llm_service.synthesize_answer(
             query=conflict_validation_prompt(conflict),
@@ -227,8 +233,8 @@ async def validate_conflicts(
     return validated
 
 
-def persisted_conflict(conflict: ConflictFindingDTO) -> PersistedConflictRecordDTO:
-    return PersistedConflictRecordDTO(
+def persisted_conflict(conflict: ConflictFinding) -> PersistedConflictRecord:
+    return PersistedConflictRecord(
         subject=conflict.subject,
         summary=conflict.summary,
         document_ids=[document.id for document in conflict.documents],
@@ -237,7 +243,7 @@ def persisted_conflict(conflict: ConflictFindingDTO) -> PersistedConflictRecordD
     )
 
 
-def conflict_validation_prompt(conflict: ConflictFindingDTO) -> str:
+def conflict_validation_prompt(conflict: ConflictFinding) -> str:
     return (
         "Decide whether the evidence contains a real contradiction. "
         "Reply with CONFIRMED if the sources give opposing guidance, or REJECTED if they do not. "
@@ -245,7 +251,7 @@ def conflict_validation_prompt(conflict: ConflictFindingDTO) -> str:
     )
 
 
-def conflict_context(conflict: ConflictFindingDTO) -> RefragContextPackage:
+def conflict_context(conflict: ConflictFinding) -> RefragContextPackage:
     chunks = [
         RefragChunk(
             chunk_id=uuid4(),
@@ -281,14 +287,14 @@ def _unique_claims(claims: Iterable[ConflictClaim]) -> list[ConflictClaim]:
     return list(unique.values())
 
 
-def _conflict_documents(claims: list[ConflictClaim]) -> list[ConflictDocumentDTO]:
-    documents: dict[UUID, ConflictDocumentDTO] = {}
+def _conflict_documents(claims: list[ConflictClaim]) -> list[ConflictDocument]:
+    documents: dict[UUID, ConflictDocument] = {}
     for claim in claims:
-        documents[claim.document_id] = ConflictDocumentDTO(id=claim.document_id, title=claim.document_title)
+        documents[claim.document_id] = ConflictDocument(id=claim.document_id, title=claim.document_title)
     return list(documents.values())
 
 
-def to_conflict_detection_response(dto: ConflictDetectionResultDTO) -> ConflictDetectionResponse:
+def to_conflict_detection_response(dto: ConflictDetectionResult) -> ConflictDetectionResponse:
     return ConflictDetectionResponse(
         collection_id=dto.collection_id,
         analyzed_document_count=dto.analyzed_document_count,
@@ -296,7 +302,7 @@ def to_conflict_detection_response(dto: ConflictDetectionResultDTO) -> ConflictD
     )
 
 
-def to_conflict_finding_response(dto: ConflictFindingDTO) -> ConflictFindingResponse:
+def to_conflict_finding_response(dto: ConflictFinding) -> ConflictFindingResponse:
     return ConflictFindingResponse(
         subject=dto.subject,
         summary=dto.summary,
@@ -306,7 +312,7 @@ def to_conflict_finding_response(dto: ConflictFindingDTO) -> ConflictFindingResp
     )
 
 
-def to_conflict_document_response(dto: ConflictDocumentDTO) -> ConflictDocumentResponse:
+def to_conflict_document_response(dto: ConflictDocument) -> ConflictDocumentResponse:
     return ConflictDocumentResponse(id=dto.id, title=dto.title)
 
 

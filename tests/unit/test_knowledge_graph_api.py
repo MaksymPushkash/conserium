@@ -5,19 +5,19 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
+from src.knowledge_graph.dependencies import get_knowledge_graph_service
 from src.knowledge_graph.schemas import (
-    KnowledgeGraphDTO,
-    KnowledgeGraphEdgeDTO,
-    KnowledgeGraphInsightDTO,
-    KnowledgeGraphInsightsDTO,
+    KnowledgeGraphEdge,
+    KnowledgeGraphInsight,
+    KnowledgeGraphInsights,
     KnowledgeGraphInsightsResponse,
-    KnowledgeGraphNodeDTO,
+    KnowledgeGraphNode,
     KnowledgeGraphResponse,
+    KnowledgeGraphResult,
 )
 from src.knowledge_graph.service import (
     KnowledgeGraphFilters,
-    get_knowledge_graph_service,
     to_knowledge_graph_insights_response,
     to_knowledge_graph_response,
 )
@@ -74,7 +74,7 @@ class _FakeRepositorySession:
 
 
 class _ReturningKnowledgeGraphService:
-    def __init__(self, result: KnowledgeGraphDTO) -> None:
+    def __init__(self, result: KnowledgeGraphResult) -> None:
         self._result = to_knowledge_graph_response(result)
         self.received: dict[str, object] | None = None
 
@@ -98,7 +98,7 @@ class _ReturningKnowledgeGraphService:
 
 
 class _ReturningKnowledgeGraphInsightsService:
-    def __init__(self, result: KnowledgeGraphInsightsDTO) -> None:
+    def __init__(self, result: KnowledgeGraphInsights) -> None:
         self._result = to_knowledge_graph_insights_response(result)
         self.received: dict[str, object] | None = None
 
@@ -124,10 +124,10 @@ class _ReturningKnowledgeGraphInsightsService:
 def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
     user = _make_user()
     service = _ReturningKnowledgeGraphService(
-        KnowledgeGraphDTO(
+        KnowledgeGraphResult(
             nodes=[
-                KnowledgeGraphNodeDTO(id="topic:python", kind="topic", label="python"),
-                KnowledgeGraphNodeDTO(
+                KnowledgeGraphNode(id="topic:python", kind="topic", label="python"),
+                KnowledgeGraphNode(
                     id="document:1",
                     kind="document",
                     label="FastAPI Notes",
@@ -137,7 +137,7 @@ def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
                 ),
             ],
             edges=[
-                KnowledgeGraphEdgeDTO(
+                KnowledgeGraphEdge(
                     id="topic:python:document:1",
                     source_id="topic:python",
                     target_id="document:1",
@@ -153,7 +153,7 @@ def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -184,15 +184,15 @@ def test_get_knowledge_graph_route_returns_nodes_and_edges() -> None:
 def test_get_knowledge_graph_insights_route_returns_backend_signals() -> None:
     user = _make_user()
     service = _ReturningKnowledgeGraphInsightsService(
-        KnowledgeGraphInsightsDTO(
+        KnowledgeGraphInsights(
             items=[
-                KnowledgeGraphInsightDTO(
+                KnowledgeGraphInsight(
                     kind="pinned_topics",
                     title="Pinned topics",
                     description="Topics manually marked as important.",
                     severity="info",
                     count=1,
-                    nodes=[KnowledgeGraphNodeDTO(id="topic:python", kind="topic", label="python", is_pinned=True)],
+                    nodes=[KnowledgeGraphNode(id="topic:python", kind="topic", label="python", is_pinned=True)],
                 )
             ]
         )
@@ -202,7 +202,7 @@ def test_get_knowledge_graph_insights_route_returns_backend_signals() -> None:
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)

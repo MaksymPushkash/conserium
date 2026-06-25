@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
 from src.kit.exceptions import ResourceNotFoundException
 from src.main import create_app
 from src.models.user import UserModel
@@ -13,8 +13,8 @@ from src.postgres import get_db_read_session, get_db_session
 from src.users.repository import UserRepository
 from src.workspaces.endpoints import get_workspace_service
 from src.workspaces.schemas import (
-    WorkspaceDTO,
-    WorkspaceMemberDTO,
+    WorkspaceMemberRecord,
+    WorkspaceRecord,
 )
 from src.workspaces.service import (
     to_workspace_member_response,
@@ -70,7 +70,7 @@ class _FakeRepositorySession:
 
 
 class _TransferWorkspaceOwnership:
-    def __init__(self, workspace: WorkspaceDTO) -> None:
+    def __init__(self, workspace: WorkspaceRecord) -> None:
         self.workspace = workspace
         self.received: object | None = None
 
@@ -80,7 +80,7 @@ class _TransferWorkspaceOwnership:
 
 
 class _InviteWorkspaceMember:
-    def __init__(self, member: WorkspaceMemberDTO | None = None, exc: Exception | None = None) -> None:
+    def __init__(self, member: WorkspaceMemberRecord | None = None, exc: Exception | None = None) -> None:
         self.member = member
         self.exc = exc
         self.received: object | None = None
@@ -94,7 +94,7 @@ class _InviteWorkspaceMember:
 
 
 class _UpdateWorkspace:
-    def __init__(self, workspace: WorkspaceDTO) -> None:
+    def __init__(self, workspace: WorkspaceRecord) -> None:
         self.workspace = workspace
         self.received: object | None = None
 
@@ -118,7 +118,7 @@ async def _session_override():
 def test_workspace_invite_route_forwards_owner_payload() -> None:
     user = _make_user()
     workspace_id = uuid.uuid4()
-    member = WorkspaceMemberDTO(
+    member = WorkspaceMemberRecord(
         id=uuid.uuid4(),
         workspace_id=workspace_id,
         user_id=None,
@@ -155,7 +155,7 @@ def test_workspace_transfer_ownership_route_forwards_member_payload() -> None:
     user = _make_user()
     workspace_id = uuid.uuid4()
     member_id = uuid.uuid4()
-    workspace = WorkspaceDTO(
+    workspace = WorkspaceRecord(
         id=workspace_id,
         user_id=uuid.uuid4(),
         name="Team",
@@ -187,7 +187,7 @@ def test_workspace_transfer_ownership_route_forwards_member_payload() -> None:
 def test_workspace_update_route_forwards_owner_payload() -> None:
     user = _make_user()
     workspace_id = uuid.uuid4()
-    workspace = WorkspaceDTO(
+    workspace = WorkspaceRecord(
         id=workspace_id,
         user_id=user.id,
         name="Updated team",
@@ -274,7 +274,7 @@ def _client(user: UserModel, service: object) -> TestClient:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    apply_dependency_overrides(app, _FakeDependencyContainer({JWTServiceProtocol: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
+    apply_dependency_overrides(app, _FakeDependencyContainer({JWTService: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
     app.dependency_overrides[get_workspace_service] = _dependency_override(service)
     app.dependency_overrides[get_db_session] = _session_override
     app.dependency_overrides[get_db_read_session] = _session_override

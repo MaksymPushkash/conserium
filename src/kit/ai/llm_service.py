@@ -4,11 +4,11 @@ from collections.abc import AsyncIterator
 from src.query.schemas import RefragContextPackage
 
 
-class ILLMService(ABC):
+class LLMService(ABC):
     @abstractmethod
     async def synthesize_answer(self, *, query: str, context: RefragContextPackage) -> str: ...
 
 
-class IStreamingLLMService(ABC):
+class StreamingLLMService(ABC):
     @abstractmethod
     def stream_answer(self, *, query: str, context: RefragContextPackage) -> AsyncIterator[str]: ...

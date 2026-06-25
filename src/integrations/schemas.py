@@ -11,7 +11,7 @@ from src.webhooks.schemas import ExternalIngestRequest, ExternalIngestResponse
 
 
 @dataclass(frozen=True, slots=True)
-class ApiKeyDTO:
+class ApiKeyResult:
     id: UUID
     user_id: UUID
     name: str
@@ -23,20 +23,20 @@ class ApiKeyDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class CreatedApiKeyDTO:
-    api_key: ApiKeyDTO
+class CreatedApiKey:
+    api_key: ApiKeyResult
     token: str
 
 
 @dataclass(frozen=True, slots=True)
-class CreateApiKeyDTO:
+class CreateApiKeyPayload:
     user_id: UUID
     name: str
     scopes: list[str]
 
 
 @dataclass(frozen=True, slots=True)
-class ApiKeyPrincipalDTO:
+class ApiKeyPrincipal:
     user_id: UUID
     api_key_id: UUID
     scopes: list[str]
@@ -44,7 +44,7 @@ class ApiKeyPrincipalDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class ExternalConnectionDTO:
+class ExternalConnectionRecord:
     id: UUID
     user_id: UUID
     provider: str
@@ -58,14 +58,14 @@ class ExternalConnectionDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class NotionPageContentDTO:
+class NotionPageContent:
     id: str
     title: str
     markdown: str
 
 
 @dataclass(frozen=True, slots=True)
-class TelegramChatBindingDTO:
+class TelegramChatBindingResult:
     id: UUID
     user_id: UUID
     api_key_id: UUID | None
@@ -79,8 +79,8 @@ class TelegramChatBindingDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class TelegramStatusDTO:
-    bindings: list[TelegramChatBindingDTO]
+class TelegramStatus:
+    bindings: list[TelegramChatBindingResult]
 
 
 @dataclass(frozen=True, slots=True)

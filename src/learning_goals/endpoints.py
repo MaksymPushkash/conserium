@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import Depends, Response, status
 
 from src.auth.auth import CurrentUser
-from src.integrations.clients import WebResourceFetcherProtocol
+from src.integrations.web_resource_fetcher import HTTPWebResourceFetcher
 from src.learning_goals.schemas import (
     LearningGoalRequest,
     LearningGoalResponse,
@@ -42,7 +42,7 @@ async def rank_learning_goal_resources(
     refresh: bool = False,
     session: AsyncSession = Depends(get_db_session),
     service: LearningGoalService = Depends(get_learning_goal_service),
-    web_resource_fetcher: WebResourceFetcherProtocol = Depends(get_web_resource_fetcher),
+    web_resource_fetcher: HTTPWebResourceFetcher = Depends(get_web_resource_fetcher),
 ) -> list[RankedLearningResourceResponse]:
     return await service.rank_resources(
         session,

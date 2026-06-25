@@ -6,20 +6,12 @@ from typing import TYPE_CHECKING
 from src.kit.exceptions import ResourceNotFoundException, ValidationException
 from src.review.repository import FlashcardRecord, LearningPathRecord, QuizRecord
 from src.review.schemas import (
-    FlashcardListResponse,
     FlashcardResponse,
-    GenerateFlashcardsDTO,
-    GenerateFlashcardsResponse,
-    GenerateLearningPathDTO,
-    GenerateQuizDTO,
-    LearningPathListResponse,
+    GenerateFlashcardsPayload,
+    GenerateLearningPathPayload,
+    GenerateQuizPayload,
     LearningPathResponse,
-    QuizAttemptListResponse,
-    QuizAttemptResponse,
-    QuizListResponse,
     QuizResponse,
-    QuizWeakAreaListResponse,
-    QuizWeakAreaResponse,
 )
 
 if TYPE_CHECKING:
@@ -29,7 +21,7 @@ if TYPE_CHECKING:
     from src.models.document import DocumentModel
 
 
-def flashcard_to_dto(record: FlashcardRecord) -> FlashcardResponse:
+def flashcard_response(record: FlashcardRecord) -> FlashcardResponse:
     return FlashcardResponse(
         id=record.id,
         user_id=record.user_id,
@@ -110,7 +102,7 @@ def build_flashcards_for_document(
     return records
 
 
-def flashcard_scope_type(dto: GenerateFlashcardsDTO) -> str:
+def flashcard_scope_type(dto: GenerateFlashcardsPayload) -> str:
     if dto.document_id is not None:
         return "document"
     if dto.topic and dto.topic.strip():
@@ -120,7 +112,7 @@ def flashcard_scope_type(dto: GenerateFlashcardsDTO) -> str:
     return "workspace"
 
 
-def flashcard_scope_collection_id(dto: GenerateFlashcardsDTO, document: DocumentModel) -> uuid.UUID | None:
+def flashcard_scope_collection_id(dto: GenerateFlashcardsPayload, document: DocumentModel) -> uuid.UUID | None:
     if dto.collection_id is not None:
         return dto.collection_id
     if dto.document_id is not None:
@@ -160,7 +152,7 @@ def build_quiz_questions_for_document(document: DocumentModel, chunks: Sequence[
     return questions
 
 
-def quiz_scope_type(dto: GenerateQuizDTO) -> str:
+def quiz_scope_type(dto: GenerateQuizPayload) -> str:
     if dto.document_id is not None:
         return "document"
     if dto.topic and dto.topic.strip():
@@ -170,7 +162,7 @@ def quiz_scope_type(dto: GenerateQuizDTO) -> str:
     return "workspace"
 
 
-def quiz_scope_collection_id(dto: GenerateQuizDTO, document: DocumentModel) -> uuid.UUID | None:
+def quiz_scope_collection_id(dto: GenerateQuizPayload, document: DocumentModel) -> uuid.UUID | None:
     if dto.collection_id is not None:
         return dto.collection_id
     if dto.document_id is not None:
@@ -178,7 +170,7 @@ def quiz_scope_collection_id(dto: GenerateQuizDTO, document: DocumentModel) -> u
     return None
 
 
-def quiz_title(dto: GenerateQuizDTO, source_document: DocumentModel) -> str:
+def quiz_title(dto: GenerateQuizPayload, source_document: DocumentModel) -> str:
     if dto.topic and dto.topic.strip():
         return f"Quiz: {dto.topic.strip()}"
     if dto.collection_id is not None:
@@ -186,7 +178,7 @@ def quiz_title(dto: GenerateQuizDTO, source_document: DocumentModel) -> str:
     return f"Quiz: {source_document.title}"
 
 
-def quiz_to_dto(record: QuizRecord) -> QuizResponse:
+def quiz_response(record: QuizRecord) -> QuizResponse:
     return QuizResponse(
         id=record.id,
         user_id=record.user_id,
@@ -250,7 +242,7 @@ def build_learning_steps(documents: list[DocumentModel], *, limit: int) -> list[
     return steps
 
 
-def learning_path_scope_type(dto: GenerateLearningPathDTO) -> str:
+def learning_path_scope_type(dto: GenerateLearningPathPayload) -> str:
     if dto.document_id is not None:
         return "document"
     if dto.topic and dto.topic.strip():
@@ -260,7 +252,7 @@ def learning_path_scope_type(dto: GenerateLearningPathDTO) -> str:
     return "workspace"
 
 
-def learning_path_scope_collection_id(dto: GenerateLearningPathDTO, document: DocumentModel) -> uuid.UUID | None:
+def learning_path_scope_collection_id(dto: GenerateLearningPathPayload, document: DocumentModel) -> uuid.UUID | None:
     if dto.collection_id is not None:
         return dto.collection_id
     if dto.document_id is not None:
@@ -268,7 +260,7 @@ def learning_path_scope_collection_id(dto: GenerateLearningPathDTO, document: Do
     return None
 
 
-def learning_path_title(dto: GenerateLearningPathDTO, source_document: DocumentModel) -> str:
+def learning_path_title(dto: GenerateLearningPathPayload, source_document: DocumentModel) -> str:
     if dto.topic and dto.topic.strip():
         return f"Learning path: {dto.topic.strip()}"
     if dto.collection_id is not None:
@@ -276,7 +268,7 @@ def learning_path_title(dto: GenerateLearningPathDTO, source_document: DocumentM
     return f"Learning path: {source_document.title}"
 
 
-def learning_path_to_dto(record: LearningPathRecord) -> LearningPathResponse:
+def learning_path_response(record: LearningPathRecord) -> LearningPathResponse:
     return LearningPathResponse(
         id=record.id,
         user_id=record.user_id,
@@ -310,101 +302,6 @@ def update_step_status(steps: list[dict[str, object]], *, step_id: str, status: 
     if not matched:
         raise ResourceNotFoundException("learning path step not found")
     return updated
-
-
-def to_flashcard_response(dto: FlashcardResponse) -> FlashcardResponse:
-    return FlashcardResponse(
-        id=dto.id,
-        user_id=dto.user_id,
-        scope_type=dto.scope_type,
-        collection_id=dto.collection_id,
-        topic=dto.topic,
-        source_document_id=dto.source_document_id,
-        source_chunk_id=dto.source_chunk_id,
-        question=dto.question,
-        answer=dto.answer,
-        citation_metadata=dto.citation_metadata,
-        due_at=dto.due_at,
-        interval_days=dto.interval_days,
-        ease_factor=dto.ease_factor,
-        review_count=dto.review_count,
-        source_title=dto.source_title,
-        created_at=dto.created_at,
-        updated_at=dto.updated_at,
-    )
-
-
-def to_flashcard_list_response(dto: FlashcardListResponse) -> FlashcardListResponse:
-    return FlashcardListResponse(items=[to_flashcard_response(item) for item in dto.items], total=dto.total, limit=dto.limit)
-
-
-def to_generate_flashcards_response(dto: GenerateFlashcardsResponse) -> GenerateFlashcardsResponse:
-    return GenerateFlashcardsResponse(items=[to_flashcard_response(item) for item in dto.items], created_count=dto.created_count)
-
-
-def to_quiz_response(dto: QuizResponse) -> QuizResponse:
-    return QuizResponse(
-        id=dto.id,
-        user_id=dto.user_id,
-        scope_type=dto.scope_type,
-        collection_id=dto.collection_id,
-        topic=dto.topic,
-        source_document_id=dto.source_document_id,
-        title=dto.title,
-        questions=dto.questions,
-        source_title=dto.source_title,
-        created_at=dto.created_at,
-        updated_at=dto.updated_at,
-    )
-
-
-def to_quiz_attempt_response(dto: QuizAttemptResponse) -> QuizAttemptResponse:
-    return QuizAttemptResponse(
-        id=dto.id,
-        quiz_id=dto.quiz_id,
-        user_id=dto.user_id,
-        answers=dto.answers,
-        score=dto.score,
-        total=dto.total,
-        weak_areas=dto.weak_areas,
-        created_at=dto.created_at,
-        quiz_title=dto.quiz_title,
-    )
-
-
-def to_quiz_list_response(dto: QuizListResponse) -> QuizListResponse:
-    return QuizListResponse(items=[to_quiz_response(item) for item in dto.items], total=dto.total, limit=dto.limit)
-
-
-def to_quiz_attempt_list_response(dto: QuizAttemptListResponse) -> QuizAttemptListResponse:
-    return QuizAttemptListResponse(items=[to_quiz_attempt_response(item) for item in dto.items], total=dto.total, limit=dto.limit)
-
-
-def to_quiz_weak_area_response(dto: QuizWeakAreaResponse) -> QuizWeakAreaResponse:
-    return QuizWeakAreaResponse(name=dto.name, count=dto.count, last_seen_at=dto.last_seen_at)
-
-
-def to_quiz_weak_area_list_response(dto: QuizWeakAreaListResponse) -> QuizWeakAreaListResponse:
-    return QuizWeakAreaListResponse(items=[to_quiz_weak_area_response(item) for item in dto.items], total=dto.total, limit=dto.limit)
-
-
-def to_learning_path_response(dto: LearningPathResponse) -> LearningPathResponse:
-    return LearningPathResponse(
-        id=dto.id,
-        user_id=dto.user_id,
-        scope_type=dto.scope_type,
-        collection_id=dto.collection_id,
-        topic=dto.topic,
-        source_document_id=dto.source_document_id,
-        title=dto.title,
-        steps=dto.steps,
-        created_at=dto.created_at,
-        updated_at=dto.updated_at,
-    )
-
-
-def to_learning_path_list_response(dto: LearningPathListResponse) -> LearningPathListResponse:
-    return LearningPathListResponse(items=[to_learning_path_response(item) for item in dto.items], total=dto.total, limit=dto.limit)
 
 
 def _chunk_answer(chunks: Sequence[object]) -> str | None:

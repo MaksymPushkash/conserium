@@ -3,12 +3,12 @@ from typing import Any
 
 import pytest
 
-from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
-from src.kit.ports.ai.reranker import IReranker
-from src.query.schemas import QuerySourceDTO
-from src.query.service import get_reranker
+from src.kit.ai.embedding_provider import EmbeddingProvider
+from src.query.dependencies import get_reranker
+from src.query.schemas import QuerySource
 from src.query.services.retrieval.cross_encoder_reranker import CrossEncoderReranker
 from src.query.services.retrieval.embedding_reranker import EmbeddingReranker
+from src.query.services.retrieval.reranker import Reranker
 
 
 class _FailingLoadCrossEncoderReranker(CrossEncoderReranker):
@@ -16,16 +16,16 @@ class _FailingLoadCrossEncoderReranker(CrossEncoderReranker):
         raise RuntimeError("model unavailable")
 
 
-class _FallbackReranker(IReranker):
+class _FallbackReranker(Reranker):
     def __init__(self) -> None:
         self.called = False
 
-    async def rerank(self, query: str, candidates: list[QuerySourceDTO], top_k: int) -> list[QuerySourceDTO]:
+    async def rerank(self, query: str, candidates: list[QuerySource], top_k: int) -> list[QuerySource]:
         self.called = True
         return list(reversed(candidates))[:top_k]
 
 
-class _FakeEmbeddingProvider(IEmbeddingProvider):
+class _FakeEmbeddingProvider(EmbeddingProvider):
     async def embed_text(self, text: str) -> list[float]:
         return [0.1] * 1536
 
@@ -33,8 +33,8 @@ class _FakeEmbeddingProvider(IEmbeddingProvider):
         return [[0.1] * 1536 for _ in texts]
 
 
-def _source(index: int) -> QuerySourceDTO:
-    return QuerySourceDTO(
+def _source(index: int) -> QuerySource:
+    return QuerySource(
         chunk_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         document_title=f"Doc {index}",

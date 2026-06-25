@@ -3,13 +3,13 @@ import re
 from dataclasses import dataclass
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from src.compare.schemas import CompareEvidenceRowDTO
+from src.compare.schemas import CompareEvidence
 from src.documents.services.context_fallback import refrag_context_from_sources, trim_words
+from src.kit.ai.llm_service import LLMService
 from src.kit.exceptions import QueryValidationException
-from src.kit.ports.ai.llm_service import ILLMService
 from src.models.chunk import ChunkModel
 from src.models.document import DocumentModel
-from src.query.schemas import QuerySourceDTO
+from src.query.schemas import QuerySource
 
 DEFAULT_COMPARE_DIMENSIONS = ("claims", "assumptions", "architecture", "tradeoffs", "contradictions", "missing_details")
 COMPARE_DIMENSION_LABELS = {
@@ -53,9 +53,9 @@ def compare_retrieval_query(left_document: DocumentModel, right_document: Docume
     return " ".join(part for part in parts if part.strip())
 
 
-def sources_from_chunks(document: DocumentModel, chunks: list[ChunkModel], *, limit: int) -> list[QuerySourceDTO]:
+def sources_from_chunks(document: DocumentModel, chunks: list[ChunkModel], *, limit: int) -> list[QuerySource]:
     return [
-        QuerySourceDTO(
+        QuerySource(
             chunk_id=chunk.id,
             document_id=document.id,
             document_title=document.title,
@@ -70,11 +70,11 @@ def sources_from_chunks(document: DocumentModel, chunks: list[ChunkModel], *, li
     ]
 
 
-def source_from_document(document: DocumentModel) -> QuerySourceDTO | None:
+def source_from_document(document: DocumentModel) -> QuerySource | None:
     content = document.summary or document.raw_content
     if not content:
         return None
-    return QuerySourceDTO(
+    return QuerySource(
         chunk_id=stable_document_source_id(document.id),
         document_id=document.id,
         document_title=document.title,
@@ -117,13 +117,13 @@ def compare_summary(left_document: DocumentModel, right_document: DocumentModel,
 
 async def build_evidence_rows(
     *,
-    llm_service: ILLMService,
+    llm_service: LLMService,
     markdown: str,
     dimensions: list[str],
     left_document_id: UUID,
     right_document_id: UUID,
-    sources: list[QuerySourceDTO],
-) -> list[CompareEvidenceRowDTO]:
+    sources: list[QuerySource],
+) -> list[CompareEvidence]:
     indexed_sources = [
         IndexedSource(index=index, citation=f"[{index}]", source=source)
         for index, source in enumerate(sources, start=1)
@@ -154,18 +154,18 @@ async def build_evidence_rows(
 class IndexedSource:
     index: int
     citation: str
-    source: QuerySourceDTO
+    source: QuerySource
 
 
 async def structured_evidence_rows(
     *,
-    llm_service: ILLMService,
+    llm_service: LLMService,
     markdown: str,
     dimensions: list[str],
     left_document_id: UUID,
     right_document_id: UUID,
     sources: list[IndexedSource],
-) -> list[CompareEvidenceRowDTO]:
+) -> list[CompareEvidence]:
     if not sources:
         return []
     prompt = structured_evidence_prompt(
@@ -227,7 +227,7 @@ def parse_structured_evidence_rows(
     left_document_id: UUID,
     right_document_id: UUID,
     sources: list[IndexedSource],
-) -> list[CompareEvidenceRowDTO]:
+) -> list[CompareEvidence]:
     payload = _json_payload(raw)
     if not isinstance(payload, list):
         return []
@@ -241,7 +241,7 @@ def parse_structured_evidence_rows(
             continue
         left_source = _source_from_structured_item(item.get("left_source_id"), source_by_id, left_document_id)
         right_source = _source_from_structured_item(item.get("right_source_id"), source_by_id, right_document_id)
-        by_dimension[dimension] = CompareEvidenceRowDTO(
+        by_dimension[dimension] = CompareEvidence(
             dimension=dimension,
             left_evidence=_string_or_none(item.get("left_evidence")) or evidence_text(left_source),
             right_evidence=_string_or_none(item.get("right_evidence")) or evidence_text(right_source),
@@ -265,12 +265,12 @@ def evidence_row_for_dimension(
     left_document_id: UUID,
     right_document_id: UUID,
     sources: list[IndexedSource],
-) -> CompareEvidenceRowDTO:
+) -> CompareEvidence:
     cited = cited_sources_for_dimension(markdown, dimension, sources)
     left = best_cited_evidence(cited, document_id=left_document_id)
     right = best_cited_evidence(cited, document_id=right_document_id)
     assessment = evidence_assessment(dimension, left, right)
-    return CompareEvidenceRowDTO(
+    return CompareEvidence(
         dimension=dimension,
         left_evidence=evidence_text(left),
         right_evidence=evidence_text(right),

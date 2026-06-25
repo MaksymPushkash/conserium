@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from src.query.agents.state import ConseriumQueryState
-from src.query.schemas import ConversationTurnDTO
+from src.query.schemas import ConversationTurn
 
 _FOLLOW_UP_EXACT_MARKERS = frozenset(
     {
@@ -85,7 +85,7 @@ def _looks_like_follow_up(query: str) -> bool:
     return any(normalized_query.startswith(f"{marker} ") for marker in _FOLLOW_UP_PREFIX_MARKERS)
 
 
-def _build_contextual_query(query: str, turns: list[ConversationTurnDTO]) -> str:
+def _build_contextual_query(query: str, turns: list[ConversationTurn]) -> str:
     context_parts = []
     for turn in turns:
         titles = sorted({source.document_title for source in turn.sources if source.document_title})
@@ -94,7 +94,7 @@ def _build_contextual_query(query: str, turns: list[ConversationTurnDTO]) -> str
     return f"Current follow-up question: {query}\n" + "\n".join(context_parts)
 
 
-def _recent_document_ids(turns: list[ConversationTurnDTO]) -> list[UUID]:
+def _recent_document_ids(turns: list[ConversationTurn]) -> list[UUID]:
     seen: set[UUID] = set()
     document_ids: list[UUID] = []
     for turn in reversed(turns):

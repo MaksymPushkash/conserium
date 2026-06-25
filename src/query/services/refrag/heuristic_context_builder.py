@@ -3,16 +3,15 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from src.kit.ports.refrag.refrag_context_builder import IRefragContextBuilder
 from src.query.schemas import RefragChunk, RefragContextPackage, RefragRepresentation
 
 if TYPE_CHECKING:
-    from src.query.schemas import QuerySourceDTO
+    from src.query.schemas import QuerySource
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
-class HeuristicRefragContextBuilder(IRefragContextBuilder):
+class HeuristicRefragContextBuilder:
     FULL_TEXT_TOP_K = 3
     FULL_TEXT_SCORE_THRESHOLD = 0.035
     COMPRESSED_SCORE_THRESHOLD = 0.015
@@ -20,7 +19,7 @@ class HeuristicRefragContextBuilder(IRefragContextBuilder):
     COMPRESSED_TOKEN_LIMIT = 80
     STRATEGY_NAME = "heuristic_v1_top3_score_threshold_sentence_compression"
 
-    def build_context(self, *, query: str, sources: list[QuerySourceDTO]) -> RefragContextPackage:
+    def build_context(self, *, query: str, sources: list[QuerySource]) -> RefragContextPackage:
         full_text_chunks: list[RefragChunk] = []
         compressed_chunks: list[RefragChunk] = []
         discarded_chunks: list[RefragChunk] = []
@@ -52,7 +51,7 @@ class HeuristicRefragContextBuilder(IRefragContextBuilder):
             compression_strategy=self.STRATEGY_NAME,
         )
 
-    def _choose_representation(self, source: QuerySourceDTO, rank: int) -> RefragRepresentation:
+    def _choose_representation(self, source: QuerySource, rank: int) -> RefragRepresentation:
         score = source.score
         if rank <= self.FULL_TEXT_TOP_K or (score is not None and score >= self.FULL_TEXT_SCORE_THRESHOLD):
             return RefragRepresentation.FULL_TEXT
@@ -70,7 +69,7 @@ class HeuristicRefragContextBuilder(IRefragContextBuilder):
 
     @staticmethod
     def _to_refrag_chunk(
-        source: QuerySourceDTO,
+        source: QuerySource,
         representation: RefragRepresentation,
         context_text: str,
     ) -> RefragChunk:

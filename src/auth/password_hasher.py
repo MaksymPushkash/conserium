@@ -1,16 +1,9 @@
 import hashlib
-from typing import Protocol
 
 import bcrypt
 
 
-class PasswordHasher(Protocol):
-    def hash(self, password: str) -> str: ...
-    def verify(self, plain: str, hashed: str) -> bool: ...
-
-
 class BcryptPasswordHasher:
-
     def _prehash(self, password: str) -> bytes:
         return hashlib.sha256(password.encode()).digest()
 

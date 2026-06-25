@@ -6,52 +6,25 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import structlog
-from fastapi import Depends
 
-from src.chats.repository import ChatRepository
-from src.collections.repository import CollectionRepository
-from src.documents.activity_repository import DocumentActivityRepository
-from src.documents.chunk_repository import ChunkRepository
-from src.kit.ai.providers.cached_embedding_provider import CachedEmbeddingProvider
-from src.kit.ai.providers.openai_embedding_provider import OpenAIEmbeddingProvider
-from src.kit.ai.providers.openai_llm_service import OpenAILLMService
-from src.kit.cache.redis import get_redis
-from src.kit.cache.redis_cache import RedisCache
-from src.kit.cache.redis_conversation_store import RedisConversationStore
 from src.kit.exceptions import QueryProcessingException, QueryValidationException
-from src.observability.langfuse_tracer import LangfuseQueryTracer
-from src.postgres import AsyncSession, get_db_session
-from src.query.agents.conversation_context_agent import ConversationContextAgent
-from src.query.agents.eval_agent import EvalAgent
-from src.query.agents.graph_runner import QueryGraphRunner
-from src.query.agents.refrag_context_agent import RefragContextAgent
-from src.query.agents.retrieval_agent import RetrievalAgent
-from src.query.agents.router_agent import RouterAgent
 from src.query.agents.state import ConseriumQueryState
-from src.query.agents.streaming_graph_runner import StreamingQueryGraphRunner
-from src.query.agents.streaming_synthesis_agent import StreamingSynthesisAgent
-from src.query.agents.synthesis_agent import SynthesisAgent
-from src.query.repository import SearchQueryRepository
 from src.query.schemas import (
-    QueryDebugDTO,
+    QueryDebug,
     QueryDebugResponse,
-    QueryDTO,
+    QueryPayload,
     QueryRequest,
     QueryResponse,
-    QueryResultDTO,
-    QuerySourceDTO,
+    QueryResult,
+    QuerySource,
     QuerySourceResponse,
-    QueryStreamEventDTO,
+    QueryStreamEvent,
     QueryStreamEventType,
     RefragChunk,
     RefragChunkResponse,
     RefragContextPackage,
     RefragContextResponse,
 )
-from src.query.services.evaluation.heuristic_ragas_scorer import HeuristicRagasScorer
-from src.query.services.evaluation.ragas_eval_scorer import RagasEvalScorer
-from src.query.services.query.conversation import QueryConversationService
-from src.query.services.query.orchestration import QueryOrchestrationService
 from src.query.services.query.payloads import (
     build_follow_up_questions,
     mark_sources_used_in_answer,
@@ -62,27 +35,14 @@ from src.query.services.query.payloads import (
     stream_refrag_context_payload,
     stream_sources_payload,
 )
-from src.query.services.query.persistence import QueryPersistenceService
-from src.query.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
-from src.query.services.retrieval.cross_encoder_reranker import CrossEncoderReranker
-from src.query.services.retrieval.embedding_reranker import EmbeddingReranker
-from src.query.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
-from src.settings import settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from redis.asyncio import Redis
-
-    from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
-    from src.kit.ports.ai.llm_service import ILLMService, IStreamingLLMService
-    from src.kit.ports.ai.reranker import IReranker
-    from src.kit.ports.cache.cache import ICache
-    from src.kit.ports.conversations.conversation_store import IConversationStore
-    from src.kit.ports.evaluation.eval_scorer import IEvalScorer
-    from src.kit.ports.observability.query_trace import IQueryTracer
-    from src.kit.ports.refrag.refrag_context_builder import IRefragContextBuilder
     from src.models.user import UserModel
+    from src.query.agents.graph_runner import QueryGraphRunner
+    from src.query.agents.streaming_graph_runner import StreamingQueryGraphRunner
+    from src.query.services.query.orchestration import QueryOrchestrationService
 
 logger = structlog.get_logger(__name__)
 
@@ -98,7 +58,7 @@ class QueryExecutor:
         self._graph_runner = graph_runner
         self._orchestration = orchestration
 
-    async def __call__(self, dto: QueryDTO) -> QueryResultDTO:
+    async def __call__(self, dto: QueryPayload) -> QueryResult:
         query = dto.query.strip()
         if not query:
             raise QueryValidationException("query cannot be empty")
@@ -154,7 +114,7 @@ class QueryExecutor:
             used_sources=sum(1 for source in state.sources if source.used_in_answer),
             latency_ms=latency_ms,
         )
-        return QueryResultDTO(
+        return QueryResult(
             conversation_id=conversation_id,
             query=query,
             answer=state.answer,
@@ -176,10 +136,10 @@ class StreamQueryExecutor:
         self._graph_runner = graph_runner
         self._orchestration = orchestration
 
-    async def __call__(self, dto: QueryDTO) -> AsyncIterator[QueryStreamEventDTO]:
+    async def __call__(self, dto: QueryPayload) -> AsyncIterator[QueryStreamEvent]:
         query = dto.query.strip()
         if not query:
-            yield QueryStreamEventDTO(
+            yield QueryStreamEvent(
                 event=QueryStreamEventType.ERROR,
                 data={"message": "query cannot be empty"},
             )
@@ -210,7 +170,7 @@ class StreamQueryExecutor:
             if state.refrag_context is None:
                 raise QueryProcessingException("query graph did not produce refrag_context")
 
-            yield QueryStreamEventDTO(
+            yield QueryStreamEvent(
                 event=QueryStreamEventType.METADATA,
                 data=stream_metadata_payload(query_id, conversation_id, query, state.sources),
             )
@@ -219,7 +179,7 @@ class StreamQueryExecutor:
             async for token in self._graph_runner.stream_answer(state):
                 if token:
                     answer_parts.append(token)
-                    yield QueryStreamEventDTO(
+                    yield QueryStreamEvent(
                         event=QueryStreamEventType.TOKEN,
                         data={"text": token},
                     )
@@ -227,15 +187,15 @@ class StreamQueryExecutor:
             state.answer = "".join(answer_parts)
             state.sources = mark_sources_used_in_answer(state.sources, state.answer)
             follow_up_questions = build_follow_up_questions(state.answer, state.sources)
-            yield QueryStreamEventDTO(
+            yield QueryStreamEvent(
                 event=QueryStreamEventType.DEBUG,
                 data=query_debug_payload(query, state),
             )
-            yield QueryStreamEventDTO(
+            yield QueryStreamEvent(
                 event=QueryStreamEventType.SOURCES,
                 data=stream_sources_payload(state.sources),
             )
-            yield QueryStreamEventDTO(
+            yield QueryStreamEvent(
                 event=QueryStreamEventType.REFRAG_CONTEXT,
                 data=stream_refrag_context_payload(state.refrag_context),
             )
@@ -268,7 +228,7 @@ class StreamQueryExecutor:
                 used_sources=sum(1 for source in state.sources if source.used_in_answer),
                 latency_ms=latency_ms,
             )
-            yield QueryStreamEventDTO(
+            yield QueryStreamEvent(
                 event=QueryStreamEventType.DONE,
                 data={
                     "query_id": str(query_id),
@@ -279,129 +239,17 @@ class StreamQueryExecutor:
                 },
             )
         except Exception as exc:
-            yield QueryStreamEventDTO(
+            yield QueryStreamEvent(
                 event=QueryStreamEventType.ERROR,
                 data={"query_id": str(query_id), "conversation_id": str(conversation_id), "message": str(exc)},
             )
 
 
-def get_cache(redis: Redis = Depends(get_redis)) -> ICache:
-    return RedisCache(redis)
-
-
-def get_conversation_store(cache: ICache = Depends(get_cache)) -> IConversationStore:
-    return RedisConversationStore(cache)
-
-
-def get_query_orchestration(
-    session: AsyncSession = Depends(get_db_session),
-    conversation_store: IConversationStore = Depends(get_conversation_store),
-) -> QueryOrchestrationService:
-    chat_repo = ChatRepository.from_session(session)
-    return QueryOrchestrationService(
-        QueryConversationService(
-            conversation_store,
-            session,
-            chat_repo,
-            CollectionRepository.from_session(session),
-        ),
-        QueryPersistenceService(
-            session,
-            chat_repo,
-            DocumentActivityRepository.from_session(session),
-            SearchQueryRepository.from_session(session),
-        ),
-    )
-
-
-def get_embedding_provider(cache: ICache = Depends(get_cache)) -> IEmbeddingProvider:
-    return CachedEmbeddingProvider(OpenAIEmbeddingProvider(), cache)
-
-
-def get_llm_service() -> ILLMService:
-    return OpenAILLMService()
-
-
-def get_streaming_llm_service() -> IStreamingLLMService:
-    return OpenAILLMService()
-
-
-def get_refrag_context_builder() -> IRefragContextBuilder:
-    return HeuristicRefragContextBuilder()
-
-
-def get_reranker(embedding_provider: IEmbeddingProvider = Depends(get_embedding_provider)) -> IReranker:
-    fallback = EmbeddingReranker(embedding_provider)
-    if settings.RERANKER_BACKEND.lower() in {"cross_encoder", "cross-encoder"}:
-        return CrossEncoderReranker(fallback=fallback)
-    return fallback
-
-
-def get_eval_scorer() -> IEvalScorer:
-    fallback = HeuristicRagasScorer()
-    if settings.EVAL_SCORER.lower() == "ragas":
-        return RagasEvalScorer(fallback=fallback)
-    return fallback
-
-
-def get_query_tracer() -> IQueryTracer:
-    return LangfuseQueryTracer()
-
-
-def get_query_graph_runner(
-    session: AsyncSession = Depends(get_db_session),
-    embedding_provider: IEmbeddingProvider = Depends(get_embedding_provider),
-    refrag_context_builder: IRefragContextBuilder = Depends(get_refrag_context_builder),
-    llm_service: ILLMService = Depends(get_llm_service),
-    reranker: IReranker = Depends(get_reranker),
-    eval_scorer: IEvalScorer = Depends(get_eval_scorer),
-    query_tracer: IQueryTracer = Depends(get_query_tracer),
-) -> QueryGraphRunner:
-    retrieval_service = HybridRetrievalService(ChunkRepository.from_session(session), embedding_provider)
-    return QueryGraphRunner(
-        ConversationContextAgent(),
-        RouterAgent(),
-        RetrievalAgent(retrieval_service, reranker),
-        RefragContextAgent(refrag_context_builder),
-        SynthesisAgent(llm_service),
-        EvalAgent(eval_scorer, query_tracer),
-    )
-
-
-def get_query_executor(
-    orchestration: QueryOrchestrationService = Depends(get_query_orchestration),
-    graph_runner: QueryGraphRunner = Depends(get_query_graph_runner),
-) -> QueryExecutor:
-    return QueryExecutor(graph_runner, orchestration)
-
-
-def get_stream_query_executor(
-    session: AsyncSession = Depends(get_db_session),
-    embedding_provider: IEmbeddingProvider = Depends(get_embedding_provider),
-    refrag_context_builder: IRefragContextBuilder = Depends(get_refrag_context_builder),
-    llm_service: IStreamingLLMService = Depends(get_streaming_llm_service),
-    reranker: IReranker = Depends(get_reranker),
-    eval_scorer: IEvalScorer = Depends(get_eval_scorer),
-    query_tracer: IQueryTracer = Depends(get_query_tracer),
-    orchestration: QueryOrchestrationService = Depends(get_query_orchestration),
-) -> StreamQueryExecutor:
-    retrieval_service = HybridRetrievalService(ChunkRepository.from_session(session), embedding_provider)
-    graph_runner = StreamingQueryGraphRunner(
-        ConversationContextAgent(),
-        RouterAgent(),
-        RetrievalAgent(retrieval_service, reranker),
-        RefragContextAgent(refrag_context_builder),
-        StreamingSynthesisAgent(llm_service),
-        EvalAgent(eval_scorer, query_tracer),
-    )
-    return StreamQueryExecutor(graph_runner, orchestration)
-
-
-def to_query_dto(body: QueryRequest, current_user: UserModel) -> QueryDTO:
+def build_query_payload(body: QueryRequest, current_user: UserModel) -> QueryPayload:
     tag_names = tuple(tag.strip().lower() for tag in body.tag_names or [] if tag.strip())
     ai_preferences = _ai_preferences(current_user.preferences)
     retrieval_depth = _retrieval_depth(ai_preferences)
-    return QueryDTO(
+    return QueryPayload(
         user_id=current_user.id,
         query=body.query,
         conversation_id=body.conversation_id,
@@ -415,7 +263,7 @@ def to_query_dto(body: QueryRequest, current_user: UserModel) -> QueryDTO:
     )
 
 
-def to_query_response(dto: QueryResultDTO) -> QueryResponse:
+def to_query_response(dto: QueryResult) -> QueryResponse:
     return QueryResponse(
         conversation_id=dto.conversation_id,
         query=dto.query,
@@ -427,7 +275,7 @@ def to_query_response(dto: QueryResultDTO) -> QueryResponse:
     )
 
 
-def to_query_source_response(dto: QuerySourceDTO, index: int) -> QuerySourceResponse:
+def to_query_source_response(dto: QuerySource, index: int) -> QuerySourceResponse:
     return QuerySourceResponse(
         chunk_id=dto.chunk_id,
         document_id=dto.document_id,
@@ -477,7 +325,7 @@ def to_refrag_context_response(dto: RefragContextPackage) -> RefragContextRespon
     )
 
 
-def to_query_debug_response(dto: QueryDebugDTO) -> QueryDebugResponse:
+def to_query_debug_response(dto: QueryDebug) -> QueryDebugResponse:
     return QueryDebugResponse(
         original_query=dto.original_query,
         retrieval_query=dto.retrieval_query,
@@ -495,7 +343,7 @@ def to_query_debug_response(dto: QueryDebugDTO) -> QueryDebugResponse:
     )
 
 
-def format_sse_event(dto: QueryStreamEventDTO) -> str:
+def format_sse_event(dto: QueryStreamEvent) -> str:
     payload = json.dumps(dto.data, ensure_ascii=False, separators=(",", ":"))
     return f"event: {dto.event.value}\ndata: {payload}\n\n"
 
@@ -528,9 +376,7 @@ def _query_limit(request_limit: int, retrieval_depth: str) -> int:
 __all__ = [
     "QueryExecutor",
     "StreamQueryExecutor",
+    "build_query_payload",
     "format_sse_event",
-    "get_query_executor",
-    "get_stream_query_executor",
-    "to_query_dto",
     "to_query_response",
 ]

@@ -5,7 +5,7 @@ import logging
 from functools import partial
 from typing import TYPE_CHECKING, Any, SupportsFloat, SupportsIndex, cast
 
-from src.kit.ports.evaluation.eval_scorer import IEvalScorer
+from src.query.services.evaluation.scorer import EvalScorer
 
 if TYPE_CHECKING:
     from src.query.schemas import RefragContextPackage
@@ -13,8 +13,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RagasEvalScorer(IEvalScorer):
-    def __init__(self, fallback: IEvalScorer) -> None:
+class RagasEvalScorer(EvalScorer):
+    def __init__(self, fallback: EvalScorer) -> None:
         self._fallback = fallback
 
     async def score(

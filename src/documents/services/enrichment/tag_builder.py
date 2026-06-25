@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.documents.schemas import CategoryDTO, EntityDTO
+    from src.documents.schemas import CategoryMetadata, EntityMetadata
 
 
 def build_auto_tags(
-    entities: list[EntityDTO],
-    categories: list[CategoryDTO],
+    entities: list[EntityMetadata],
+    categories: list[CategoryMetadata],
 ) -> list[str]:
     entity_tags: list[str] = []
     for entity in entities:

@@ -8,7 +8,7 @@ from src.documents.status import DocumentStatus
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeGapAreaDTO:
+class KnowledgeGapArea:
     id: str
     name: str
     covered: bool
@@ -22,7 +22,7 @@ class KnowledgeGapAreaDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeGapDTO:
+class KnowledgeGap:
     id: str
     topic: str
     collection_id: UUID | None
@@ -34,12 +34,12 @@ class KnowledgeGapDTO:
     severity: str
     rationale: str
     suggested_actions: list[str]
-    areas: list[KnowledgeGapAreaDTO]
+    areas: list[KnowledgeGapArea]
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeGapListDTO:
-    items: list[KnowledgeGapDTO]
+class KnowledgeGapListResult:
+    items: list[KnowledgeGap]
     total: int
 
 

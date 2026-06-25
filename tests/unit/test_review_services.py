@@ -13,7 +13,7 @@ from src.models.document import DocumentModel
 from src.review.grade import ReviewGrade
 from src.review.repository import FlashcardRecord, FlashcardReviewRecord
 from src.review.schedule import next_review_schedule
-from src.review.schemas import GenerateFlashcardsDTO, ReviewFlashcardDTO
+from src.review.schemas import GenerateFlashcardsPayload, ReviewFlashcard
 from src.review.service import (
     FlashcardGenerator,
     FlashcardReviewer,
@@ -29,7 +29,7 @@ async def test_generate_flashcards_uses_document_summary_and_suggested_questions
     persistence = _ReviewPersistence([document], [_chunk(document.id, "Asyncio uses one event loop.")])
     handler = _flashcard_generator(persistence)
 
-    result = await handler(GenerateFlashcardsDTO(user_id=user_id, document_id=document.id, limit=3))
+    result = await handler(GenerateFlashcardsPayload(user_id=user_id, document_id=document.id, limit=3))
 
     assert result.created_count == 3
     assert result.items[0].question == "What is asyncio?"
@@ -49,7 +49,7 @@ async def test_generate_flashcards_preserves_collection_scope() -> None:
     persistence = _ReviewPersistence([document], [])
     handler = _flashcard_generator(persistence)
 
-    result = await handler(GenerateFlashcardsDTO(user_id=user_id, collection_id=collection_id, limit=1))
+    result = await handler(GenerateFlashcardsPayload(user_id=user_id, collection_id=collection_id, limit=1))
 
     assert result.items[0].scope_type == "collection"
     assert result.items[0].collection_id == collection_id
@@ -79,7 +79,7 @@ async def test_generate_flashcards_preserves_topic_scope() -> None:
     )
     handler = _flashcard_generator(persistence)
 
-    result = await handler(GenerateFlashcardsDTO(user_id=user_id, topic="python", limit=1))
+    result = await handler(GenerateFlashcardsPayload(user_id=user_id, topic="python", limit=1))
 
     assert result.items[0].scope_type == "topic"
     assert result.items[0].collection_id is None
@@ -104,7 +104,7 @@ async def test_review_flashcard_updates_schedule_and_records_review() -> None:
     persistence.flashcard_repo.cards[card.id] = card
     handler = FlashcardReviewer(persistence, persistence.flashcard_repo)
 
-    result = await handler(ReviewFlashcardDTO(user_id=user_id, flashcard_id=card.id, grade="good"))
+    result = await handler(ReviewFlashcard(user_id=user_id, flashcard_id=card.id, grade="good"))
 
     assert result.interval_days == 3
     assert result.review_count == 1
@@ -119,7 +119,7 @@ async def test_review_flashcard_hides_foreign_cards() -> None:
     handler = FlashcardReviewer(persistence, persistence.flashcard_repo)
 
     with pytest.raises(ResourceNotFoundException):
-        await handler(ReviewFlashcardDTO(user_id=uuid.uuid4(), flashcard_id=card.id, grade="good"))
+        await handler(ReviewFlashcard(user_id=uuid.uuid4(), flashcard_id=card.id, grade="good"))
 
 
 def test_schedule_next_review_handles_grades() -> None:

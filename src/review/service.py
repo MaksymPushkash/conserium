@@ -16,29 +16,19 @@ from src.review.helpers import (
     build_flashcards_for_document,
     build_learning_steps,
     build_quiz_questions_for_document,
+    flashcard_response,
     flashcard_scope_collection_id,
     flashcard_scope_type,
-    flashcard_to_dto,
+    learning_path_response,
     learning_path_scope_collection_id,
     learning_path_scope_type,
     learning_path_title,
-    learning_path_to_dto,
     normalize_step_status,
+    quiz_response,
     quiz_scope_collection_id,
     quiz_scope_type,
     quiz_title,
-    quiz_to_dto,
     score_quiz_answers,
-    to_flashcard_list_response,
-    to_flashcard_response,
-    to_generate_flashcards_response,
-    to_learning_path_list_response,
-    to_learning_path_response,
-    to_quiz_attempt_list_response,
-    to_quiz_attempt_response,
-    to_quiz_list_response,
-    to_quiz_response,
-    to_quiz_weak_area_list_response,
     update_step_status,
 )
 from src.review.repository import (
@@ -51,12 +41,12 @@ from src.review.schedule import next_review_schedule
 from src.review.schemas import (
     FlashcardListResponse,
     FlashcardResponse,
-    GenerateFlashcardsDTO,
+    GenerateFlashcardsPayload,
     GenerateFlashcardsRequest,
     GenerateFlashcardsResponse,
-    GenerateLearningPathDTO,
+    GenerateLearningPathPayload,
     GenerateLearningPathRequest,
-    GenerateQuizDTO,
+    GenerateQuizPayload,
     GenerateQuizRequest,
     LearningPathListResponse,
     LearningPathResponse,
@@ -66,12 +56,12 @@ from src.review.schemas import (
     QuizResponse,
     QuizWeakAreaListResponse,
     QuizWeakAreaResponse,
-    RegenerateLearningPathDTO,
-    ReviewFlashcardDTO,
+    RegenerateLearningPathPayload,
+    ReviewFlashcard,
     ReviewFlashcardRequest,
-    SubmitQuizDTO,
+    SubmitQuizPayload,
     SubmitQuizRequest,
-    UpdateLearningPathStepDTO,
+    UpdateLearningPathStepPayload,
     UpdateLearningPathStepRequest,
 )
 
@@ -116,7 +106,7 @@ class ReviewService:
             self.topic_repo,
             self.flashcard_repo,
         )(
-            GenerateFlashcardsDTO(
+            GenerateFlashcardsPayload(
                 user_id=user_id,
                 document_id=body.document_id,
                 collection_id=body.collection_id,
@@ -124,11 +114,11 @@ class ReviewService:
                 limit=body.limit,
             )
         )
-        return to_generate_flashcards_response(result)
+        return result
 
     async def list_due_flashcards(self, user_id: UUID, *, limit: int) -> FlashcardListResponse:
         result = await list_due_flashcards(self.flashcard_repo, user_id=user_id, limit=limit)
-        return to_flashcard_list_response(result)
+        return result
 
     async def review_flashcard(
         self,
@@ -137,9 +127,9 @@ class ReviewService:
         body: ReviewFlashcardRequest,
     ) -> FlashcardResponse:
         result = await FlashcardReviewer(self.session, self.flashcard_repo)(
-            ReviewFlashcardDTO(user_id=user_id, flashcard_id=flashcard_id, grade=body.grade)
+            ReviewFlashcard(user_id=user_id, flashcard_id=flashcard_id, grade=body.grade)
         )
-        return to_flashcard_response(result)
+        return result
 
     async def generate_learning_path(self, user_id: UUID, body: GenerateLearningPathRequest) -> LearningPathResponse:
         result = await LearningPathGenerator(
@@ -148,7 +138,7 @@ class ReviewService:
             self.topic_repo,
             self.learning_path_repo,
         )(
-            GenerateLearningPathDTO(
+            GenerateLearningPathPayload(
                 user_id=user_id,
                 document_id=body.document_id,
                 collection_id=body.collection_id,
@@ -156,11 +146,11 @@ class ReviewService:
                 limit=body.limit,
             )
         )
-        return to_learning_path_response(result)
+        return result
 
     async def list_learning_paths(self, user_id: UUID, *, limit: int) -> LearningPathListResponse:
         result = await list_learning_paths(self.learning_path_repo, user_id=user_id, limit=limit)
-        return to_learning_path_list_response(result)
+        return result
 
     async def update_learning_path_step(
         self,
@@ -170,9 +160,9 @@ class ReviewService:
         body: UpdateLearningPathStepRequest,
     ) -> LearningPathResponse:
         result = await LearningPathStepUpdater(self.session, self.learning_path_repo)(
-            UpdateLearningPathStepDTO(user_id=user_id, path_id=path_id, step_id=step_id, status=body.status)
+            UpdateLearningPathStepPayload(user_id=user_id, path_id=path_id, step_id=step_id, status=body.status)
         )
-        return to_learning_path_response(result)
+        return result
 
     async def regenerate_learning_path(self, user_id: UUID, path_id: UUID, *, limit: int) -> LearningPathResponse:
         generator = LearningPathGenerator(
@@ -182,9 +172,9 @@ class ReviewService:
             self.learning_path_repo,
         )
         result = await LearningPathRegenerator(generator, self.learning_path_repo)(
-            RegenerateLearningPathDTO(user_id=user_id, path_id=path_id, limit=limit)
+            RegenerateLearningPathPayload(user_id=user_id, path_id=path_id, limit=limit)
         )
-        return to_learning_path_response(result)
+        return result
 
     async def generate_quiz(self, user_id: UUID, body: GenerateQuizRequest) -> QuizResponse:
         result = await QuizGenerator(
@@ -194,7 +184,7 @@ class ReviewService:
             self.topic_repo,
             self.quiz_repo,
         )(
-            GenerateQuizDTO(
+            GenerateQuizPayload(
                 user_id=user_id,
                 document_id=body.document_id,
                 collection_id=body.collection_id,
@@ -202,25 +192,25 @@ class ReviewService:
                 limit=body.limit,
             )
         )
-        return to_quiz_response(result)
+        return result
 
     async def list_quiz_history(self, user_id: UUID, *, limit: int) -> QuizListResponse:
         result = await list_quiz_history(self.quiz_repo, user_id=user_id, limit=limit)
-        return to_quiz_list_response(result)
+        return result
 
     async def list_quiz_attempts(self, user_id: UUID, *, limit: int) -> QuizAttemptListResponse:
         result = await list_quiz_attempts(self.quiz_repo, user_id=user_id, limit=limit)
-        return to_quiz_attempt_list_response(result)
+        return result
 
     async def list_quiz_weak_areas(self, user_id: UUID, *, limit: int) -> QuizWeakAreaListResponse:
         result = await list_quiz_weak_areas(self.quiz_repo, user_id=user_id, limit=limit)
-        return to_quiz_weak_area_list_response(result)
+        return result
 
     async def submit_quiz(self, user_id: UUID, quiz_id: UUID, body: SubmitQuizRequest) -> QuizAttemptResponse:
         result = await QuizSubmitter(self.session, self.quiz_repo)(
-            SubmitQuizDTO(user_id=user_id, quiz_id=quiz_id, answers=body.answers)
+            SubmitQuizPayload(user_id=user_id, quiz_id=quiz_id, answers=body.answers)
         )
-        return to_quiz_attempt_response(result)
+        return result
 
 
 class FlashcardGenerator:
@@ -238,7 +228,7 @@ class FlashcardGenerator:
         self._topic_repo = topic_repo
         self._flashcard_repo = flashcard_repo
 
-    async def __call__(self, dto: GenerateFlashcardsDTO) -> GenerateFlashcardsResponse:
+    async def __call__(self, dto: GenerateFlashcardsPayload) -> GenerateFlashcardsResponse:
         now = datetime.now(UTC)
         documents = await self._load_documents(dto)
         records: list[FlashcardRecord] = []
@@ -268,11 +258,11 @@ class FlashcardGenerator:
         await self._session.flush()
 
         return GenerateFlashcardsResponse(
-            items=[flashcard_to_dto(record) for record in created],
+            items=[flashcard_response(record) for record in created],
             created_count=len(created),
         )
 
-    async def _load_documents(self, dto: GenerateFlashcardsDTO) -> list[DocumentModel]:
+    async def _load_documents(self, dto: GenerateFlashcardsPayload) -> list[DocumentModel]:
         if dto.document_id is not None:
             document = await self._document_repo.get_by_id(dto.document_id)
             if document is None:
@@ -314,7 +304,7 @@ async def list_due_flashcards(
     items = await flashcard_repo.list_due(user_id=user_id, now=now, limit=limit)
     total = await flashcard_repo.count_due(user_id=user_id, now=now)
     return FlashcardListResponse(
-        items=[flashcard_to_dto(item) for item in items],
+        items=[flashcard_response(item) for item in items],
         total=total,
         limit=limit,
     )
@@ -325,7 +315,7 @@ class FlashcardReviewer:
         self._session = session
         self._flashcard_repo = flashcard_repo
 
-    async def __call__(self, dto: ReviewFlashcardDTO) -> FlashcardResponse:
+    async def __call__(self, dto: ReviewFlashcard) -> FlashcardResponse:
         grade = ReviewGrade.from_raw(dto.grade)
         now = datetime.now(UTC)
         flashcard = await self._flashcard_repo.get_by_id(dto.flashcard_id)
@@ -359,7 +349,7 @@ class FlashcardReviewer:
             )
         )
         await self._session.flush()
-        return flashcard_to_dto(replace(reviewed, source_title=flashcard.source_title))
+        return flashcard_response(replace(reviewed, source_title=flashcard.source_title))
 
 
 class QuizGenerator:
@@ -377,7 +367,7 @@ class QuizGenerator:
         self._topic_repo = topic_repo
         self._quiz_repo = quiz_repo
 
-    async def __call__(self, dto: GenerateQuizDTO) -> QuizResponse:
+    async def __call__(self, dto: GenerateQuizPayload) -> QuizResponse:
         now = datetime.now(UTC)
         documents = await self._load_documents(dto)
         if not documents:
@@ -404,9 +394,9 @@ class QuizGenerator:
         )
         created = await self._quiz_repo.create(record)
         await self._session.flush()
-        return quiz_to_dto(created)
+        return quiz_response(created)
 
-    async def _load_documents(self, dto: GenerateQuizDTO) -> list[DocumentModel]:
+    async def _load_documents(self, dto: GenerateQuizPayload) -> list[DocumentModel]:
         if dto.document_id is not None:
             document = await self._document_repo.get_by_id(dto.document_id)
             if document is None:
@@ -440,7 +430,7 @@ class QuizGenerator:
 
 async def list_quiz_history(quiz_repo: QuizStore, *, user_id: UUID, limit: int = 20) -> QuizListResponse:
     items = await quiz_repo.list_by_user(user_id=user_id, limit=limit)
-    return QuizListResponse(items=[quiz_to_dto(item) for item in items], total=len(items), limit=limit)
+    return QuizListResponse(items=[quiz_response(item) for item in items], total=len(items), limit=limit)
 
 
 async def list_quiz_attempts(quiz_repo: QuizStore, *, user_id: UUID, limit: int = 20) -> QuizAttemptListResponse:
@@ -479,7 +469,7 @@ class QuizSubmitter:
         self._session = session
         self._quiz_repo = quiz_repo
 
-    async def __call__(self, dto: SubmitQuizDTO) -> QuizAttemptResponse:
+    async def __call__(self, dto: SubmitQuizPayload) -> QuizAttemptResponse:
         quiz = await self._quiz_repo.get_by_id(dto.quiz_id)
         if quiz is None:
             raise DocumentNotFoundException("quiz not found")
@@ -523,7 +513,7 @@ class LearningPathGenerator:
         self._topic_repo = topic_repo
         self._learning_path_repo = learning_path_repo
 
-    async def __call__(self, dto: GenerateLearningPathDTO) -> LearningPathResponse:
+    async def __call__(self, dto: GenerateLearningPathPayload) -> LearningPathResponse:
         documents = await self._load_documents(dto)
         if not documents:
             raise DocumentNotFoundException("no ready documents found for learning path")
@@ -542,9 +532,9 @@ class LearningPathGenerator:
         )
         created = await self._learning_path_repo.create(record)
         await self._session.flush()
-        return learning_path_to_dto(created)
+        return learning_path_response(created)
 
-    async def _load_documents(self, dto: GenerateLearningPathDTO) -> list[DocumentModel]:
+    async def _load_documents(self, dto: GenerateLearningPathPayload) -> list[DocumentModel]:
         if dto.document_id is not None:
             document = await self._document_repo.get_by_id(dto.document_id)
             if document is None:
@@ -581,7 +571,7 @@ class LearningPathStepUpdater:
         self._session = session
         self._learning_path_repo = learning_path_repo
 
-    async def __call__(self, dto: UpdateLearningPathStepDTO) -> LearningPathResponse:
+    async def __call__(self, dto: UpdateLearningPathStepPayload) -> LearningPathResponse:
         status = normalize_step_status(dto.status)
         record = await self._learning_path_repo.get_by_id(dto.path_id)
         if record is None or record.user_id != dto.user_id:
@@ -589,7 +579,7 @@ class LearningPathStepUpdater:
         steps = update_step_status(record.steps, step_id=dto.step_id, status=status)
         updated = await self._learning_path_repo.update_steps(record.id, steps)
         await self._session.flush()
-        return learning_path_to_dto(updated)
+        return learning_path_response(updated)
 
 
 class LearningPathRegenerator:
@@ -601,12 +591,12 @@ class LearningPathRegenerator:
         self._generate_learning_path = generate_learning_path
         self._learning_path_repo = learning_path_repo
 
-    async def __call__(self, dto: RegenerateLearningPathDTO) -> LearningPathResponse:
+    async def __call__(self, dto: RegenerateLearningPathPayload) -> LearningPathResponse:
         record = await self._learning_path_repo.get_by_id(dto.path_id)
         if record is None or record.user_id != dto.user_id:
             raise ResourceNotFoundException("learning path not found")
         return await self._generate_learning_path(
-            GenerateLearningPathDTO(
+            GenerateLearningPathPayload(
                 user_id=dto.user_id,
                 document_id=record.source_document_id if record.scope_type == "document" else None,
                 collection_id=record.collection_id if record.scope_type == "collection" else None,
@@ -623,7 +613,7 @@ async def list_learning_paths(
     limit: int = 10,
 ) -> LearningPathListResponse:
     items = await learning_path_repo.list_by_user(user_id=user_id, limit=limit)
-    return LearningPathListResponse(items=[learning_path_to_dto(item) for item in items], total=len(items), limit=limit)
+    return LearningPathListResponse(items=[learning_path_response(item) for item in items], total=len(items), limit=limit)
 
 
 
@@ -642,14 +632,4 @@ __all__ = [
     "list_quiz_attempts",
     "list_quiz_history",
     "list_quiz_weak_areas",
-    "to_flashcard_list_response",
-    "to_flashcard_response",
-    "to_generate_flashcards_response",
-    "to_learning_path_list_response",
-    "to_learning_path_response",
-    "to_quiz_attempt_list_response",
-    "to_quiz_attempt_response",
-    "to_quiz_list_response",
-    "to_quiz_response",
-    "to_quiz_weak_area_list_response",
 ]

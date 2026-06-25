@@ -8,14 +8,13 @@ import pytest
 
 from src.api_keys.repository import ApiKeyRecord
 from src.documents.schemas import (
-    ExternalIngestDTO,
-    ExternalIngestResultDTO,
-    ExternalIntakeItemDTO,
+    ExternalIngestResult,
+    ExternalIntakeItem,
 )
 from src.documents.types import DocumentType
 from src.integrations.repository import TelegramChatBindingRecord, TelegramPairingCodeRecord
 from src.integrations.service import (
-    ConsumeTelegramPairingCodeDTO,
+    ConsumeTelegramPairingCodePayload,
     TelegramIngestionService,
     TelegramPairingService,
 )
@@ -33,7 +32,7 @@ async def test_telegram_pairing_code_consumes_and_creates_binding() -> None:
 
     created_code = await service.create_pairing_code(user_id=user_id)
     binding = await service.consume_pairing_code(
-        ConsumeTelegramPairingCodeDTO(
+        ConsumeTelegramPairingCodePayload(
             code=created_code.code,
             chat_id="123",
             chat_username="max",
@@ -59,19 +58,22 @@ async def test_telegram_ingest_uses_chat_binding_user() -> None:
 
     await TelegramIngestionService(persistence.telegram_repo, cast("ExternalItemIngester", ingest)).ingest(
         chat_id="123",
-        dto=ExternalIngestDTO(
-            user_id=uuid4(),
-            api_key_id=None,
-            provider="telegram",
-            title="Link",
-            type=DocumentType.URL,
-            source_url="https://example.com",
-        ),
+        provider="telegram",
+        title="Link",
+        type=DocumentType.URL,
+        collection_id=None,
+        tags=[],
+        source_url="https://example.com",
+        raw_content=None,
+        language=None,
+        external_id=None,
+        idempotency_key=None,
+        payload_metadata={},
     )
 
     assert ingest.received is not None
-    assert ingest.received.user_id == user_id
-    assert ingest.received.api_key_id == api_key_id
+    assert ingest.received["user_id"] == user_id
+    assert ingest.received["api_key_id"] == api_key_id
 
 
 @pytest.mark.asyncio
@@ -99,14 +101,17 @@ async def test_telegram_ingest_rejects_unpaired_chat() -> None:
     with pytest.raises(ResourceNotFoundException):
         await TelegramIngestionService(persistence.telegram_repo, cast("ExternalItemIngester", ingest)).ingest(
             chat_id="missing",
-            dto=ExternalIngestDTO(
-                user_id=uuid4(),
-                api_key_id=None,
-                provider="telegram",
-                title="Text",
-                type=DocumentType.TEXT,
-                raw_content="hello",
-            ),
+            provider="telegram",
+            title="Text",
+            type=DocumentType.TEXT,
+            collection_id=None,
+            tags=[],
+            source_url=None,
+            raw_content="hello",
+            language=None,
+            external_id=None,
+            idempotency_key=None,
+            payload_metadata={},
         )
 
 
@@ -205,24 +210,24 @@ class _TelegramRepo:
 
 class _RecordingExternalIngest:
     def __init__(self) -> None:
-        self.received: ExternalIngestDTO | None = None
+        self.received: dict[str, object] | None = None
 
-    async def __call__(self, dto: ExternalIngestDTO) -> ExternalIngestResultDTO:
-        self.received = dto
+    async def __call__(self, **kwargs: object) -> ExternalIngestResult:
+        self.received = kwargs
         now = datetime.now(UTC)
-        return ExternalIngestResultDTO(
-            intake_item=ExternalIntakeItemDTO(
+        return ExternalIngestResult(
+            intake_item=ExternalIntakeItem(
                 id=uuid4(),
-                user_id=dto.user_id,
-                api_key_id=dto.api_key_id,
-                provider=dto.provider,
-                external_id=dto.external_id,
-                idempotency_key=dto.idempotency_key,
-                title=dto.title,
-                type=dto.type,
-                collection_id=dto.collection_id,
-                tags=dto.tags or [],
-                source_url=dto.source_url,
+                user_id=cast("UUID", kwargs["user_id"]),
+                api_key_id=cast("UUID | None", kwargs["api_key_id"]),
+                provider=cast("str", kwargs["provider"]),
+                external_id=cast("str | None", kwargs["external_id"]),
+                idempotency_key=cast("str | None", kwargs["idempotency_key"]),
+                title=cast("str", kwargs["title"]),
+                type=cast("DocumentType", kwargs["type"]),
+                collection_id=cast("UUID | None", kwargs["collection_id"]),
+                tags=cast("list[str]", kwargs["tags"]),
+                source_url=cast("str | None", kwargs["source_url"]),
                 status="QUEUED",
                 error_reason=None,
                 document_id=None,

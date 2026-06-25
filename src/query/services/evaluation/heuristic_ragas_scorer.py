@@ -4,7 +4,7 @@ import re
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from src.kit.ports.evaluation.eval_scorer import IEvalScorer
+from src.query.services.evaluation.scorer import EvalScorer
 
 if TYPE_CHECKING:
     from src.query.schemas import RefragContextPackage
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 _WORD_RE = re.compile(r"[a-zA-Z0-9_]{3,}")
 
 
-class HeuristicRagasScorer(IEvalScorer):
+class HeuristicRagasScorer(EvalScorer):
     async def score(
         self,
         *,

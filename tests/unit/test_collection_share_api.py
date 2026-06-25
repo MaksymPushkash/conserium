@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
 from src.collections.endpoints import get_collection_share_service
 from src.collections.service import to_collection_share_response
 from src.documents.status import DocumentStatus
@@ -13,22 +13,22 @@ from src.documents.types import DocumentType
 from src.main import create_app
 from src.models.user import UserModel
 from src.postgres import get_db_read_session, get_db_session
+from src.public_shares.dependencies import get_public_query_graph_runner
 from src.public_shares.endpoints import get_public_share_service
 from src.public_shares.schemas import (
-    AnswerShareDTO,
-    AnswerShareSourceDTO,
-    CollectionShareDTO,
-    PublicCollectionDocumentDTO,
-    PublicCollectionDTO,
+    AnswerShareRecord,
+    AnswerShareSource,
+    CollectionShareRecord,
+    PublicCollectionDocument,
+    PublicCollectionResult,
 )
 from src.public_shares.service import (
-    get_public_query_graph_runner,
     to_answer_share_list_response,
     to_public_answer_share_response,
     to_public_collection_response,
     to_public_query_source_response,
 )
-from src.query.schemas import PublicCollectionQueryResponse, QuerySourceDTO
+from src.query.schemas import PublicCollectionQueryResponse, QuerySource
 from src.users.repository import UserRepository
 from tests.dependency_overrides import apply_dependency_overrides
 
@@ -80,7 +80,7 @@ class _FakeRepositorySession:
 
 
 class _ReturningCreateShareService:
-    def __init__(self, share: CollectionShareDTO) -> None:
+    def __init__(self, share: CollectionShareRecord) -> None:
         self._share = share
         self.received: tuple[uuid.UUID, uuid.UUID] | None = None
 
@@ -90,7 +90,7 @@ class _ReturningCreateShareService:
 
 
 class _ReturningPublicCollectionService:
-    def __init__(self, collection: PublicCollectionDTO) -> None:
+    def __init__(self, collection: PublicCollectionResult) -> None:
         self._collection = collection
         self.received: str | None = None
 
@@ -118,7 +118,7 @@ class _ReturningPublicCollectionQueryService:
 
 
 class _ReturningPublicAnswerShareService:
-    def __init__(self, share: AnswerShareDTO) -> None:
+    def __init__(self, share: AnswerShareRecord) -> None:
         self._share = share
         self.received: str | None = None
 
@@ -128,7 +128,7 @@ class _ReturningPublicAnswerShareService:
 
 
 class _ReturningListAnswerSharesService:
-    def __init__(self, shares: list[AnswerShareDTO]) -> None:
+    def __init__(self, shares: list[AnswerShareRecord]) -> None:
         self._shares = shares
         self.received: tuple[uuid.UUID, int, int] | None = None
 
@@ -163,7 +163,7 @@ def _graph_runner_override() -> object:
 def test_create_collection_share_route_returns_slug() -> None:
     user = _make_user()
     collection_id = uuid.uuid4()
-    share = CollectionShareDTO(
+    share = CollectionShareRecord(
         id=uuid.uuid4(),
         collection_id=collection_id,
         user_id=user.id,
@@ -182,7 +182,7 @@ def test_create_collection_share_route_returns_slug() -> None:
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -205,13 +205,13 @@ def test_create_collection_share_route_returns_slug() -> None:
 
 
 def test_public_collection_route_returns_no_private_user_fields() -> None:
-    collection = PublicCollectionDTO(
+    collection = PublicCollectionResult(
         id=uuid.uuid4(),
         name="Python",
         description="Python material",
         color="#ffffff",
         documents=[
-            PublicCollectionDocumentDTO(
+            PublicCollectionDocument(
                 id=uuid.uuid4(),
                 title="Async Python",
                 type=DocumentType.TEXT,
@@ -262,7 +262,7 @@ def _make_user() -> UserModel:
 
 
 def test_public_collection_query_returns_share_slug() -> None:
-    source = QuerySourceDTO(
+    source = QuerySource(
         chunk_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         document_title="Clean Architecture",
@@ -272,7 +272,7 @@ def test_public_collection_query_returns_share_slug() -> None:
         score=0.7,
         used_in_answer=True,
     )
-    share_source = AnswerShareSourceDTO(
+    share_source = AnswerShareSource(
         chunk_id=source.chunk_id,
         document_id=source.document_id,
         document_title=source.document_title,
@@ -282,7 +282,7 @@ def test_public_collection_query_returns_share_slug() -> None:
         citation="[1]",
         used_in_answer=True,
     )
-    answer_share = AnswerShareDTO(
+    answer_share = AnswerShareRecord(
         id=uuid.uuid4(),
         slug="answer-slug",
         user_id=uuid.uuid4(),
@@ -336,7 +336,7 @@ def test_public_collection_query_returns_share_slug() -> None:
 
 
 def test_public_answer_share_route_returns_citations() -> None:
-    source = AnswerShareSourceDTO(
+    source = AnswerShareSource(
         chunk_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         document_title="Clean Architecture",
@@ -346,7 +346,7 @@ def test_public_answer_share_route_returns_citations() -> None:
         citation="[1]",
         used_in_answer=True,
     )
-    share = AnswerShareDTO(
+    share = AnswerShareRecord(
         id=uuid.uuid4(),
         slug="answer-slug",
         user_id=uuid.uuid4(),
@@ -386,7 +386,7 @@ def test_public_answer_share_route_returns_citations() -> None:
 
 def test_list_answer_shares_route_returns_owner_shares() -> None:
     user = _make_user()
-    share = AnswerShareDTO(
+    share = AnswerShareRecord(
         id=uuid.uuid4(),
         slug="answer-slug",
         user_id=user.id,
@@ -407,7 +407,7 @@ def test_list_answer_shares_route_returns_owner_shares() -> None:
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)
@@ -435,7 +435,7 @@ def test_revoke_answer_share_route_revokes_owner_share() -> None:
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)

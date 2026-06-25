@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import delete, func, select
 
-from src.compare.schemas import CompareEvidenceRowDTO, CompareResultDTO
+from src.compare.schemas import CompareEvidence, CompareResult
 from src.drafts.repository import sources_from_json, sources_to_json
 from src.models.comparison import ComparisonModel
 
@@ -17,7 +17,7 @@ class CompareRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, result: CompareResultDTO) -> CompareResultDTO:
+    async def create(self, result: CompareResult) -> CompareResult:
         model = ComparisonModel(
             id=result.id,
             user_id=result.user_id,
@@ -35,12 +35,12 @@ class CompareRepository:
         self._session.add(model)
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_dto(model)
+        return self._to_result(model)
 
-    async def get_by_id(self, comparison_id: UUID) -> CompareResultDTO | None:
+    async def get_by_id(self, comparison_id: UUID) -> CompareResult | None:
         result = await self._session.execute(select(ComparisonModel).where(ComparisonModel.id == comparison_id))
         model = result.scalar_one_or_none()
-        return self._to_dto(model) if model else None
+        return self._to_result(model) if model else None
 
     async def list_by_user_id(
         self,
@@ -49,12 +49,12 @@ class CompareRepository:
         collection_id: UUID | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> list[CompareResultDTO]:
+    ) -> list[CompareResult]:
         statement = select(ComparisonModel).where(ComparisonModel.user_id == user_id)
         if collection_id is not None:
             statement = statement.where(ComparisonModel.collection_id == collection_id)
         result = await self._session.execute(statement.order_by(ComparisonModel.created_at.desc()).limit(limit).offset(offset))
-        return [self._to_dto(model) for model in result.scalars().all()]
+        return [self._to_result(model) for model in result.scalars().all()]
 
     async def count_by_user_id(
         self,
@@ -72,8 +72,8 @@ class CompareRepository:
         await self._session.execute(delete(ComparisonModel).where(ComparisonModel.id == comparison_id))
 
     @staticmethod
-    def _to_dto(model: ComparisonModel) -> CompareResultDTO:
-        return CompareResultDTO(
+    def _to_result(model: ComparisonModel) -> CompareResult:
+        return CompareResult(
             id=model.id,
             user_id=model.user_id,
             collection_id=model.collection_id,
@@ -90,7 +90,7 @@ class CompareRepository:
         )
 
 
-def evidence_to_json(rows: list[CompareEvidenceRowDTO]) -> list[dict[str, object]]:
+def evidence_to_json(rows: list[CompareEvidence]) -> list[dict[str, object]]:
     return [
         {
             "dimension": row.dimension,
@@ -109,9 +109,9 @@ def evidence_to_json(rows: list[CompareEvidenceRowDTO]) -> list[dict[str, object
     ]
 
 
-def evidence_from_json(rows: list[dict[str, object]]) -> list[CompareEvidenceRowDTO]:
+def evidence_from_json(rows: list[dict[str, object]]) -> list[CompareEvidence]:
     return [
-        CompareEvidenceRowDTO(
+        CompareEvidence(
             dimension=str(row.get("dimension") or ""),
             left_evidence=str(row["left_evidence"]) if row.get("left_evidence") is not None else None,
             right_evidence=str(row["right_evidence"]) if row.get("right_evidence") is not None else None,

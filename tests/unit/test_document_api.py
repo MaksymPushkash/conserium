@@ -7,28 +7,22 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
-from src.auth.jwt_service import JWTServiceProtocol
-from src.chats.schemas import ChatDetailDTO, ChatMessageDTO, ChatSessionDTO
+from src.auth.jwt_service import JWTService
+from src.chats.repository import ChatDetailRecord, ChatMessageRecord, ChatSessionRecord
 from src.chats.service import get_chat_service, to_chat_detail_response, to_chat_session_response
 from src.collections.endpoints import get_collection_service
 from src.collections.schemas import CollectionListResponse, CollectionResponse
-from src.collections.service import to_collection_list_response
 from src.documents.dependencies import get_document_service
 from src.documents.ingestion import DocumentIngester
-from src.documents.notes import (
-    NoteService,
-    get_note_service,
-)
+from src.documents.note_dependencies import get_note_service
+from src.documents.notes import NoteService
 from src.documents.schemas import (
-    BulkAddDocumentTagsDTO,
-    BulkMoveDocumentsDTO,
-    DocumentConnectionDTO,
-    DocumentConnectionsDTO,
-    DocumentDTO,
-    DocumentListDTO,
-    DocumentSearchDTO,
-    DocumentSearchResultDTO,
-    IngestDocumentDTO,
+    DocumentConnection,
+    DocumentConnectionsResult,
+    DocumentListResult,
+    DocumentResult,
+    DocumentSearchResult,
+    DocumentSearchResults,
     NoteListItemResponse,
     NoteListResponse,
     NoteResponse,
@@ -38,17 +32,17 @@ from src.documents.service import (
     DocumentStatusService,
 )
 from src.documents.status import DocumentStatus
-from src.documents.status_cache import DocumentStatusDTO
+from src.documents.status_cache import DocumentStatusSnapshot
 from src.documents.types import DocumentType
-from src.ingestion.service import get_document_status_service
+from src.ingestion.dependencies import get_document_status_service
 from src.kit.exceptions import DocumentNotFoundException, ValidationException
-from src.kit.ports.ingestion.file_storage import IFileStorage, StoredFile
+from src.kit.storage.file_storage import FileStorage, StoredFile
 from src.main import create_app
 from src.models.user import UserModel
 from src.observability.metrics_registry import metrics_registry
 from src.postgres import get_db_read_session, get_db_session
-from src.query.schemas import QueryDTO, QueryResultDTO, QuerySourceDTO, QueryStreamEventDTO, QueryStreamEventType
-from src.query.service import get_query_executor, get_stream_query_executor
+from src.query.dependencies import get_query_executor, get_stream_query_executor
+from src.query.schemas import QueryPayload, QueryResult, QuerySource, QueryStreamEvent, QueryStreamEventType
 from src.query.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
 from src.users.repository import UserRepository
 from tests.dependency_overrides import apply_dependency_overrides
@@ -85,29 +79,29 @@ class _DocumentServiceOverride:
     def __init__(self, handler: Any) -> None:
         self._handler = handler
 
-    async def create(self, dto: object) -> object:
-        return await self._handler(dto)
+    async def create(self, *args: object, **kwargs: object) -> object:
+        return await self._handler(*args, **kwargs)
 
-    async def list(self, dto: object) -> object:
-        return await self._handler(dto)
+    async def list(self, *args: object, **kwargs: object) -> object:
+        return await self._handler(*args, **kwargs)
 
-    async def search(self, dto: object) -> object:
-        return await self._handler(dto)
+    async def search(self, *args: object, **kwargs: object) -> object:
+        return await self._handler(*args, **kwargs)
 
-    async def get(self, dto: object) -> object:
-        return await self._handler(dto)
+    async def get(self, *args: object, **kwargs: object) -> object:
+        return await self._handler(*args, **kwargs)
 
-    async def connections(self, dto: object, *, limit: int) -> object:
-        return await self._handler(dto, limit=limit)
+    async def connections(self, *args: object, **kwargs: object) -> object:
+        return await self._handler(*args, **kwargs)
 
-    async def delete(self, dto: object) -> None:
-        await self._handler(dto)
+    async def delete(self, *args: object, **kwargs: object) -> None:
+        await self._handler(*args, **kwargs)
 
-    async def bulk_move(self, dto: object) -> None:
-        await self._handler(dto)
+    async def bulk_move(self, *args: object, **kwargs: object) -> None:
+        await self._handler(*args, **kwargs)
 
-    async def bulk_add_tags(self, dto: object) -> None:
-        await self._handler(dto)
+    async def bulk_add_tags(self, *args: object, **kwargs: object) -> None:
+        await self._handler(*args, **kwargs)
 
 
 class _DocumentStatusServiceOverride:
@@ -122,17 +116,17 @@ class _NoteServiceOverride:
     def __init__(self, handler: Any) -> None:
         self._handler = handler
 
-    async def create(self, dto: object) -> object:
-        return await self._handler(dto)
+    async def create(self, *args: object, **kwargs: object) -> object:
+        return await self._handler(*args, **kwargs)
 
-    async def list(self, dto: object) -> object:
-        return await self._handler(dto)
+    async def list(self, *args: object, **kwargs: object) -> object:
+        return await self._handler(*args, **kwargs)
 
-    async def get(self, dto: object) -> object:
-        return await self._handler(dto)
+    async def get(self, *args: object, **kwargs: object) -> object:
+        return await self._handler(*args, **kwargs)
 
-    async def update(self, dto: object) -> object:
-        return await self._handler(dto)
+    async def update(self, *args: object, **kwargs: object) -> object:
+        return await self._handler(*args, **kwargs)
 
     async def delete(self, *, user_id: uuid.UUID, note_id: uuid.UUID) -> None:
         await self._handler(user_id=user_id, note_id=note_id)
@@ -164,7 +158,7 @@ class _ReturningCollectionService:
 
     async def list(self, session: object, **kwargs: object):
         self.received = kwargs
-        return to_collection_list_response(self._result)
+        return self._result
 
 
 class _ReturningChatService:
@@ -174,11 +168,11 @@ class _ReturningChatService:
 
     async def create(self, session: object, **kwargs: object):
         self.received = kwargs
-        return to_chat_session_response(cast("ChatSessionDTO", self._result))
+        return to_chat_session_response(cast("ChatSessionRecord", self._result))
 
     async def get(self, session: object, **kwargs: object):
         self.received = kwargs
-        return to_chat_detail_response(cast("ChatDetailDTO", self._result))
+        return to_chat_detail_response(cast("ChatDetailRecord", self._result))
 
 
 async def _session_override():
@@ -200,9 +194,11 @@ class _ReturningService:
 class _NoneService:
     def __init__(self) -> None:
         self.received_dto: object | None = None
+        self.received_kwargs: dict[str, object] = {}
 
-    async def __call__(self, dto: object) -> None:
-        self.received_dto = dto
+    async def __call__(self, *args: object, **kwargs: object) -> None:
+        self.received_dto = args[0] if len(args) == 1 else args
+        self.received_kwargs = kwargs
 
 
 class _KeywordNoneService:
@@ -217,14 +213,16 @@ class _RaisingService:
     def __init__(self, exc: Exception) -> None:
         self._exc = exc
         self.received_dto: object | None = None
+        self.received_kwargs: dict[str, object] = {}
 
-    async def __call__(self, dto: object) -> object:
-        self.received_dto = dto
+    async def __call__(self, *args: object, **kwargs: object) -> object:
+        self.received_dto = args[0] if len(args) == 1 else args
+        self.received_kwargs = kwargs
         raise self._exc
 
 
 class _StreamingService:
-    def __init__(self, events: list[QueryStreamEventDTO]) -> None:
+    def __init__(self, events: list[QueryStreamEvent]) -> None:
         self._events = events
         self.received_dto: object | None = None
 
@@ -266,8 +264,8 @@ def _make_user() -> UserModel:
     )
 
 
-def _make_document_dto(*, user_id: uuid.UUID, suggested_questions: list[str] | None = None) -> DocumentDTO:
-    return DocumentDTO(
+def _make_document_dto(*, user_id: uuid.UUID, suggested_questions: list[str] | None = None) -> DocumentResult:
+    return DocumentResult(
         entities=None,
         categories=None,
         id=uuid.uuid4(),
@@ -324,7 +322,7 @@ def _make_client(user: UserModel, dependencies: Mapping[type[object], object]) -
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
             **dependencies,
         }
@@ -362,7 +360,7 @@ def test_create_document_route_returns_created_document() -> None:
 def test_list_documents_route_returns_document_list() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    handler = _ReturningService(DocumentListDTO(items=[document], total=1, limit=10, offset=0))
+    handler = _ReturningService(DocumentListResult(items=[document], total=1, limit=10, offset=0))
     client = _make_client(user, {DocumentService: _DocumentServiceOverride(handler)})
 
     try:
@@ -384,9 +382,9 @@ def test_search_documents_route_returns_semantic_results() -> None:
     document = _make_document_dto(user_id=user.id)
     chunk_id = uuid.uuid4()
     handler = _ReturningService(
-        DocumentSearchDTO(
+        DocumentSearchResults(
             items=[
-                DocumentSearchResultDTO(
+                DocumentSearchResult(
                     document=document,
                     snippet="asyncio overlaps I/O operations with coroutines.",
                     score=0.91,
@@ -419,7 +417,7 @@ def test_search_documents_route_returns_semantic_results() -> None:
 def test_ingest_document_route_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    document = DocumentDTO(
+    document = DocumentResult(
         entities=None,
         categories=None,
         id=document.id,
@@ -461,7 +459,7 @@ def test_ingest_document_route_queues_document() -> None:
 def test_ingest_youtube_document_route_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    document = DocumentDTO(
+    document = DocumentResult(
         entities=None,
         categories=None,
         id=document.id,
@@ -504,7 +502,7 @@ def test_metrics_endpoint_returns_prometheus_text() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
     handler = _ReturningService(
-        DocumentDTO(
+        DocumentResult(
             entities=None,
             categories=None,
             id=document.id,
@@ -550,7 +548,7 @@ def test_metrics_endpoint_returns_prometheus_text() -> None:
 def test_ingest_text_document_route_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    document = DocumentDTO(
+    document = DocumentResult(
         entities=None,
         categories=None,
         id=document.id,
@@ -608,7 +606,7 @@ def test_list_collections_route_accepts_workspace_filter() -> None:
     jwt_service = MagicMock()
     jwt_service.verify_access_token.return_value = user.id
     app = create_app()
-    apply_dependency_overrides(app, _FakeDependencyContainer({JWTServiceProtocol: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
+    apply_dependency_overrides(app, _FakeDependencyContainer({JWTService: jwt_service, UserRepository: _FakeRepositorySession(user)})._dependencies)
     app.dependency_overrides[get_collection_service] = lambda: service
     app.dependency_overrides[get_db_read_session] = _session_override
     client = TestClient(app, raise_server_exceptions=False)
@@ -631,7 +629,7 @@ def test_ingest_pdf_document_route_stores_upload_and_queues_document() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
     collection_id = uuid.uuid4()
-    document = DocumentDTO(
+    document = DocumentResult(
         entities=None,
         categories=None,
         id=document.id,
@@ -654,7 +652,7 @@ def test_ingest_pdf_document_route_stores_upload_and_queues_document() -> None:
     )
     handler = _ReturningService(document)
     storage = _FakeFileStorage()
-    client = _make_client(user, {DocumentIngester: handler, IFileStorage: storage})
+    client = _make_client(user, {DocumentIngester: handler, FileStorage: storage})
 
     try:
         response = client.post(
@@ -670,8 +668,7 @@ def test_ingest_pdf_document_route_stores_upload_and_queues_document() -> None:
     assert response.json()["status"] == "QUEUED"
     assert storage.saved_filename == "report.pdf"
     assert storage.saved_content == b"%PDF-1.4 fake"
-    assert isinstance(handler.received_dto, IngestDocumentDTO)
-    assert handler.received_dto.collection_id == document.collection_id
+    assert handler.received_kwargs["collection_id"] == document.collection_id
 
 
 def test_ingest_pdf_document_route_rejects_large_upload(monkeypatch: MonkeyPatch) -> None:
@@ -679,7 +676,7 @@ def test_ingest_pdf_document_route_rejects_large_upload(monkeypatch: MonkeyPatch
     document = _make_document_dto(user_id=user.id)
     handler = _ReturningService(document)
     storage = _FakeFileStorage()
-    client = _make_client(user, {DocumentIngester: handler, IFileStorage: storage})
+    client = _make_client(user, {DocumentIngester: handler, FileStorage: storage})
     monkeypatch.setattr("src.ingestion.endpoints.settings.MAX_UPLOAD_BYTES", 4)
 
     try:
@@ -701,7 +698,7 @@ def test_ingest_image_document_route_stores_upload_and_queues_document() -> None
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
     collection_id = uuid.uuid4()
-    document = DocumentDTO(
+    document = DocumentResult(
         entities=None,
         categories=None,
         id=document.id,
@@ -724,7 +721,7 @@ def test_ingest_image_document_route_stores_upload_and_queues_document() -> None
     )
     handler = _ReturningService(document)
     storage = _FakeFileStorage()
-    client = _make_client(user, {DocumentIngester: handler, IFileStorage: storage})
+    client = _make_client(user, {DocumentIngester: handler, FileStorage: storage})
 
     try:
         response = client.post(
@@ -741,8 +738,7 @@ def test_ingest_image_document_route_stores_upload_and_queues_document() -> None
     assert response.json()["type"] == "IMAGE"
     assert storage.saved_filename == "scan.png"
     assert storage.saved_content == b"imagefake"
-    assert isinstance(handler.received_dto, IngestDocumentDTO)
-    assert handler.received_dto.collection_id == document.collection_id
+    assert handler.received_kwargs["collection_id"] == document.collection_id
 
 
 def test_shared_pdf_upload_route_surfaces_workspace_role_denial() -> None:
@@ -750,7 +746,7 @@ def test_shared_pdf_upload_route_surfaces_workspace_role_denial() -> None:
     collection_id = uuid.uuid4()
     handler = _RaisingService(ValidationException("workspace viewer cannot ingest into collection"))
     storage = _FakeFileStorage()
-    client = _make_client(user, {DocumentIngester: handler, IFileStorage: storage})
+    client = _make_client(user, {DocumentIngester: handler, FileStorage: storage})
 
     try:
         response = client.post(
@@ -765,8 +761,7 @@ def test_shared_pdf_upload_route_surfaces_workspace_role_denial() -> None:
     assert response.status_code == 422
     assert response.json() == {"detail": "workspace viewer cannot ingest into collection"}
     assert storage.saved_filename == "shared.pdf"
-    assert isinstance(handler.received_dto, IngestDocumentDTO)
-    assert handler.received_dto.collection_id == collection_id
+    assert handler.received_kwargs["collection_id"] == collection_id
 
 
 def test_shared_image_upload_route_surfaces_workspace_role_denial() -> None:
@@ -774,7 +769,7 @@ def test_shared_image_upload_route_surfaces_workspace_role_denial() -> None:
     collection_id = uuid.uuid4()
     handler = _RaisingService(ValidationException("workspace viewer cannot ingest into collection"))
     storage = _FakeFileStorage()
-    client = _make_client(user, {DocumentIngester: handler, IFileStorage: storage})
+    client = _make_client(user, {DocumentIngester: handler, FileStorage: storage})
 
     try:
         response = client.post(
@@ -789,8 +784,7 @@ def test_shared_image_upload_route_surfaces_workspace_role_denial() -> None:
     assert response.status_code == 422
     assert response.json() == {"detail": "workspace viewer cannot ingest into collection"}
     assert storage.saved_filename == "shared.png"
-    assert isinstance(handler.received_dto, IngestDocumentDTO)
-    assert handler.received_dto.collection_id == collection_id
+    assert handler.received_kwargs["collection_id"] == collection_id
 
 
 def test_get_document_route_returns_document() -> None:
@@ -828,12 +822,12 @@ def test_get_document_connections_route_returns_related_documents() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
     related = _make_document_dto(user_id=user.id)
-    result = DocumentConnectionsDTO(
+    result = DocumentConnectionsResult(
         document_id=document.id,
         total=1,
         limit=3,
         items=[
-            DocumentConnectionDTO(
+            DocumentConnection(
                 document=related,
                 reasons=["Shared tags: python", "Same collection"],
                 relationship_score=5,
@@ -856,13 +850,13 @@ def test_get_document_connections_route_returns_related_documents() -> None:
     assert response.json()["items"][0]["document"]["id"] == str(related.id)
     assert response.json()["items"][0]["reasons"] == ["Shared tags: python", "Same collection"]
     assert response.json()["items"][0]["relationship_score"] == 5
-    assert handler.received_kwargs == {"limit": 3}
+    assert handler.received_kwargs == {"user_id": user.id, "document_id": document.id, "limit": 3}
 
 
 def test_get_document_status_route_returns_cached_status() -> None:
     user = _make_user()
     document = _make_document_dto(user_id=user.id)
-    status_dto = DocumentStatusDTO(
+    status_dto = DocumentStatusSnapshot(
         document_id=document.id,
         status="PROCESSING",
         progress=40,
@@ -937,9 +931,8 @@ def test_bulk_move_documents_route_passes_collection_scope() -> None:
         client.close()
 
     assert response.status_code == 204
-    assert isinstance(handler.received_dto, BulkMoveDocumentsDTO)
-    assert handler.received_dto.document_ids == document_ids
-    assert handler.received_dto.collection_id == collection_id
+    assert handler.received_kwargs["document_ids"] == document_ids
+    assert handler.received_kwargs["collection_id"] == collection_id
 
 
 def test_bulk_add_document_tags_route_passes_tags() -> None:
@@ -958,9 +951,9 @@ def test_bulk_add_document_tags_route_passes_tags() -> None:
         client.close()
 
     assert response.status_code == 204
-    assert isinstance(handler.received_dto, BulkAddDocumentTagsDTO)
-    assert handler.received_dto.document_ids == document_ids
-    assert handler.received_dto.tags == ["python", "architecture"]
+    body = handler.received_kwargs["body"]
+    assert body.document_ids == document_ids
+    assert body.tags == ["python", "architecture"]
 
 
 def test_create_note_route_returns_note() -> None:
@@ -1055,7 +1048,7 @@ def test_delete_note_route_returns_no_content() -> None:
 def test_query_route_returns_sources() -> None:
     user = _make_user()
     conversation_id = uuid.uuid4()
-    source = QuerySourceDTO(
+    source = QuerySource(
         chunk_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         document_title="Architecture Notes",
@@ -1065,7 +1058,7 @@ def test_query_route_returns_sources() -> None:
         score=0.75,
     )
     handler = _ReturningService(
-        QueryResultDTO(
+        QueryResult(
             conversation_id=conversation_id,
             query="Clean Architecture",
             answer="Found relevant saved context.",
@@ -1096,7 +1089,7 @@ def test_query_route_returns_sources() -> None:
     assert response.json()["sources"][0]["content"] == source.content
     assert response.json()["refrag_context"]["full_text_chunks"][0]["representation"] == "FULL_TEXT"
     assert handler.received_dto is not None
-    assert cast("QueryDTO", handler.received_dto).conversation_id == conversation_id
+    assert cast("QueryPayload", handler.received_dto).conversation_id == conversation_id
 
 
 def test_query_stream_route_returns_sse_events() -> None:
@@ -1104,12 +1097,12 @@ def test_query_stream_route_returns_sse_events() -> None:
     conversation_id = uuid.uuid4()
     handler = _StreamingService(
         [
-            QueryStreamEventDTO(
+            QueryStreamEvent(
                 event=QueryStreamEventType.METADATA,
                 data={"query_id": "query-1", "query": "Clean Architecture", "sources": []},
             ),
-            QueryStreamEventDTO(event=QueryStreamEventType.TOKEN, data={"text": "Hello"}),
-            QueryStreamEventDTO(event=QueryStreamEventType.DONE, data={"query_id": "query-1"}),
+            QueryStreamEvent(event=QueryStreamEventType.TOKEN, data={"text": "Hello"}),
+            QueryStreamEvent(event=QueryStreamEventType.DONE, data={"query_id": "query-1"}),
         ]
     )
     client = _make_client(user, {})
@@ -1130,12 +1123,12 @@ def test_query_stream_route_returns_sse_events() -> None:
     assert 'event: token\ndata: {"text":"Hello"}' in response.text
     assert 'event: done\ndata: {"query_id":"query-1"}' in response.text
     assert handler.received_dto is not None
-    assert cast("QueryDTO", handler.received_dto).conversation_id == conversation_id
+    assert cast("QueryPayload", handler.received_dto).conversation_id == conversation_id
 
 
 def test_create_chat_route_returns_chat_session() -> None:
     user = _make_user()
-    chat = ChatSessionDTO(
+    chat = ChatSessionRecord(
         id=uuid.uuid4(),
         user_id=user.id,
         title="Python learning",
@@ -1168,7 +1161,7 @@ def test_get_chat_route_returns_saved_messages() -> None:
     user = _make_user()
     chat_id = uuid.uuid4()
     created_at = datetime.now(UTC)
-    chat = ChatSessionDTO(
+    chat = ChatSessionRecord(
         id=chat_id,
         user_id=user.id,
         title="Python learning",
@@ -1177,10 +1170,10 @@ def test_get_chat_route_returns_saved_messages() -> None:
         updated_at=created_at,
     )
     service = _ReturningChatService(
-        ChatDetailDTO(
+        ChatDetailRecord(
             session=chat,
             messages=[
-                ChatMessageDTO(
+                ChatMessageRecord(
                     id=uuid.uuid4(),
                     chat_id=chat_id,
                     role="user",
@@ -1191,7 +1184,7 @@ def test_get_chat_route_returns_saved_messages() -> None:
                     trace_id=None,
                     created_at=created_at,
                 ),
-                ChatMessageDTO(
+                ChatMessageRecord(
                     id=uuid.uuid4(),
                     chat_id=chat_id,
                     role="assistant",

@@ -4,8 +4,6 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from fastapi import Depends
-
 from src.kit.exceptions import ValidationException
 from src.knowledge_graph.repository import (
     KnowledgeEdgeRecord,
@@ -13,26 +11,25 @@ from src.knowledge_graph.repository import (
     KnowledgeGraphRepository,
 )
 from src.knowledge_graph.schemas import (
+    KnowledgeGraphConcern,
     KnowledgeGraphConcernCreateRequest,
-    KnowledgeGraphConcernDTO,
     KnowledgeGraphConcernResponse,
-    KnowledgeGraphDTO,
-    KnowledgeGraphEdgeDTO,
+    KnowledgeGraphEdge,
     KnowledgeGraphEdgeResponse,
-    KnowledgeGraphInsightDTO,
+    KnowledgeGraphInsight,
     KnowledgeGraphInsightResponse,
-    KnowledgeGraphInsightsDTO,
+    KnowledgeGraphInsights,
     KnowledgeGraphInsightsResponse,
-    KnowledgeGraphNodeDTO,
+    KnowledgeGraphNode,
     KnowledgeGraphNodeResponse,
     KnowledgeGraphResponse,
+    KnowledgeGraphResult,
 )
-from src.postgres import AsyncSession, get_db_session
-from src.topics.repository import TopicRepository
 
 if TYPE_CHECKING:
     from src.documents.types import DocumentType
-    from src.topics.repository import TopicOverrideRecord
+    from src.postgres import AsyncSession
+    from src.topics.repository import TopicOverrideRecord, TopicRepository
 
 
 class KnowledgeGraphFilters:
@@ -135,7 +132,7 @@ class KnowledgeGraphService:
             message=normalized_message,
         )
         await self._session.flush()
-        result = KnowledgeGraphConcernDTO(
+        result = KnowledgeGraphConcern(
             id=record.id,
             user_id=record.user_id,
             node_id=record.node_id,
@@ -180,9 +177,9 @@ class KnowledgeGraphService:
 def knowledge_graph_from_records(
     links: list[KnowledgeGraphRecord],
     document_edges: list[KnowledgeEdgeRecord],
-) -> KnowledgeGraphDTO:
-    nodes: dict[str, KnowledgeGraphNodeDTO] = {}
-    edges: dict[str, KnowledgeGraphEdgeDTO] = {}
+) -> KnowledgeGraphResult:
+    nodes: dict[str, KnowledgeGraphNode] = {}
+    edges: dict[str, KnowledgeGraphEdge] = {}
     for link in links:
         topic_id = topic_node_id(link.topic_name)
         document_id = document_node_id(str(link.document_id))
@@ -190,7 +187,7 @@ def knowledge_graph_from_records(
         source_names = tuple(
             dict.fromkeys([*(current_topic_node.source_names if current_topic_node else ()), link.source_topic_name or link.topic_name])
         )
-        nodes[topic_id] = KnowledgeGraphNodeDTO(
+        nodes[topic_id] = KnowledgeGraphNode(
             id=topic_id,
             kind="topic",
             label=link.topic_name,
@@ -198,7 +195,7 @@ def knowledge_graph_from_records(
             is_pinned=(current_topic_node.is_pinned if current_topic_node else False) or link.topic_pinned,
             is_ignored=False,
         )
-        nodes[document_id] = KnowledgeGraphNodeDTO(
+        nodes[document_id] = KnowledgeGraphNode(
             id=document_id,
             kind="document",
             label=link.document_title,
@@ -210,7 +207,7 @@ def knowledge_graph_from_records(
             suggested_questions=link.suggested_questions,
         )
         edge_id = f"{topic_id}:{document_id}"
-        edges[edge_id] = KnowledgeGraphEdgeDTO(
+        edges[edge_id] = KnowledgeGraphEdge(
             id=edge_id,
             source_id=topic_id,
             target_id=document_id,
@@ -222,7 +219,7 @@ def knowledge_graph_from_records(
         source_id = document_node_id(str(edge.source_document_id))
         target_id = document_node_id(str(edge.target_document_id))
         edge_id = f"{source_id}:{target_id}:{edge.relation_type}"
-        edges[edge_id] = KnowledgeGraphEdgeDTO(
+        edges[edge_id] = KnowledgeGraphEdge(
             id=edge_id,
             source_id=source_id,
             target_id=target_id,
@@ -231,7 +228,7 @@ def knowledge_graph_from_records(
             score=edge.score,
         )
 
-    return KnowledgeGraphDTO(nodes=list(nodes.values()), edges=list(edges.values()))
+    return KnowledgeGraphResult(nodes=list(nodes.values()), edges=list(edges.values()))
 
 
 def document_edges_for_links(
@@ -246,14 +243,14 @@ def document_edges_for_links(
     ]
 
 
-def graph_insights(graph: KnowledgeGraphDTO, overrides: list[TopicOverrideRecord]) -> KnowledgeGraphInsightsDTO:
+def graph_insights(graph: KnowledgeGraphResult, overrides: list[TopicOverrideRecord]) -> KnowledgeGraphInsights:
     nodes_by_id = {node.id: node for node in graph.nodes}
     degree_by_id: dict[str, int] = {node.id: 0 for node in graph.nodes}
     for edge in graph.edges:
         degree_by_id[edge.source_id] = degree_by_id.get(edge.source_id, 0) + 1
         degree_by_id[edge.target_id] = degree_by_id.get(edge.target_id, 0) + 1
 
-    topic_documents: dict[str, list[KnowledgeGraphNodeDTO]] = {
+    topic_documents: dict[str, list[KnowledgeGraphNode]] = {
         node.id: [] for node in graph.nodes if node.kind == "topic"
     }
     for edge in graph.edges:
@@ -286,7 +283,7 @@ def graph_insights(graph: KnowledgeGraphDTO, overrides: list[TopicOverrideRecord
     pinned_topics = [node for node in graph.nodes if node.kind == "topic" and node.is_pinned]
     ignored_topics = ignored_topic_nodes(overrides)
 
-    return KnowledgeGraphInsightsDTO(
+    return KnowledgeGraphInsights(
         items=[
             insight(
                 kind="isolated_topics",
@@ -340,9 +337,9 @@ def insight(
     title: str,
     description: str,
     severity: str,
-    nodes: list[KnowledgeGraphNodeDTO],
-) -> KnowledgeGraphInsightDTO:
-    return KnowledgeGraphInsightDTO(
+    nodes: list[KnowledgeGraphNode],
+) -> KnowledgeGraphInsight:
+    return KnowledgeGraphInsight(
         kind=kind,
         title=title,
         description=description,
@@ -352,18 +349,18 @@ def insight(
     )
 
 
-def node_is_stale(node: KnowledgeGraphNodeDTO, stale_cutoff: datetime) -> bool:
+def node_is_stale(node: KnowledgeGraphNode, stale_cutoff: datetime) -> bool:
     timestamp = node.updated_at or node.created_at
     return timestamp is not None and timestamp < stale_cutoff
 
 
-def ignored_topic_nodes(overrides: list[TopicOverrideRecord]) -> list[KnowledgeGraphNodeDTO]:
+def ignored_topic_nodes(overrides: list[TopicOverrideRecord]) -> list[KnowledgeGraphNode]:
     ignored: dict[str, list[str]] = {}
     for override in overrides:
         if override.ignored:
             ignored.setdefault(override.display_name, []).append(override.source_name)
     return [
-        KnowledgeGraphNodeDTO(
+        KnowledgeGraphNode(
             id=topic_node_id(display_name),
             kind="topic",
             label=display_name,
@@ -453,17 +450,7 @@ def effective_topic_limit(topic_limit: int, topic_name: str | None) -> int:
     return max(topic_limit, 500) if normalize_optional_text(topic_name) is not None else topic_limit
 
 
-def get_knowledge_graph_service(
-    session: AsyncSession = Depends(get_db_session),
-) -> KnowledgeGraphService:
-    return KnowledgeGraphService(
-        session,
-        KnowledgeGraphRepository.from_session(session),
-        TopicRepository.from_session(session),
-    )
-
-
-def to_knowledge_graph_response(dto: KnowledgeGraphDTO) -> KnowledgeGraphResponse:
+def to_knowledge_graph_response(dto: KnowledgeGraphResult) -> KnowledgeGraphResponse:
     return KnowledgeGraphResponse(
         nodes=[to_knowledge_graph_node_response(node) for node in dto.nodes],
         edges=[
@@ -480,7 +467,7 @@ def to_knowledge_graph_response(dto: KnowledgeGraphDTO) -> KnowledgeGraphRespons
     )
 
 
-def to_knowledge_graph_insights_response(dto: KnowledgeGraphInsightsDTO) -> KnowledgeGraphInsightsResponse:
+def to_knowledge_graph_insights_response(dto: KnowledgeGraphInsights) -> KnowledgeGraphInsightsResponse:
     return KnowledgeGraphInsightsResponse(
         items=[
             KnowledgeGraphInsightResponse(
@@ -496,7 +483,7 @@ def to_knowledge_graph_insights_response(dto: KnowledgeGraphInsightsDTO) -> Know
     )
 
 
-def to_knowledge_graph_node_response(node: KnowledgeGraphNodeDTO) -> KnowledgeGraphNodeResponse:
+def to_knowledge_graph_node_response(node: KnowledgeGraphNode) -> KnowledgeGraphNodeResponse:
     return KnowledgeGraphNodeResponse(
         id=node.id,
         kind=node.kind,
@@ -513,7 +500,7 @@ def to_knowledge_graph_node_response(node: KnowledgeGraphNodeDTO) -> KnowledgeGr
     )
 
 
-def to_knowledge_graph_concern_response(dto: KnowledgeGraphConcernDTO) -> KnowledgeGraphConcernResponse:
+def to_knowledge_graph_concern_response(dto: KnowledgeGraphConcern) -> KnowledgeGraphConcernResponse:
     return KnowledgeGraphConcernResponse(
         id=dto.id,
         node_id=dto.node_id,
@@ -535,7 +522,6 @@ __all__ = [
     "document_node_id",
     "document_relation_edges",
     "effective_topic_limit",
-    "get_knowledge_graph_service",
     "graph_insights",
     "knowledge_graph_from_records",
     "normalize_optional_text",

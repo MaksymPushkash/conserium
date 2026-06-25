@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING
 from src.observability.metrics_registry import metrics_registry
 
 if TYPE_CHECKING:
-    from src.kit.ports.evaluation.eval_scorer import IEvalScorer
-    from src.kit.ports.observability.query_trace import IQueryTracer
+    from src.observability.langfuse_tracer import LangfuseQueryTracer
     from src.query.agents.state import ConseriumQueryState
+    from src.query.services.evaluation.scorer import EvalScorer
 
 logger = logging.getLogger(__name__)
 
 
 class EvalAgent:
-    def __init__(self, eval_scorer: IEvalScorer, query_tracer: IQueryTracer | None = None) -> None:
+    def __init__(self, eval_scorer: EvalScorer, query_tracer: LangfuseQueryTracer | None = None) -> None:
         self._eval_scorer = eval_scorer
         self._query_tracer = query_tracer
 

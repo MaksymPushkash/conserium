@@ -5,11 +5,11 @@ from fastapi import Depends, Query, Request, Response, status
 from src.auth.auth import CurrentUser
 from src.observability.rate_limit import limiter
 from src.postgres import AsyncReadSession, AsyncSession, get_db_read_session, get_db_session, get_session_factory
+from src.public_shares.dependencies import get_public_query_graph_runner
 from src.public_shares.schemas import AnswerShareListResponse, PublicAnswerShareResponse, PublicCollectionResponse
 from src.public_shares.service import (
     PublicAskLedger,
     PublicShareService,
-    get_public_query_graph_runner,
 )
 from src.query.agents.graph_runner import QueryGraphRunner
 from src.query.schemas import PublicCollectionQueryResponse, QueryRequest

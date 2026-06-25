@@ -13,15 +13,15 @@ from src.models.collection import CollectionModel
 from src.postgres import AsyncSession
 from src.public_shares.repository import AnswerShareRepository, CollectionShareRepository
 from src.public_shares.schemas import (
-    AnswerShareDTO,
-    AnswerShareSourceDTO,
-    CollectionShareDTO,
-    PublicCollectionDocumentDTO,
-    PublicCollectionDTO,
+    AnswerShareRecord,
+    AnswerShareSource,
+    CollectionShareRecord,
+    PublicCollectionDocument,
+    PublicCollectionResult,
 )
 from src.public_shares.service import PublicAskLedger, PublicShareService
 from src.query.agents.state import ConseriumQueryState
-from src.query.schemas import QuerySourceDTO, RefragContextPackage
+from src.query.schemas import QuerySource, RefragContextPackage
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -37,8 +37,8 @@ class _FakeCollectionRepository:
 
 class _FakeCollectionShareRepository:
     def __init__(self) -> None:
-        self.share: CollectionShareDTO | None = None
-        self.public_collection: PublicCollectionDTO | None = None
+        self.share: CollectionShareRecord | None = None
+        self.public_collection: PublicCollectionResult | None = None
         self.revoked: tuple[uuid.UUID, uuid.UUID] | None = None
         self.events: dict[uuid.UUID, dict[str, object]] = {}
         self.locked_scope: tuple[uuid.UUID, str] | None = None
@@ -48,12 +48,12 @@ class _FakeCollectionShareRepository:
         *,
         user_id: uuid.UUID,
         collection_id: uuid.UUID,
-    ) -> CollectionShareDTO | None:
+    ) -> CollectionShareRecord | None:
         if self.share and self.share.user_id == user_id and self.share.collection_id == collection_id:
             return self.share
         return None
 
-    async def get_active_by_slug(self, slug: str) -> CollectionShareDTO | None:
+    async def get_active_by_slug(self, slug: str) -> CollectionShareRecord | None:
         if self.share and self.share.slug == slug:
             return self.share
         return None
@@ -63,7 +63,7 @@ class _FakeCollectionShareRepository:
         *,
         owner_user_id: uuid.UUID,
         share_slug: str,
-    ) -> CollectionShareDTO | None:
+    ) -> CollectionShareRecord | None:
         self.locked_scope = (owner_user_id, share_slug)
         return await self.get_active_by_slug(share_slug)
 
@@ -76,8 +76,8 @@ class _FakeCollectionShareRepository:
         slug: str,
         include_summaries: bool,
         include_notes: bool,
-    ) -> CollectionShareDTO:
-        self.share = CollectionShareDTO(
+    ) -> CollectionShareRecord:
+        self.share = CollectionShareRecord(
             id=id,
             collection_id=collection_id,
             user_id=user_id,
@@ -101,7 +101,7 @@ class _FakeCollectionShareRepository:
     ) -> bool:
         self.revoked = (user_id, collection_id)
         if self.share:
-            self.share = CollectionShareDTO(
+            self.share = CollectionShareRecord(
                 id=self.share.id,
                 collection_id=self.share.collection_id,
                 user_id=self.share.user_id,
@@ -123,10 +123,10 @@ class _FakeCollectionShareRepository:
         collection_id: uuid.UUID,
         ask_enabled: bool | None,
         daily_ask_limit: int | None,
-    ) -> CollectionShareDTO | None:
+    ) -> CollectionShareRecord | None:
         if not self.share or self.share.user_id != user_id or self.share.collection_id != collection_id:
             return None
-        self.share = CollectionShareDTO(
+        self.share = CollectionShareRecord(
             id=self.share.id,
             collection_id=self.share.collection_id,
             user_id=self.share.user_id,
@@ -180,7 +180,7 @@ class _FakeCollectionShareRepository:
             "answer_share_slug": answer_share_slug,
         }
 
-    async def get_public_collection(self, slug: str) -> PublicCollectionDTO | None:
+    async def get_public_collection(self, slug: str) -> PublicCollectionResult | None:
         if self.share and self.share.slug == slug and self.share.revoked_at is None:
             return self.public_collection
         return None
@@ -188,14 +188,14 @@ class _FakeCollectionShareRepository:
 
 class _FakeAnswerShareRepository:
     def __init__(self) -> None:
-        self.share: AnswerShareDTO | None = None
+        self.share: AnswerShareRecord | None = None
 
-    async def get_active_by_slug(self, slug: str) -> AnswerShareDTO | None:
+    async def get_active_by_slug(self, slug: str) -> AnswerShareRecord | None:
         if self.share and self.share.slug == slug:
             return self.share
         return None
 
-    async def list_by_user_id(self, *, user_id: uuid.UUID, limit: int, offset: int) -> list[AnswerShareDTO]:
+    async def list_by_user_id(self, *, user_id: uuid.UUID, limit: int, offset: int) -> list[AnswerShareRecord]:
         if self.share and self.share.user_id == user_id:
             return [self.share]
         return []
@@ -217,9 +217,9 @@ class _FakeAnswerShareRepository:
         public_collection_slug: str | None,
         query_text: str,
         answer_text: str,
-        sources: list[AnswerShareSourceDTO],
-    ) -> AnswerShareDTO:
-        self.share = AnswerShareDTO(
+        sources: list[AnswerShareSource],
+    ) -> AnswerShareRecord:
+        self.share = AnswerShareRecord(
             id=id,
             slug=slug,
             user_id=user_id,
@@ -307,13 +307,13 @@ async def test_public_collection_returns_shared_documents(monkeypatch: "MonkeyPa
     collection = _make_collection(user_id)
     session, repositories = _wire_repositories(monkeypatch, collection)
     share = await CollectionShareService().create_share(session, user_id=user_id, collection_id=collection.id)
-    repositories.collection_share_repo.public_collection = PublicCollectionDTO(
+    repositories.collection_share_repo.public_collection = PublicCollectionResult(
         id=collection.id,
         name=collection.name,
         description=collection.description,
         color=collection.color,
         documents=[
-            PublicCollectionDocumentDTO(
+            PublicCollectionDocument(
                 id=uuid.uuid4(),
                 title="Async Python",
                 type=DocumentType.TEXT,
@@ -348,7 +348,7 @@ def _make_collection(user_id: uuid.UUID) -> CollectionModel:
 
 
 class _ReturningGraphRunner:
-    def __init__(self, source: QuerySourceDTO) -> None:
+    def __init__(self, source: QuerySource) -> None:
         self.source = source
         self.received: ConseriumQueryState | None = None
 
@@ -379,7 +379,7 @@ async def test_public_collection_query_persists_shareable_answer(monkeypatch: "M
     collection = _make_collection(user_id)
     session, repositories = _wire_repositories(monkeypatch, collection)
     share = await CollectionShareService().create_share(session, user_id=user_id, collection_id=collection.id)
-    source = QuerySourceDTO(
+    source = QuerySource(
         chunk_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         document_title="Clean Architecture",

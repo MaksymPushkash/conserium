@@ -9,10 +9,10 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from src.documents.extraction import ExtractedContent
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
 from src.kit.exceptions import DocumentValidationException
-from src.kit.ports.ingestion.content_extractor import ExtractedContent
 from src.models.chunk import ChunkModel
 
 if TYPE_CHECKING:
@@ -20,17 +20,17 @@ if TYPE_CHECKING:
 
     from src.documents.chunk_repository import ChunkRepository
     from src.documents.document_repository import DocumentRepository
+    from src.documents.extraction import ContentExtractor
     from src.documents.processing_outbox_repository import DocumentProcessingOutboxRepository
-    from src.documents.schemas import DocumentProcessingOutboxDTO
+    from src.documents.schemas import DocumentProcessingOutboxRecord
     from src.documents.services.enrichment.enrichment_service import EnrichmentService
-    from src.documents.status_cache import IDocumentStatusCache
+    from src.documents.status_cache import RedisDocumentStatusCache
     from src.documents.text_chunker import SimpleTextChunker
-    from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
-    from src.kit.ports.ingestion.content_extractor import IContentExtractor
-    from src.kit.ports.ingestion.file_storage import IFileStorage
+    from src.kit.ai.embedding_provider import EmbeddingProvider
+    from src.kit.storage.file_storage import FileStorage
     from src.models.document import DocumentModel
     from src.postgres import AsyncSession
-    from src.worker.dispatcher import ITaskDispatcher
+    from src.worker.dispatcher import CeleryTaskDispatcher
 
 DOCUMENT_PROCESSING_TASK_NAME = "process_document"
 _MAX_OUTBOX_ATTEMPTS = 5
@@ -54,8 +54,8 @@ class DocumentProcessingService:
         session: AsyncSession,
         document_repo: DocumentRepository,
         outbox_repo: DocumentProcessingOutboxRepository,
-        status_cache: IDocumentStatusCache,
-        task_dispatcher: ITaskDispatcher,
+        status_cache: RedisDocumentStatusCache,
+        task_dispatcher: CeleryTaskDispatcher,
         background_tasks: BackgroundTasks | None = None,
     ) -> None:
         self._session = session
@@ -95,7 +95,7 @@ class DocumentProcessingService:
         if self._background_tasks is not None:
             self._background_tasks.add_task(self._task_dispatcher.dispatch_document_processing_outbox)
 
-    async def enqueue(self, document: DocumentModel, *, message: str) -> DocumentProcessingOutboxDTO:
+    async def enqueue(self, document: DocumentModel, *, message: str) -> DocumentProcessingOutboxRecord:
         document.mark_queued()
         await self._document_repo.update(document)
         outbox = await self._outbox_repo.create_outbox(
@@ -126,7 +126,7 @@ class DocumentProcessingService:
         await self._session.commit()
         return True
 
-    async def _claim_outbox(self, limit: int) -> list[DocumentProcessingOutboxDTO]:
+    async def _claim_outbox(self, limit: int) -> list[DocumentProcessingOutboxRecord]:
         now = datetime.now(UTC)
         outbox_items = await self._outbox_repo.claim_batch(
             limit=limit,
@@ -137,7 +137,7 @@ class DocumentProcessingService:
         await self._session.commit()
         return outbox_items
 
-    async def _dispatch_outbox_item(self, outbox: DocumentProcessingOutboxDTO) -> None:
+    async def _dispatch_outbox_item(self, outbox: DocumentProcessingOutboxRecord) -> None:
         document = await self._load_document(outbox.document_id)
         if document is None:
             await self._mark_outbox_dispatched(outbox)
@@ -168,13 +168,13 @@ class DocumentProcessingService:
     async def _load_document(self, document_id: UUID) -> DocumentModel | None:
         return await self._document_repo.get_by_id(document_id)
 
-    async def _mark_outbox_dispatched(self, outbox: DocumentProcessingOutboxDTO) -> None:
+    async def _mark_outbox_dispatched(self, outbox: DocumentProcessingOutboxRecord) -> None:
         await self._outbox_repo.mark_dispatched(outbox.id, datetime.now(UTC))
         await self._session.commit()
 
     async def _mark_outbox_failed(
         self,
-        outbox: DocumentProcessingOutboxDTO,
+        outbox: DocumentProcessingOutboxRecord,
         exc: Exception,
         *,
         retryable: bool,
@@ -235,13 +235,13 @@ class DocumentIngestionProcessor:
         self,
         session: AsyncSession,
         document_repo: DocumentRepository,
-        status_cache: IDocumentStatusCache,
-        task_dispatcher: ITaskDispatcher,
+        status_cache: RedisDocumentStatusCache,
+        task_dispatcher: CeleryTaskDispatcher,
         text_chunker: SimpleTextChunker,
-        file_storage: IFileStorage,
-        url_extractor: IContentExtractor,
-        youtube_extractor: IContentExtractor,
-        pdf_extractor: IContentExtractor,
+        file_storage: FileStorage,
+        url_extractor: ContentExtractor,
+        youtube_extractor: ContentExtractor,
+        pdf_extractor: ContentExtractor,
     ) -> None:
         self._session = session
         self._document_repo = document_repo
@@ -404,8 +404,8 @@ class DocumentEmbeddingProcessor:
         self,
         session: AsyncSession,
         document_repo: DocumentRepository,
-        status_cache: IDocumentStatusCache,
-        embedding_provider: IEmbeddingProvider,
+        status_cache: RedisDocumentStatusCache,
+        embedding_provider: EmbeddingProvider,
         chunk_repo: ChunkRepository,
     ) -> None:
         self._session = session
@@ -519,11 +519,11 @@ class ImageDocumentProcessor:
         self,
         session: AsyncSession,
         document_repo: DocumentRepository,
-        status_cache: IDocumentStatusCache,
-        task_dispatcher: ITaskDispatcher,
+        status_cache: RedisDocumentStatusCache,
+        task_dispatcher: CeleryTaskDispatcher,
         text_chunker: SimpleTextChunker,
-        file_storage: IFileStorage,
-        image_extractor: IContentExtractor,
+        file_storage: FileStorage,
+        image_extractor: ContentExtractor,
     ) -> None:
         self._session = session
         self._document_repo = document_repo

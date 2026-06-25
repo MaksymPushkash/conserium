@@ -11,14 +11,14 @@ from src.documents.processing import (
     DocumentProcessingService,
     document_processing_outbox_task_id,
 )
-from src.documents.schemas import DocumentProcessingOutboxDTO
+from src.documents.schemas import DocumentProcessingOutboxRecord
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
 from src.models.document import DocumentModel
 
 if TYPE_CHECKING:
-    from src.documents.status_cache import IDocumentStatusCache
-    from src.worker.dispatcher import ITaskDispatcher
+    from src.documents.status_cache import RedisDocumentStatusCache
+    from src.worker.dispatcher import CeleryTaskDispatcher
 
 
 @pytest.mark.asyncio
@@ -120,7 +120,7 @@ class _FakeSession:
         self,
         *,
         document: DocumentModel,
-        outbox: DocumentProcessingOutboxDTO,
+        outbox: DocumentProcessingOutboxRecord,
         fail_after_dispatch_commit: bool = False,
     ) -> None:
         self.document_repo = _DocumentRepo(document)
@@ -156,7 +156,7 @@ class _DocumentRepo:
 
 
 class _OutboxRepo:
-    def __init__(self, outbox: DocumentProcessingOutboxDTO) -> None:
+    def __init__(self, outbox: DocumentProcessingOutboxRecord) -> None:
         self.outbox = outbox
         self.dispatched: list[UUID] = []
         self.failed: list[tuple[UUID, bool]] = []
@@ -168,25 +168,25 @@ class _OutboxRepo:
         locked_at: datetime,
         stale_before: datetime,
         max_attempts: int,
-    ) -> list[DocumentProcessingOutboxDTO]:
+    ) -> list[DocumentProcessingOutboxRecord]:
         return [self.outbox]
 
-    async def create_outbox(self, *, document_id: UUID, task_name: str) -> DocumentProcessingOutboxDTO:
+    async def create_outbox(self, *, document_id: UUID, task_name: str) -> DocumentProcessingOutboxRecord:
         return self.outbox
 
-    async def get_by_id(self, outbox_id: UUID) -> DocumentProcessingOutboxDTO | None:
+    async def get_by_id(self, outbox_id: UUID) -> DocumentProcessingOutboxRecord | None:
         return self.outbox if self.outbox.id == outbox_id else None
 
-    async def mark_dispatching(self, outbox_id: UUID, locked_at: datetime) -> DocumentProcessingOutboxDTO:
+    async def mark_dispatching(self, outbox_id: UUID, locked_at: datetime) -> DocumentProcessingOutboxRecord:
         self.outbox = _replace_outbox(self.outbox, status="dispatching", locked_at=locked_at)
         return self.outbox
 
-    async def mark_dispatched(self, outbox_id: UUID, dispatched_at: datetime) -> DocumentProcessingOutboxDTO:
+    async def mark_dispatched(self, outbox_id: UUID, dispatched_at: datetime) -> DocumentProcessingOutboxRecord:
         self.dispatched.append(outbox_id)
         self.outbox = _replace_outbox(self.outbox, status="dispatched", dispatched_at=dispatched_at)
         return self.outbox
 
-    async def mark_failed(self, outbox_id: UUID, *, last_error: str, retryable: bool) -> DocumentProcessingOutboxDTO:
+    async def mark_failed(self, outbox_id: UUID, *, last_error: str, retryable: bool) -> DocumentProcessingOutboxRecord:
         self.failed.append((outbox_id, retryable))
         return self.outbox
 
@@ -217,15 +217,15 @@ def _processing_service(
         session,  # type: ignore[arg-type]
         session.document_repo,  # type: ignore[arg-type]
         session.document_processing_outbox_repo,  # type: ignore[arg-type]
-        cast("IDocumentStatusCache", _StatusCache()),
-        cast("ITaskDispatcher", dispatcher),
+        cast("RedisDocumentStatusCache", _StatusCache()),
+        cast("CeleryTaskDispatcher", dispatcher),
         background_tasks,
     )
 
 
-def _outbox(*, document_id: UUID, attempts: int = 1, status: str = "processing") -> DocumentProcessingOutboxDTO:
+def _outbox(*, document_id: UUID, attempts: int = 1, status: str = "processing") -> DocumentProcessingOutboxRecord:
     now = datetime.now(UTC)
-    return DocumentProcessingOutboxDTO(
+    return DocumentProcessingOutboxRecord(
         id=uuid4(),
         document_id=document_id,
         task_name="process_document",
@@ -263,13 +263,13 @@ def _document(*, status: DocumentStatus) -> DocumentModel:
 
 
 def _replace_outbox(
-    outbox: DocumentProcessingOutboxDTO,
+    outbox: DocumentProcessingOutboxRecord,
     *,
     status: str | None = None,
     locked_at: datetime | None = None,
     dispatched_at: datetime | None = None,
-) -> DocumentProcessingOutboxDTO:
-    return DocumentProcessingOutboxDTO(
+) -> DocumentProcessingOutboxRecord:
+    return DocumentProcessingOutboxRecord(
         id=outbox.id,
         document_id=outbox.document_id,
         task_name=outbox.task_name,

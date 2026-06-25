@@ -19,33 +19,26 @@ from src.documents.repository import (
     RelatedDocumentRecord,
 )
 from src.documents.schemas import (
-    CreateDocumentDTO,
-    CreateNoteDTO,
-    DeleteDocumentDTO,
-    GetDocumentDTO,
-    GetNoteDTO,
-    IngestDocumentDTO,
-    ListDocumentsDTO,
-    ListNotesDTO,
-    SearchDocumentsDTO,
-    UpdateNoteDTO,
+    CreateDocumentRequest,
+    CreateNoteRequest,
+    UpdateNoteRequest,
 )
 from src.documents.service import (
     DocumentService,
 )
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
+from src.kit.ai.embedding_provider import EmbeddingProvider
 from src.kit.exceptions import DocumentAccessDeniedException, DocumentNotFoundException
-from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
-from src.kit.ports.ingestion.file_storage import IFileStorage
+from src.kit.storage.file_storage import FileStorage
 from src.models.chunk import ChunkModel
 from src.models.document import DocumentModel
 
 if TYPE_CHECKING:
     from src.documents.access import DocumentCollectionAccess
-    from src.documents.status_cache import IDocumentStatusCache
+    from src.documents.status_cache import RedisDocumentStatusCache
     from src.query.repository import SearchQueryRepository
-    from src.worker.dispatcher import ITaskDispatcher
+    from src.worker.dispatcher import CeleryTaskDispatcher
 
 
 class _FakeDocumentRepository:
@@ -264,7 +257,7 @@ class _FakeChunkRepository:
         return self.search_results
 
 
-class _FakeEmbeddingProvider(IEmbeddingProvider):
+class _FakeEmbeddingProvider(EmbeddingProvider):
     async def embed_text(self, text: str) -> list[float]:
         return [0.1] * ChunkModel.EMBEDDING_DIMENSIONS
 
@@ -400,16 +393,16 @@ def _processing_service(
         repository_session,  # type: ignore[arg-type]
         repository_session.document_repo,  # type: ignore[arg-type]
         repository_session.document_processing_outbox_repo,  # type: ignore[arg-type]
-        cast("IDocumentStatusCache", status_cache),
-        cast("ITaskDispatcher", task_dispatcher),
+        cast("RedisDocumentStatusCache", status_cache),
+        cast("CeleryTaskDispatcher", task_dispatcher),
     )
 
 
 def _document_service(
     repository_session: _FakeRepositorySession,
     *,
-    embedding_provider: IEmbeddingProvider | None = None,
-    file_storage: IFileStorage | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+    file_storage: FileStorage | None = None,
 ) -> DocumentService:
     status_cache = _FakeStatusCache()
     dispatcher = _SuccessfulTaskDispatcher()
@@ -421,7 +414,7 @@ def _document_service(
         embedding_provider or _FakeEmbeddingProvider(),
         repository_session.chunk_repo,
         cast("SearchQueryRepository", object()),
-        file_storage or cast("IFileStorage", _FakeFileStorage()),
+        file_storage or cast("FileStorage", _FakeFileStorage()),
         _processing_service(repository_session, status_cache, dispatcher),
     )
 
@@ -521,8 +514,8 @@ async def test_create_document_service_creates_pending_document() -> None:
     service = _document_service(repository_session)
 
     result = await service.create(
-        CreateDocumentDTO(
-            user_id=user_id,
+        user_id=user_id,
+        body=CreateDocumentRequest(
             title="New note",
             type=DocumentType.TEXT,
             raw_content="Hello",
@@ -546,7 +539,7 @@ async def test_list_documents_service_returns_paginated_documents() -> None:
     repository_session = _FakeRepositorySession(document_repo)
     service = _document_service(repository_session)
 
-    result = await service.list(ListDocumentsDTO(user_id=user_id, limit=10, offset=0))
+    result = await service.list(user_id=user_id, limit=10, offset=0)
 
     assert result.total == 1
     assert len(result.items) == 1
@@ -562,13 +555,11 @@ async def test_list_documents_service_filters_by_type_and_tag() -> None:
     service = _document_service(repository_session)
 
     result = await service.list(
-        ListDocumentsDTO(
-            user_id=user_id,
-            limit=10,
-            offset=0,
-            document_type=DocumentType.TEXT,
-            tag_name="python",
-        )
+        user_id=user_id,
+        limit=10,
+        offset=0,
+        document_type=DocumentType.TEXT,
+        tag_name="python",
     )
 
     assert result.total == 1
@@ -584,7 +575,7 @@ async def test_search_documents_service_returns_document_results_from_hybrid_chu
     repository_session.chunk_repo.search_results = [ChunkSearchResult(chunk=chunk, document_title=document.title, score=0.91)]
     service = _document_service(repository_session)
 
-    result = await service.search(SearchDocumentsDTO(user_id=user_id, query="parallel requests", limit=10))
+    result = await service.search(user_id=user_id, query="parallel requests", limit=10)
 
     assert result.total == 1
     assert result.items[0].document.id == document.id
@@ -605,7 +596,7 @@ async def test_search_documents_service_filters_document_status_after_chunk_sear
     ]
     service = _document_service(repository_session)
 
-    result = await service.search(SearchDocumentsDTO(user_id=user_id, query="document", limit=10, status=DocumentStatus.READY))
+    result = await service.search(user_id=user_id, query="document", limit=10, status=DocumentStatus.READY)
 
     assert [item.document.id for item in result.items] == [ready_document.id]
 
@@ -616,7 +607,7 @@ async def test_get_document_service_returns_owned_document() -> None:
     repository_session = _FakeRepositorySession(_FakeDocumentRepository([document]))
     service = _document_service(repository_session)
 
-    result = await service.get(GetDocumentDTO(user_id=user_id, document_id=document.id))
+    result = await service.get(user_id=user_id, document_id=document.id)
 
     assert result.id == document.id
 
@@ -626,7 +617,7 @@ async def test_get_document_service_raises_for_missing_document() -> None:
     service = _document_service(repository_session)
 
     with pytest.raises(DocumentNotFoundException):
-        await service.get(GetDocumentDTO(user_id=uuid.uuid4(), document_id=uuid.uuid4()))
+        await service.get(user_id=uuid.uuid4(), document_id=uuid.uuid4())
 
 
 async def test_get_document_service_raises_for_foreign_document() -> None:
@@ -635,7 +626,7 @@ async def test_get_document_service_raises_for_foreign_document() -> None:
     service = _document_service(repository_session)
 
     with pytest.raises(DocumentAccessDeniedException):
-        await service.get(GetDocumentDTO(user_id=uuid.uuid4(), document_id=document.id))
+        await service.get(user_id=uuid.uuid4(), document_id=document.id)
 
 
 async def test_get_document_connections_returns_related_documents_with_activity() -> None:
@@ -652,7 +643,7 @@ async def test_get_document_connections_returns_related_documents_with_activity(
     )
     service = _document_service(repository_session)
 
-    result = await service.connections(GetDocumentDTO(user_id=user_id, document_id=target.id), limit=5)
+    result = await service.connections(user_id=user_id, document_id=target.id, limit=5)
 
     assert result.total == 1
     assert result.items[0].document.id == related.id
@@ -686,9 +677,9 @@ async def test_delete_document_service_deletes_owned_document() -> None:
     document_repo = _FakeDocumentRepository([document])
     repository_session = _FakeRepositorySession(document_repo)
     file_storage = _FakeFileStorage()
-    service = _document_service(repository_session, file_storage=cast("IFileStorage", file_storage))
+    service = _document_service(repository_session, file_storage=cast("FileStorage", file_storage))
 
-    await service.delete(DeleteDocumentDTO(user_id=user_id, document_id=document.id))
+    await service.delete(user_id=user_id, document_id=document.id)
 
     assert document_repo.deleted == [document.id]
     assert file_storage.deleted_paths == ["/tmp/uploaded.bin"]
@@ -700,10 +691,10 @@ async def test_delete_document_service_raises_for_foreign_document() -> None:
     document_repo = _FakeDocumentRepository([document])
     repository_session = _FakeRepositorySession(document_repo)
     file_storage = _FakeFileStorage()
-    service = _document_service(repository_session, file_storage=cast("IFileStorage", file_storage))
+    service = _document_service(repository_session, file_storage=cast("FileStorage", file_storage))
 
     with pytest.raises(DocumentAccessDeniedException):
-        await service.delete(DeleteDocumentDTO(user_id=uuid.uuid4(), document_id=document.id))
+        await service.delete(user_id=uuid.uuid4(), document_id=document.id)
 
     assert document_repo.deleted == []
     assert file_storage.deleted_paths == []
@@ -719,20 +710,18 @@ async def test_ingest_document_service_queues_outbox_without_dispatching_in_requ
     handler = DocumentIngester(
         repository_session,  # type: ignore[arg-type]
         _as_document_repository(repository_session),
-        cast("IDocumentStatusCache", status_cache),
-        cast("ITaskDispatcher", dispatcher),
+        cast("RedisDocumentStatusCache", status_cache),
+        cast("CeleryTaskDispatcher", dispatcher),
         repository_session,
         repository_session.document_activity_repo,
         _processing_service(repository_session, status_cache, dispatcher),
     )
 
     result = await handler(
-        IngestDocumentDTO(
-            user_id=user_id,
-            title="Queued note",
-            type=DocumentType.TEXT,
-            raw_content="Hello world",
-        )
+        user_id=user_id,
+        title="Queued note",
+        type=DocumentType.TEXT,
+        raw_content="Hello world",
     )
 
     assert document_repo.created
@@ -752,20 +741,18 @@ async def test_ingest_document_service_persists_outbox_when_status_cache_fails()
     handler = DocumentIngester(
         repository_session,  # type: ignore[arg-type]
         _as_document_repository(repository_session),
-        cast("IDocumentStatusCache", status_cache),
-        cast("ITaskDispatcher", dispatcher),
+        cast("RedisDocumentStatusCache", status_cache),
+        cast("CeleryTaskDispatcher", dispatcher),
         repository_session,
         repository_session.document_activity_repo,
         _processing_service(repository_session, status_cache, dispatcher),
     )
 
     result = await handler(
-        IngestDocumentDTO(
-            user_id=user_id,
-            title="Queued note",
-            type=DocumentType.TEXT,
-            raw_content="Hello world",
-        )
+        user_id=user_id,
+        title="Queued note",
+        type=DocumentType.TEXT,
+        raw_content="Hello world",
     )
 
     assert document_repo.created
@@ -786,8 +773,8 @@ async def test_ingest_document_service_fails_transaction_when_outbox_create_fail
     handler = DocumentIngester(
         repository_session,  # type: ignore[arg-type]
         _as_document_repository(repository_session),
-        cast("IDocumentStatusCache", status_cache),
-        cast("ITaskDispatcher", dispatcher),
+        cast("RedisDocumentStatusCache", status_cache),
+        cast("CeleryTaskDispatcher", dispatcher),
         repository_session,
         repository_session.document_activity_repo,
         _processing_service(repository_session, status_cache, dispatcher),
@@ -795,12 +782,10 @@ async def test_ingest_document_service_fails_transaction_when_outbox_create_fail
 
     with pytest.raises(RuntimeError):
         await handler(
-            IngestDocumentDTO(
-                user_id=user_id,
-                title="Fallback note",
-                type=DocumentType.TEXT,
-                raw_content="Hello world",
-            )
+            user_id=user_id,
+            title="Fallback note",
+            type=DocumentType.TEXT,
+            raw_content="Hello world",
         )
 
     assert dispatcher.processed_document_ids == []
@@ -815,8 +800,8 @@ async def test_create_note_service_creates_markdown_document_and_queues_indexing
     service = _note_service(repository_session, status_cache=status_cache, dispatcher=dispatcher)
 
     result = await service.create(
-        CreateNoteDTO(
-            user_id=user_id,
+        user_id=user_id,
+        body=CreateNoteRequest(
             title="Asyncio",
             content="Asyncio runs cooperative tasks on one event loop.",
             language="en",
@@ -859,7 +844,7 @@ async def test_list_notes_service_filters_and_counts_notes_in_repository() -> No
     document_repo = _FakeDocumentRepository([upload, note])
     service = _note_service(_FakeRepositorySession(document_repo))
 
-    result = await service.list(ListNotesDTO(user_id=user_id, limit=10, offset=0))
+    result = await service.list(user_id=user_id, limit=10, offset=0)
 
     assert result.total == 1
     assert [item.id for item in result.items] == [note.id]
@@ -870,7 +855,7 @@ async def test_get_note_service_returns_owned_note() -> None:
     note = _make_note_document(user_id=user_id)
     service = _note_service(_FakeRepositorySession(_FakeDocumentRepository([note])))
 
-    result = await service.get(GetNoteDTO(user_id=user_id, note_id=note.id))
+    result = await service.get(user_id=user_id, note_id=note.id)
 
     assert result.id == note.id
     assert result.content == "Important text"
@@ -918,7 +903,7 @@ async def test_update_note_service_clears_chunks_for_empty_note() -> None:
     dispatcher = _SuccessfulTaskDispatcher()
     service = _note_service(repository_session, status_cache=status_cache, dispatcher=dispatcher)
 
-    result = await service.update(UpdateNoteDTO(user_id=user_id, note_id=note.id, title="Empty", content=""))
+    result = await service.update(user_id=user_id, note_id=note.id, body=UpdateNoteRequest(title="Empty", content=""))
 
     assert result.status == DocumentStatus.READY
     assert repository_session.chunk_repo.deleted_document_ids == [note.id]
@@ -951,7 +936,11 @@ async def test_update_note_service_does_not_version_noop_update() -> None:
     repository_session = _FakeRepositorySession(_FakeDocumentRepository([note]))
     service = _note_service(repository_session)
 
-    await service.update(UpdateNoteDTO(user_id=user_id, note_id=note.id, title=note.title, content=note.raw_content or ""))
+    await service.update(
+        user_id=user_id,
+        note_id=note.id,
+        body=UpdateNoteRequest(title=note.title, content=note.raw_content or ""),
+    )
 
     assert repository_session.note_version_repo.records == []
 
@@ -982,8 +971,8 @@ async def test_update_note_service_coalesces_autosave_versions() -> None:
     repository_session = _FakeRepositorySession(_FakeDocumentRepository([note]))
     service = _note_service(repository_session)
 
-    await service.update(UpdateNoteDTO(user_id=user_id, note_id=note.id, title=note.title, content="First autosave"))
-    await service.update(UpdateNoteDTO(user_id=user_id, note_id=note.id, title=note.title, content="Second autosave"))
+    await service.update(user_id=user_id, note_id=note.id, body=UpdateNoteRequest(title=note.title, content="First autosave"))
+    await service.update(user_id=user_id, note_id=note.id, body=UpdateNoteRequest(title=note.title, content="Second autosave"))
 
     assert len(repository_session.note_version_repo.records) == 1
 

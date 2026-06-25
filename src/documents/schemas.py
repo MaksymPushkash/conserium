@@ -15,122 +15,7 @@ MetadataItem = dict[str, object]
 
 @final
 @dataclass(frozen=True, slots=True)
-class CreateDocumentDTO:
-    user_id: UUID
-    title: str
-    type: DocumentType
-    collection_id: UUID | None = None
-    source_url: str | None = None
-    file_path: str | None = None
-    file_size_bytes: int | None = None
-    raw_content: str | None = None
-    summary: str | None = None
-    word_count: int | None = None
-    language: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class ListDocumentsDTO:
-    user_id: UUID
-    limit: int = 50
-    offset: int = 0
-    collection_id: UUID | None = None
-    status: DocumentStatus | None = None
-    document_type: DocumentType | None = None
-    tag_name: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class SearchDocumentsDTO:
-    user_id: UUID
-    query: str
-    limit: int = 20
-    collection_id: UUID | None = None
-    status: DocumentStatus | None = None
-    document_type: DocumentType | None = None
-    tag_name: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class GetDocumentDTO:
-    user_id: UUID
-    document_id: UUID
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class GetDocumentChunkDTO:
-    user_id: UUID
-    document_id: UUID
-    chunk_id: UUID
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class DeleteDocumentDTO:
-    user_id: UUID
-    document_id: UUID
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class RenameDocumentDTO:
-    user_id: UUID
-    document_id: UUID
-    title: str
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class MoveDocumentDTO:
-    user_id: UUID
-    document_id: UUID
-    collection_id: UUID | None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class BulkDocumentOperationDTO:
-    user_id: UUID
-    document_ids: list[UUID]
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class BulkMoveDocumentsDTO:
-    user_id: UUID
-    document_ids: list[UUID]
-    collection_id: UUID | None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class BulkAddDocumentTagsDTO:
-    user_id: UUID
-    document_ids: list[UUID]
-    tags: list[str]
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class RetryDocumentDTO:
-    user_id: UUID
-    document_id: UUID
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class ReprocessDocumentDTO:
-    user_id: UUID
-    document_id: UUID
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class DocumentDTO:
+class DocumentResult:
     id: UUID
     user_id: UUID
     collection_id: UUID | None
@@ -161,8 +46,8 @@ class DocumentDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class DocumentListDTO:
-    items: list[DocumentDTO]
+class DocumentListResult:
+    items: list[DocumentResult]
     total: int
     limit: int
     offset: int
@@ -170,8 +55,8 @@ class DocumentListDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class DocumentSearchResultDTO:
-    document: DocumentDTO
+class DocumentSearchResult:
+    document: DocumentResult
     snippet: str
     score: float | None
     chunk_id: UUID
@@ -180,8 +65,8 @@ class DocumentSearchResultDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class DocumentSearchDTO:
-    items: list[DocumentSearchResultDTO]
+class DocumentSearchResults:
+    items: list[DocumentSearchResult]
     query: str
     total: int
     limit: int
@@ -189,34 +74,34 @@ class DocumentSearchDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class DocumentConnectionDTO:
-    document: DocumentDTO
+class DocumentConnection:
+    document: DocumentResult
     reasons: list[str]
     relationship_score: int
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class DocumentConnectionsDTO:
-    items: list[DocumentConnectionDTO]
+class DocumentConnectionsResult:
+    items: list[DocumentConnection]
     document_id: UUID
     total: int
     limit: int
 
 
-class EntityDTO(TypedDict):
+class EntityMetadata(TypedDict):
     text: str
     label: str
 
 
-class CategoryDTO(TypedDict):
+class CategoryMetadata(TypedDict):
     label: str
     score: float
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class TextChunkDTO:
+class TextChunk:
     content: str
     chunk_index: int
     start_char: int
@@ -226,71 +111,7 @@ class TextChunkDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class IngestTextDocumentDTO:
-    user_id: UUID
-    title: str
-    raw_text: str
-    collection_id: UUID | None = None
-    type: DocumentType = DocumentType.TEXT
-    source_url: str | None = None
-    language: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class IngestDocumentDTO:
-    user_id: UUID
-    title: str
-    type: DocumentType
-    collection_id: UUID | None = None
-    tags: list[str] | None = None
-    source_url: str | None = None
-    file_path: str | None = None
-    file_size_bytes: int | None = None
-    raw_content: str | None = None
-    language: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class CreateNoteDTO:
-    user_id: UUID
-    title: str | None = None
-    content: str | None = None
-    collection_id: UUID | None = None
-    language: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class UpdateNoteDTO:
-    user_id: UUID
-    note_id: UUID
-    title: str
-    content: str
-    collection_id: UUID | None = None
-    language: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class GetNoteDTO:
-    user_id: UUID
-    note_id: UUID
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class ListNotesDTO:
-    user_id: UUID
-    limit: int = 100
-    offset: int = 0
-    collection_id: UUID | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class ExternalIntakeItemDTO:
+class ExternalIntakeItem:
     id: UUID
     user_id: UUID
     api_key_id: UUID | None
@@ -312,32 +133,14 @@ class ExternalIntakeItemDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class ExternalIngestDTO:
-    user_id: UUID
-    api_key_id: UUID | None
-    provider: str
-    title: str
-    type: DocumentType
-    collection_id: UUID | None = None
-    tags: list[str] | None = None
-    source_url: str | None = None
-    raw_content: str | None = None
-    language: str | None = None
-    external_id: str | None = None
-    idempotency_key: str | None = None
-    payload_metadata: dict[str, object] | None = None
+class ExternalIngestResult:
+    intake_item: ExternalIntakeItem
+    document: DocumentResult | None
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class ExternalIngestResultDTO:
-    intake_item: ExternalIntakeItemDTO
-    document: DocumentDTO | None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class ExportedFileDTO:
+class ExportedFile:
     filename: str
     media_type: str
     content: bytes
@@ -345,23 +148,14 @@ class ExportedFileDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class NotionExportDTO:
-    user_id: UUID
-    title: str
-    markdown: str
-    parent_page_id: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class NotionExportResultDTO:
+class NotionExportResult:
     page_id: str
     url: str | None
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class DocumentProcessingOutboxDTO:
+class DocumentProcessingOutboxRecord:
     id: UUID
     document_id: UUID
     task_name: str

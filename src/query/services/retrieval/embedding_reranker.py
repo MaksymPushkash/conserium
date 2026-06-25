@@ -3,12 +3,12 @@ from __future__ import annotations
 from math import sqrt
 from typing import TYPE_CHECKING
 
-from src.kit.ports.ai.reranker import IReranker
 from src.observability.metrics_registry import metrics_registry
+from src.query.services.retrieval.reranker import Reranker
 
 if TYPE_CHECKING:
-    from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
-    from src.query.schemas import QuerySourceDTO
+    from src.kit.ai.embedding_provider import EmbeddingProvider
+    from src.query.schemas import QuerySource
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -20,11 +20,11 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-class EmbeddingReranker(IReranker):
-    def __init__(self, embedding_provider: IEmbeddingProvider) -> None:
+class EmbeddingReranker(Reranker):
+    def __init__(self, embedding_provider: EmbeddingProvider) -> None:
         self._emb = embedding_provider
 
-    async def rerank(self, query: str, candidates: list[QuerySourceDTO], top_k: int) -> list[QuerySourceDTO]:
+    async def rerank(self, query: str, candidates: list[QuerySource], top_k: int) -> list[QuerySource]:
         if not candidates:
             return []
 

@@ -5,9 +5,9 @@ from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from src.integrations.repository import TelegramRepository
-from src.kit.ports.notifications import INotificationSender, NotificationDeliveryUnavailable
 from src.learning_goals.repository import LearningGoalRepository
 from src.notifications.repository import NotificationDeliveryRepository
+from src.notifications.telegram_sender import NotificationDeliveryUnavailable, TelegramNotificationSender
 from src.stats.repository import StatsRepository
 from src.stats.service import _recommended_actions, _summary
 
@@ -30,7 +30,7 @@ class ProactiveDeliveryResult:
 
 
 class DailyDigestDelivery:
-    def __init__(self, session: AsyncSession, sender: INotificationSender) -> None:
+    def __init__(self, session: AsyncSession, sender: TelegramNotificationSender) -> None:
         self._runner = _TelegramDeliveryRunner(session, sender)
 
     async def __call__(self, *, now: datetime | None = None, limit: int = 500) -> ProactiveDeliveryResult:
@@ -56,7 +56,7 @@ class DailyDigestDelivery:
 
 
 class WeeklyReportDelivery:
-    def __init__(self, session: AsyncSession, sender: INotificationSender) -> None:
+    def __init__(self, session: AsyncSession, sender: TelegramNotificationSender) -> None:
         self._runner = _TelegramDeliveryRunner(session, sender)
 
     async def __call__(self, *, now: datetime | None = None, limit: int = 500) -> ProactiveDeliveryResult:
@@ -92,7 +92,7 @@ class WeeklyReportDelivery:
 
 
 class LearningGoalReminderDelivery:
-    def __init__(self, session: AsyncSession, sender: INotificationSender) -> None:
+    def __init__(self, session: AsyncSession, sender: TelegramNotificationSender) -> None:
         self._runner = _TelegramDeliveryRunner(session, sender)
 
     async def __call__(self, *, now: datetime | None = None, limit: int = 500) -> ProactiveDeliveryResult:
@@ -128,7 +128,7 @@ class LearningGoalReminderDelivery:
 
 
 class _TelegramDeliveryRunner:
-    def __init__(self, session: AsyncSession, sender: INotificationSender) -> None:
+    def __init__(self, session: AsyncSession, sender: TelegramNotificationSender) -> None:
         self.session = session
         self._sender = sender
 

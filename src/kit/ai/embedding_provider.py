@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-class IEmbeddingProvider(ABC):
+class EmbeddingProvider(ABC):
     @abstractmethod
     async def embed_text(self, text: str) -> list[float]: ...
 

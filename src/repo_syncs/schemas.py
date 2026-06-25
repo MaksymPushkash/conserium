@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 @dataclass(frozen=True, slots=True)
-class RepoSyncDTO:
+class RepoSyncResult:
     id: UUID
     user_id: UUID
     collection_id: UUID
@@ -26,12 +26,12 @@ class RepoSyncDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class RepoSyncListDTO:
-    items: list[RepoSyncDTO]
+class RepoSyncListResult:
+    items: list[RepoSyncResult]
 
 
 @dataclass(frozen=True, slots=True)
-class CreateRepoSyncDTO:
+class CreateRepoSyncPayload:
     user_id: UUID
     collection_id: UUID
     repo_url: str
@@ -41,15 +41,15 @@ class CreateRepoSyncDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class RunRepoSyncDTO:
+class RunRepoSyncPayload:
     user_id: UUID
     repo_sync_id: UUID
     max_files: int = 50
 
 
 @dataclass(frozen=True, slots=True)
-class RepoSyncRunResultDTO:
-    repo_sync: RepoSyncDTO
+class RepoSyncRunResult:
+    repo_sync: RepoSyncResult
     created: int
     updated: int
     skipped: int
@@ -58,7 +58,7 @@ class RepoSyncRunResultDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class RepoSyncItemDTO:
+class RepoSyncItem:
     id: UUID
     repo_sync_id: UUID
     path: str
@@ -71,7 +71,7 @@ class RepoSyncItemDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class RepoSyncOutboxDTO:
+class RepoSyncOutboxRecord:
     id: UUID
     repo_sync_id: UUID
     document_id: UUID
@@ -86,7 +86,7 @@ class RepoSyncOutboxDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class MarkdownRepoFileDTO:
+class MarkdownRepoFile:
     path: str
     sha: str
     content: str
@@ -94,8 +94,8 @@ class MarkdownRepoFileDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class MarkdownRepoFetchResultDTO:
-    files: list[MarkdownRepoFileDTO]
+class MarkdownRepoFetchResult:
+    files: list[MarkdownRepoFile]
     warnings: list[str]
 
 

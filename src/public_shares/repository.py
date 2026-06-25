@@ -13,12 +13,12 @@ from src.models.document import DocumentModel
 from src.models.public_ask_event import PublicAskEventModel
 from src.models.user import UserModel
 from src.public_shares.schemas import (
-    AnswerShareDTO,
-    AnswerShareSourceDTO,
-    CollectionShareDTO,
-    PublicAskEventDTO,
-    PublicCollectionDocumentDTO,
-    PublicCollectionDTO,
+    AnswerShareRecord,
+    AnswerShareSource,
+    CollectionShareRecord,
+    PublicAskEventRecord,
+    PublicCollectionDocument,
+    PublicCollectionResult,
 )
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ class AnswerShareRepository:
     def from_session(cls, session: AsyncSession) -> AnswerShareRepository:
         return cls(session)
 
-    async def get_active_by_slug(self, slug: str) -> AnswerShareDTO | None:
+    async def get_active_by_slug(self, slug: str) -> AnswerShareRecord | None:
         result = await self._session.execute(
             select(AnswerShareModel).options(selectinload(AnswerShareModel.collection)).where(
                 AnswerShareModel.slug == slug,
@@ -44,9 +44,9 @@ class AnswerShareRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return self._to_dto(model) if model else None
+        return self._to_record(model) if model else None
 
-    async def list_by_user_id(self, *, user_id: UUID, limit: int, offset: int) -> list[AnswerShareDTO]:
+    async def list_by_user_id(self, *, user_id: UUID, limit: int, offset: int) -> list[AnswerShareRecord]:
         result = await self._session.execute(
             select(AnswerShareModel)
             .options(selectinload(AnswerShareModel.collection))
@@ -55,7 +55,7 @@ class AnswerShareRepository:
             .limit(limit)
             .offset(offset)
         )
-        return [self._to_dto(model) for model in result.scalars().all()]
+        return [self._to_record(model) for model in result.scalars().all()]
 
     async def count_recent_by_public_collection_slug(self, *, slug: str, since: datetime) -> int:
         result = await self._session.execute(
@@ -95,8 +95,8 @@ class AnswerShareRepository:
         public_collection_slug: str | None,
         query_text: str,
         answer_text: str,
-        sources: list[AnswerShareSourceDTO],
-    ) -> AnswerShareDTO:
+        sources: list[AnswerShareSource],
+    ) -> AnswerShareRecord:
         model = AnswerShareModel(
             id=id,
             slug=slug,
@@ -111,11 +111,11 @@ class AnswerShareRepository:
         self._session.add(model)
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_dto(model)
+        return self._to_record(model)
 
     @staticmethod
-    def _to_dto(model: AnswerShareModel) -> AnswerShareDTO:
-        return AnswerShareDTO(
+    def _to_record(model: AnswerShareModel) -> AnswerShareRecord:
+        return AnswerShareRecord(
             id=model.id,
             slug=model.slug,
             user_id=model.user_id,
@@ -140,7 +140,7 @@ class CollectionShareRepository:
     def from_session(cls, session: AsyncSession) -> CollectionShareRepository:
         return cls(session)
 
-    async def get_active_by_collection_id(self, *, user_id: UUID, collection_id: UUID) -> CollectionShareDTO | None:
+    async def get_active_by_collection_id(self, *, user_id: UUID, collection_id: UUID) -> CollectionShareRecord | None:
         result = await self._session.execute(
             select(CollectionShareModel).where(
                 CollectionShareModel.user_id == user_id,
@@ -149,9 +149,9 @@ class CollectionShareRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return self._to_share_dto(model) if model else None
+        return self._to_share_record(model) if model else None
 
-    async def get_active_by_slug(self, slug: str) -> CollectionShareDTO | None:
+    async def get_active_by_slug(self, slug: str) -> CollectionShareRecord | None:
         result = await self._session.execute(
             select(CollectionShareModel).where(
                 CollectionShareModel.slug == slug,
@@ -159,9 +159,9 @@ class CollectionShareRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return self._to_share_dto(model) if model else None
+        return self._to_share_record(model) if model else None
 
-    async def lock_public_ask_scope(self, *, owner_user_id: UUID, share_slug: str) -> CollectionShareDTO | None:
+    async def lock_public_ask_scope(self, *, owner_user_id: UUID, share_slug: str) -> CollectionShareRecord | None:
         await self._session.execute(select(UserModel.id).where(UserModel.id == owner_user_id).with_for_update())
         result = await self._session.execute(
             select(CollectionShareModel)
@@ -173,7 +173,7 @@ class CollectionShareRepository:
             .with_for_update()
         )
         model = result.scalar_one_or_none()
-        return self._to_share_dto(model) if model else None
+        return self._to_share_record(model) if model else None
 
     async def create(
         self,
@@ -184,7 +184,7 @@ class CollectionShareRepository:
         slug: str,
         include_summaries: bool,
         include_notes: bool,
-    ) -> CollectionShareDTO:
+    ) -> CollectionShareRecord:
         model = CollectionShareModel(
             id=id,
             collection_id=collection_id,
@@ -196,7 +196,7 @@ class CollectionShareRepository:
         self._session.add(model)
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_share_dto(model)
+        return self._to_share_record(model)
 
     async def revoke_by_collection_id(self, *, user_id: UUID, collection_id: UUID, revoked_at: datetime) -> bool:
         result = await self._session.execute(
@@ -219,7 +219,7 @@ class CollectionShareRepository:
         collection_id: UUID,
         ask_enabled: bool | None,
         daily_ask_limit: int | None,
-    ) -> CollectionShareDTO | None:
+    ) -> CollectionShareRecord | None:
         result = await self._session.execute(
             select(CollectionShareModel).where(
                 CollectionShareModel.user_id == user_id,
@@ -235,7 +235,7 @@ class CollectionShareRepository:
         if daily_ask_limit is not None:
             share.daily_ask_limit = daily_ask_limit
         await self._session.flush()
-        return self._to_share_dto(share)
+        return self._to_share_record(share)
 
     async def count_public_ask_events_by_share(self, *, share_slug: str, since: datetime) -> int:
         result = await self._session.execute(
@@ -311,7 +311,7 @@ class CollectionShareRepository:
         collection_id: UUID,
         limit: int,
         offset: int,
-    ) -> list[PublicAskEventDTO]:
+    ) -> list[PublicAskEventRecord]:
         share_result = await self._session.execute(
             select(CollectionShareModel).where(
                 CollectionShareModel.user_id == user_id,
@@ -333,7 +333,7 @@ class CollectionShareRepository:
             .offset(offset)
         )
         return [
-            PublicAskEventDTO(
+            PublicAskEventRecord(
                 id=model.id,
                 share_slug=model.share_slug,
                 status=model.status,
@@ -345,7 +345,7 @@ class CollectionShareRepository:
             for model in result.scalars().all()
         ]
 
-    async def get_public_collection(self, slug: str) -> PublicCollectionDTO | None:
+    async def get_public_collection(self, slug: str) -> PublicCollectionResult | None:
         share_result = await self._session.execute(
             select(CollectionShareModel)
             .options(selectinload(CollectionShareModel.collection))
@@ -372,7 +372,7 @@ class CollectionShareRepository:
             .limit(100)
         )
         documents = [
-            PublicCollectionDocumentDTO(
+            PublicCollectionDocument(
                 id=document.id,
                 title=document.title,
                 type=document.type,
@@ -388,7 +388,7 @@ class CollectionShareRepository:
             for document in document_result.scalars().all()
         ]
         collection = share.collection
-        return PublicCollectionDTO(
+        return PublicCollectionResult(
             id=collection.id,
             name=collection.name,
             description=collection.description,
@@ -399,8 +399,8 @@ class CollectionShareRepository:
         )
 
     @staticmethod
-    def _to_share_dto(model: CollectionShareModel) -> CollectionShareDTO:
-        return CollectionShareDTO(
+    def _to_share_record(model: CollectionShareModel) -> CollectionShareRecord:
+        return CollectionShareRecord(
             id=model.id,
             collection_id=model.collection_id,
             user_id=model.user_id,
@@ -415,7 +415,7 @@ class CollectionShareRepository:
         )
 
 
-def _source_to_payload(source: AnswerShareSourceDTO) -> dict[str, Any]:
+def _source_to_payload(source: AnswerShareSource) -> dict[str, Any]:
     return {
         "chunk_id": str(source.chunk_id),
         "document_id": str(source.document_id),
@@ -428,8 +428,8 @@ def _source_to_payload(source: AnswerShareSourceDTO) -> dict[str, Any]:
     }
 
 
-def _source_from_payload(payload: dict[str, Any]) -> AnswerShareSourceDTO:
-    return AnswerShareSourceDTO(
+def _source_from_payload(payload: dict[str, Any]) -> AnswerShareSource:
+    return AnswerShareSource(
         chunk_id=uuid.UUID(str(payload["chunk_id"])),
         document_id=uuid.UUID(str(payload["document_id"])),
         document_title=payload.get("document_title"),

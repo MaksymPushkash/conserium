@@ -3,7 +3,7 @@ from urllib.parse import urlencode
 from fastapi import Request
 from fastapi.responses import RedirectResponse, Response
 
-from src.auth.schemas import TokenResponseDTO
+from src.auth.schemas import TokenPair
 from src.settings import settings
 
 OAUTH_STATE_COOKIE = "oauth_state"
@@ -22,7 +22,7 @@ def build_frontend_error_redirect(error: str) -> str:
     return f"{settings.FRONTEND_URL}/auth?{urlencode({'error': error})}"
 
 
-def build_frontend_token_redirect(tokens: TokenResponseDTO) -> str:
+def build_frontend_token_redirect(tokens: TokenPair) -> str:
     fragment_data = {
         "access_token": tokens.access_token,
         "token_type": "bearer",

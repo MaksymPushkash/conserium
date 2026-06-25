@@ -6,7 +6,7 @@ import pytest
 
 from src.documents.ingestion import ExternalItemIngester
 from src.documents.repository import ExternalIntakeItemRecord
-from src.documents.schemas import DocumentDTO, ExternalIngestDTO, IngestDocumentDTO
+from src.documents.schemas import DocumentResult
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
 
@@ -23,33 +23,29 @@ async def test_external_intake_records_queued_document_and_idempotency() -> None
     handler = _external_item_ingester(repository_session, ingest_document)
 
     first = await handler(
-        ExternalIngestDTO(
-            user_id=user_id,
-            api_key_id=api_key_id,
-            provider="Webhook",
-            external_id="message-1",
-            title="Saved URL",
-            type=DocumentType.URL,
-            source_url="https://example.com",
-            tags=["cloud", "cloud"],
-        )
+        user_id=user_id,
+        api_key_id=api_key_id,
+        provider="Webhook",
+        external_id="message-1",
+        title="Saved URL",
+        type=DocumentType.URL,
+        source_url="https://example.com",
+        tags=["cloud", "cloud"],
     )
     second = await handler(
-        ExternalIngestDTO(
-            user_id=user_id,
-            api_key_id=api_key_id,
-            provider="webhook",
-            external_id="message-1",
-            title="Saved URL",
-            type=DocumentType.URL,
-            source_url="https://example.com",
-        )
+        user_id=user_id,
+        api_key_id=api_key_id,
+        provider="webhook",
+        external_id="message-1",
+        title="Saved URL",
+        type=DocumentType.URL,
+        source_url="https://example.com",
     )
 
     assert first.intake_item.status == "QUEUED"
     assert first.intake_item.document_id == ingest_document.document.id
     assert first.intake_item.tags == ["cloud"]
-    assert ingest_document.calls[0].tags == ["cloud"]
+    assert ingest_document.calls[0]["tags"] == ["cloud"]
     assert second.intake_item.id == first.intake_item.id
     assert len(ingest_document.calls) == 1
 
@@ -86,15 +82,13 @@ async def test_external_intake_create_conflict_returns_existing_without_duplicat
     handler = _external_item_ingester(repository_session, ingest_document)
 
     result = await handler(
-        ExternalIngestDTO(
-            user_id=user_id,
-            api_key_id=api_key_id,
-            provider="webhook",
-            external_id="message-1",
-            title="Saved URL",
-            type=DocumentType.URL,
-            source_url="https://example.com",
-        )
+        user_id=user_id,
+        api_key_id=api_key_id,
+        provider="webhook",
+        external_id="message-1",
+        title="Saved URL",
+        type=DocumentType.URL,
+        source_url="https://example.com",
     )
 
     assert result.intake_item.id == existing.id
@@ -112,15 +106,13 @@ async def test_external_intake_marks_failure_when_ingestion_fails() -> None:
 
     with pytest.raises(RuntimeError, match="GitHub rate limited"):
         await handler(
-            ExternalIngestDTO(
-                user_id=user_id,
-                api_key_id=api_key_id,
-                provider="telegram",
-                external_id="message-2",
-                title="Saved text",
-                type=DocumentType.TEXT,
-                raw_content="hello",
-            )
+            user_id=user_id,
+            api_key_id=api_key_id,
+            provider="telegram",
+            external_id="message-2",
+            title="Saved text",
+            type=DocumentType.TEXT,
+            raw_content="hello",
         )
 
     assert repository_session.external_intake_repo.records[0].status == "FAILED"
@@ -208,22 +200,23 @@ class _DocumentRepo:
 
 class _FakeIngestDocument:
     def __init__(self, *, user_id: UUID) -> None:
-        self.calls: list[IngestDocumentDTO] = []
+        self.calls: list[dict[str, object]] = []
         self.document = _document(user_id=user_id)
 
-    async def __call__(self, dto: IngestDocumentDTO) -> DocumentDTO:
-        self.calls.append(dto)
+    async def __call__(self, **kwargs: object) -> DocumentResult:
+        self.calls.append(kwargs)
         return self.document
 
 
 class _FailingIngestDocument:
-    async def __call__(self, dto: IngestDocumentDTO) -> DocumentDTO:
+    async def __call__(self, **kwargs: object) -> DocumentResult:
+        _ = kwargs
         raise RuntimeError("GitHub rate limited")
 
 
-def _document(*, user_id: UUID) -> DocumentDTO:
+def _document(*, user_id: UUID) -> DocumentResult:
     now = datetime.now(UTC)
-    return DocumentDTO(
+    return DocumentResult(
         id=uuid4(),
         user_id=user_id,
         collection_id=None,

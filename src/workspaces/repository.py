@@ -16,11 +16,11 @@ from src.models.shared_workspace import (
     WorkspaceModel,
 )
 from src.workspaces.schemas import (
-    CollectionAuditEventDTO,
-    CollectionMemberDTO,
-    WorkspaceAuditEventDTO,
-    WorkspaceDTO,
-    WorkspaceMemberDTO,
+    CollectionAuditEventRecord,
+    CollectionMemberRecord,
+    WorkspaceAuditEventRecord,
+    WorkspaceMemberRecord,
+    WorkspaceRecord,
 )
 
 if TYPE_CHECKING:
@@ -35,19 +35,19 @@ class SharedWorkspaceRepository:
     def from_session(cls, session: AsyncSession) -> SharedWorkspaceRepository:
         return cls(session)
 
-    async def create_workspace(self, *, user_id: UUID, name: str, description: str | None) -> WorkspaceDTO:
+    async def create_workspace(self, *, user_id: UUID, name: str, description: str | None) -> WorkspaceRecord:
         model = WorkspaceModel(id=uuid.uuid4(), user_id=user_id, name=name.strip(), description=description)
         self._session.add(model)
         await self._session.flush()
-        return _workspace_to_dto(model, access_role="owner")
+        return _workspace_to_record(model, access_role="owner")
 
-    async def get_workspace(self, *, workspace_id: UUID) -> WorkspaceDTO | None:
+    async def get_workspace(self, *, workspace_id: UUID) -> WorkspaceRecord | None:
         model = await self._session.scalar(
             select(WorkspaceModel).where(WorkspaceModel.id == workspace_id, WorkspaceModel.archived_at.is_(None))
         )
-        return _workspace_to_dto(model, access_role="owner") if model else None
+        return _workspace_to_record(model, access_role="owner") if model else None
 
-    async def update_workspace(self, *, workspace_id: UUID, name: str, description: str | None) -> WorkspaceDTO | None:
+    async def update_workspace(self, *, workspace_id: UUID, name: str, description: str | None) -> WorkspaceRecord | None:
         model = await self._session.scalar(
             select(WorkspaceModel).where(WorkspaceModel.id == workspace_id, WorkspaceModel.archived_at.is_(None))
         )
@@ -57,7 +57,7 @@ class SharedWorkspaceRepository:
         model.description = description
         model.updated_at = datetime.now(UTC)
         await self._session.flush()
-        return _workspace_to_dto(model, access_role="owner")
+        return _workspace_to_record(model, access_role="owner")
 
     async def archive_workspace(self, *, workspace_id: UUID) -> bool:
         statement = (
@@ -69,14 +69,14 @@ class SharedWorkspaceRepository:
         result = await self._session.execute(statement)
         return result.scalar_one_or_none() is not None
 
-    async def update_workspace_owner(self, *, workspace_id: UUID, user_id: UUID) -> WorkspaceDTO | None:
+    async def update_workspace_owner(self, *, workspace_id: UUID, user_id: UUID) -> WorkspaceRecord | None:
         model = await self._session.scalar(select(WorkspaceModel).where(WorkspaceModel.id == workspace_id))
         if model is None:
             return None
         model.user_id = user_id
         model.updated_at = datetime.now(UTC)
         await self._session.flush()
-        return _workspace_to_dto(model, access_role="owner")
+        return _workspace_to_record(model, access_role="owner")
 
     async def transfer_workspace_owner_if_current(
         self,
@@ -84,7 +84,7 @@ class SharedWorkspaceRepository:
         workspace_id: UUID,
         current_owner_user_id: UUID,
         new_owner_user_id: UUID,
-    ) -> WorkspaceDTO | None:
+    ) -> WorkspaceRecord | None:
         now = datetime.now(UTC)
         statement = (
             update(WorkspaceModel)
@@ -97,9 +97,9 @@ class SharedWorkspaceRepository:
         )
         result = await self._session.execute(statement)
         model = result.scalar_one_or_none()
-        return _workspace_to_dto(model, access_role="owner") if model else None
+        return _workspace_to_record(model, access_role="owner") if model else None
 
-    async def list_workspaces_for_user(self, *, user_id: UUID, limit: int = 100, offset: int = 0) -> tuple[list[WorkspaceDTO], int]:
+    async def list_workspaces_for_user(self, *, user_id: UUID, limit: int = 100, offset: int = 0) -> tuple[list[WorkspaceRecord], int]:
         member_workspace_ids = select(WorkspaceMemberModel.workspace_id).where(WorkspaceMemberModel.user_id == user_id)
         condition = ((WorkspaceModel.user_id == user_id) | WorkspaceModel.id.in_(member_workspace_ids)) & WorkspaceModel.archived_at.is_(None)
         total_result = await self._session.execute(select(func.count()).select_from(WorkspaceModel).where(condition))
@@ -115,12 +115,12 @@ class SharedWorkspaceRepository:
             .offset(offset)
         )
         items = [
-            _workspace_to_dto(model, access_role="owner" if model.user_id == user_id else role)
+            _workspace_to_record(model, access_role="owner" if model.user_id == user_id else role)
             for model, role in result.all()
         ]
         return items, total_result.scalar_one()
 
-    async def get_workspace_member(self, *, workspace_id: UUID, member_id: UUID) -> WorkspaceMemberDTO | None:
+    async def get_workspace_member(self, *, workspace_id: UUID, member_id: UUID) -> WorkspaceMemberRecord | None:
         result = await self._session.execute(
             select(WorkspaceMemberModel).where(
                 WorkspaceMemberModel.workspace_id == workspace_id,
@@ -128,9 +128,9 @@ class SharedWorkspaceRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return _workspace_member_to_dto(model) if model else None
+        return _workspace_member_to_record(model) if model else None
 
-    async def get_workspace_member_for_user(self, *, workspace_id: UUID, user_id: UUID) -> WorkspaceMemberDTO | None:
+    async def get_workspace_member_for_user(self, *, workspace_id: UUID, user_id: UUID) -> WorkspaceMemberRecord | None:
         result = await self._session.execute(
             select(WorkspaceMemberModel).where(
                 WorkspaceMemberModel.workspace_id == workspace_id,
@@ -138,15 +138,15 @@ class SharedWorkspaceRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return _workspace_member_to_dto(model) if model else None
+        return _workspace_member_to_record(model) if model else None
 
-    async def list_workspace_members(self, *, workspace_id: UUID) -> list[WorkspaceMemberDTO]:
+    async def list_workspace_members(self, *, workspace_id: UUID) -> list[WorkspaceMemberRecord]:
         result = await self._session.execute(
             select(WorkspaceMemberModel)
             .where(WorkspaceMemberModel.workspace_id == workspace_id)
             .order_by(WorkspaceMemberModel.created_at.asc())
         )
-        return [_workspace_member_to_dto(model) for model in result.scalars().all()]
+        return [_workspace_member_to_record(model) for model in result.scalars().all()]
 
     async def upsert_workspace_member(
         self,
@@ -156,7 +156,7 @@ class SharedWorkspaceRepository:
         role: str,
         invited_by_user_id: UUID,
         user_id: UUID | None,
-    ) -> WorkspaceMemberDTO:
+    ) -> WorkspaceMemberRecord:
         now = datetime.now(UTC)
         values = {
             "id": uuid.uuid4(),
@@ -178,16 +178,16 @@ class SharedWorkspaceRepository:
             .returning(WorkspaceMemberModel)
         )
         result = await self._session.execute(statement)
-        return _workspace_member_to_dto(result.scalar_one())
+        return _workspace_member_to_record(result.scalar_one())
 
-    async def update_workspace_member_role(self, *, member_id: UUID, role: str) -> WorkspaceMemberDTO | None:
+    async def update_workspace_member_role(self, *, member_id: UUID, role: str) -> WorkspaceMemberRecord | None:
         result = await self._session.execute(select(WorkspaceMemberModel).where(WorkspaceMemberModel.id == member_id))
         model = result.scalar_one_or_none()
         if model is None:
             return None
         model.role = role
         model.updated_at = datetime.now(UTC)
-        return _workspace_member_to_dto(model)
+        return _workspace_member_to_record(model)
 
     async def remove_workspace_member(self, *, member_id: UUID) -> bool:
         existing = await self._session.scalar(select(WorkspaceMemberModel.id).where(WorkspaceMemberModel.id == member_id))
@@ -203,7 +203,7 @@ class SharedWorkspaceRepository:
         actor_user_id: UUID,
         event_type: str,
         metadata: dict[str, object],
-    ) -> WorkspaceAuditEventDTO:
+    ) -> WorkspaceAuditEventRecord:
         model = WorkspaceAuditEventModel(
             id=uuid.uuid4(),
             workspace_id=workspace_id,
@@ -213,7 +213,7 @@ class SharedWorkspaceRepository:
         )
         self._session.add(model)
         await self._session.flush()
-        return _workspace_audit_to_dto(model)
+        return _workspace_audit_to_record(model)
 
     async def list_workspace_audit_events(
         self,
@@ -221,7 +221,7 @@ class SharedWorkspaceRepository:
         workspace_id: UUID,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list[WorkspaceAuditEventDTO], int]:
+    ) -> tuple[list[WorkspaceAuditEventRecord], int]:
         total_result = await self._session.execute(
             select(func.count()).select_from(WorkspaceAuditEventModel).where(WorkspaceAuditEventModel.workspace_id == workspace_id)
         )
@@ -232,9 +232,9 @@ class SharedWorkspaceRepository:
             .limit(limit)
             .offset(offset)
         )
-        return [_workspace_audit_to_dto(model) for model in result.scalars().all()], total_result.scalar_one()
+        return [_workspace_audit_to_record(model) for model in result.scalars().all()], total_result.scalar_one()
 
-    async def get_member(self, *, collection_id: UUID, member_id: UUID) -> CollectionMemberDTO | None:
+    async def get_member(self, *, collection_id: UUID, member_id: UUID) -> CollectionMemberRecord | None:
         result = await self._session.execute(
             select(CollectionMemberModel).where(
                 CollectionMemberModel.collection_id == collection_id,
@@ -242,9 +242,9 @@ class SharedWorkspaceRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return _member_to_dto(model) if model else None
+        return _member_to_record(model) if model else None
 
-    async def get_member_for_user(self, *, collection_id: UUID, user_id: UUID) -> CollectionMemberDTO | None:
+    async def get_member_for_user(self, *, collection_id: UUID, user_id: UUID) -> CollectionMemberRecord | None:
         result = await self._session.execute(
             select(CollectionMemberModel).where(
                 CollectionMemberModel.collection_id == collection_id,
@@ -252,15 +252,15 @@ class SharedWorkspaceRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return _member_to_dto(model) if model else None
+        return _member_to_record(model) if model else None
 
-    async def list_members(self, *, collection_id: UUID) -> list[CollectionMemberDTO]:
+    async def list_members(self, *, collection_id: UUID) -> list[CollectionMemberRecord]:
         result = await self._session.execute(
             select(CollectionMemberModel)
             .where(CollectionMemberModel.collection_id == collection_id)
             .order_by(CollectionMemberModel.created_at.asc())
         )
-        return [_member_to_dto(model) for model in result.scalars().all()]
+        return [_member_to_record(model) for model in result.scalars().all()]
 
     async def upsert_member(
         self,
@@ -270,7 +270,7 @@ class SharedWorkspaceRepository:
         role: str,
         invited_by_user_id: UUID,
         user_id: UUID | None,
-    ) -> CollectionMemberDTO:
+    ) -> CollectionMemberRecord:
         now = datetime.now(UTC)
         values = {
             "id": uuid.uuid4(),
@@ -292,16 +292,16 @@ class SharedWorkspaceRepository:
             .returning(CollectionMemberModel)
         )
         result = await self._session.execute(statement)
-        return _member_to_dto(result.scalar_one())
+        return _member_to_record(result.scalar_one())
 
-    async def update_member_role(self, *, member_id: UUID, role: str) -> CollectionMemberDTO | None:
+    async def update_member_role(self, *, member_id: UUID, role: str) -> CollectionMemberRecord | None:
         result = await self._session.execute(select(CollectionMemberModel).where(CollectionMemberModel.id == member_id))
         model = result.scalar_one_or_none()
         if model is None:
             return None
         model.role = role
         model.updated_at = datetime.now(UTC)
-        return _member_to_dto(model)
+        return _member_to_record(model)
 
     async def remove_member(self, *, member_id: UUID) -> bool:
         existing = await self._session.scalar(select(CollectionMemberModel.id).where(CollectionMemberModel.id == member_id))
@@ -317,7 +317,7 @@ class SharedWorkspaceRepository:
         actor_user_id: UUID,
         event_type: str,
         metadata: dict[str, object],
-    ) -> CollectionAuditEventDTO:
+    ) -> CollectionAuditEventRecord:
         model = CollectionAuditEventModel(
             id=uuid.uuid4(),
             collection_id=collection_id,
@@ -327,7 +327,7 @@ class SharedWorkspaceRepository:
         )
         self._session.add(model)
         await self._session.flush()
-        return _audit_to_dto(model)
+        return _audit_to_record(model)
 
     async def list_audit_events(
         self,
@@ -335,7 +335,7 @@ class SharedWorkspaceRepository:
         collection_id: UUID,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list[CollectionAuditEventDTO], int]:
+    ) -> tuple[list[CollectionAuditEventRecord], int]:
         total_result = await self._session.execute(
             select(func.count()).select_from(CollectionAuditEventModel).where(CollectionAuditEventModel.collection_id == collection_id)
         )
@@ -346,11 +346,11 @@ class SharedWorkspaceRepository:
             .limit(limit)
             .offset(offset)
         )
-        return [_audit_to_dto(model) for model in result.scalars().all()], total_result.scalar_one()
+        return [_audit_to_record(model) for model in result.scalars().all()], total_result.scalar_one()
 
 
-def _member_to_dto(model: CollectionMemberModel) -> CollectionMemberDTO:
-    return CollectionMemberDTO(
+def _member_to_record(model: CollectionMemberModel) -> CollectionMemberRecord:
+    return CollectionMemberRecord(
         id=model.id,
         collection_id=model.collection_id,
         user_id=model.user_id,
@@ -362,8 +362,8 @@ def _member_to_dto(model: CollectionMemberModel) -> CollectionMemberDTO:
     )
 
 
-def _audit_to_dto(model: CollectionAuditEventModel) -> CollectionAuditEventDTO:
-    return CollectionAuditEventDTO(
+def _audit_to_record(model: CollectionAuditEventModel) -> CollectionAuditEventRecord:
+    return CollectionAuditEventRecord(
         id=model.id,
         collection_id=model.collection_id,
         actor_user_id=model.actor_user_id,
@@ -373,8 +373,8 @@ def _audit_to_dto(model: CollectionAuditEventModel) -> CollectionAuditEventDTO:
     )
 
 
-def _workspace_to_dto(model: WorkspaceModel, *, access_role: str | None) -> WorkspaceDTO:
-    return WorkspaceDTO(
+def _workspace_to_record(model: WorkspaceModel, *, access_role: str | None) -> WorkspaceRecord:
+    return WorkspaceRecord(
         id=model.id,
         user_id=model.user_id,
         name=model.name,
@@ -386,8 +386,8 @@ def _workspace_to_dto(model: WorkspaceModel, *, access_role: str | None) -> Work
     )
 
 
-def _workspace_member_to_dto(model: WorkspaceMemberModel) -> WorkspaceMemberDTO:
-    return WorkspaceMemberDTO(
+def _workspace_member_to_record(model: WorkspaceMemberModel) -> WorkspaceMemberRecord:
+    return WorkspaceMemberRecord(
         id=model.id,
         workspace_id=model.workspace_id,
         user_id=model.user_id,
@@ -400,8 +400,8 @@ def _workspace_member_to_dto(model: WorkspaceMemberModel) -> WorkspaceMemberDTO:
     )
 
 
-def _workspace_audit_to_dto(model: WorkspaceAuditEventModel) -> WorkspaceAuditEventDTO:
-    return WorkspaceAuditEventDTO(
+def _workspace_audit_to_record(model: WorkspaceAuditEventModel) -> WorkspaceAuditEventRecord:
+    return WorkspaceAuditEventRecord(
         id=model.id,
         workspace_id=model.workspace_id,
         actor_user_id=model.actor_user_id,

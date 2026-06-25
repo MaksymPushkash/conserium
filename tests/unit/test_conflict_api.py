@@ -5,13 +5,14 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
+from src.conflicts.dependencies import get_conflict_llm_service, get_conflict_service
 from src.conflicts.schemas import (
-    ConflictDetectionResultDTO,
-    ConflictDocumentDTO,
-    ConflictFindingDTO,
+    ConflictDetectionResult,
+    ConflictDocument,
+    ConflictFinding,
 )
-from src.conflicts.service import get_conflict_llm_service, get_conflict_service, to_conflict_detection_response
+from src.conflicts.service import to_conflict_detection_response
 from src.main import create_app
 from src.models.user import UserModel
 from src.postgres import get_db_session
@@ -66,12 +67,13 @@ class _FakeRepositorySession:
 
 
 class _ReturningConflictService:
-    def __init__(self, result: ConflictDetectionResultDTO) -> None:
+    def __init__(self, result: ConflictDetectionResult) -> None:
         self._result = result
         self.received_user_id: uuid.UUID | None = None
 
-    async def detect(self, session, *, dto, llm_service):
-        self.received_user_id = dto.user_id
+    async def detect(self, session, *, user_id, collection_id, limit, llm_service):
+        _ = collection_id, limit, llm_service
+        self.received_user_id = user_id
         return to_conflict_detection_response(self._result)
 
 
@@ -90,14 +92,14 @@ def test_detect_conflicts_route_serializes_response() -> None:
     user = _make_user()
     document_id = uuid.uuid4()
     handler = _ReturningConflictService(
-        ConflictDetectionResultDTO(
+        ConflictDetectionResult(
             collection_id=None,
             analyzed_document_count=2,
             conflicts=[
-                ConflictFindingDTO(
+                ConflictFinding(
                     subject="Typing",
                     summary="Saved materials contain opposing guidance about typing.",
-                    documents=[ConflictDocumentDTO(id=document_id, title="Typing Notes")],
+                    documents=[ConflictDocument(id=document_id, title="Typing Notes")],
                     evidence=["Use type hints.", "Avoid type hints."],
                     score=0.7,
                 )
@@ -109,7 +111,7 @@ def test_detect_conflicts_route_serializes_response() -> None:
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)

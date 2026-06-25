@@ -1,18 +1,11 @@
 from datetime import UTC, datetime, timedelta
-from typing import Protocol, cast
+from typing import cast
 from uuid import UUID
 
 from jose import JWTError, jwt
 
 from src.kit.exceptions import InvalidTokenException
 from src.settings import settings
-
-
-class JWTServiceProtocol(Protocol):
-    def generate_access_token(self, user_id: UUID) -> str: ...
-    def generate_refresh_token(self, user_id: UUID) -> str: ...
-    def verify_access_token(self, token: str) -> UUID: ...
-    def verify_refresh_token(self, token: str) -> UUID: ...
 
 
 class JWTService:

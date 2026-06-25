@@ -1,11 +1,11 @@
-from src.kit.ports.ai.llm_service import ILLMService
+from src.kit.ai.llm_service import LLMService
 from src.query.agents.state import ConseriumQueryState
 
 ABSTENTION_ANSWER = "The provided context does not contain enough relevant information to answer this question."
 
 
 class SynthesisAgent:
-    def __init__(self, llm_service: ILLMService) -> None:
+    def __init__(self, llm_service: LLMService) -> None:
         self._llm_service = llm_service
 
     async def synthesize(self, state: ConseriumQueryState) -> ConseriumQueryState:

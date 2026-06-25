@@ -8,7 +8,7 @@ from src.documents.document_repository import DocumentRepository
 from src.documents.status_cache import RedisDocumentStatusCache
 from src.repo_syncs.github_repository_client import GitHubRepositoryClient
 from src.repo_syncs.repository import RepoSyncRepository
-from src.repo_syncs.schemas import RepoSyncDTO, RunRepoSyncDTO
+from src.repo_syncs.schemas import RepoSyncResult, RunRepoSyncPayload
 from src.repo_syncs.service import (
     RepoSyncOutboxDrainer,
     RepoSyncRunner,
@@ -43,7 +43,7 @@ async def run_due_repo_syncs() -> dict[str, int]:
             for repo_sync in repo_syncs:
                 try:
                     await handler(
-                        RunRepoSyncDTO(
+                        RunRepoSyncPayload(
                             user_id=repo_sync.user_id,
                             repo_sync_id=repo_sync.id,
                             max_files=50,
@@ -82,7 +82,7 @@ async def drain_repo_sync_outbox(*, limit: int = 100) -> dict[str, int]:
         await redis.aclose()
 
 
-async def _list_due_repo_syncs(service: RepoSyncService, *, cutoff: datetime) -> list[RepoSyncDTO]:
+async def _list_due_repo_syncs(service: RepoSyncService, *, cutoff: datetime) -> list[RepoSyncResult]:
     return await service.repo_sync_repo.list_due_for_sync(
         before=cutoff,
         limit=settings.REPO_SYNC_BATCH_LIMIT,

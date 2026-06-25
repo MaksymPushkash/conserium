@@ -5,11 +5,11 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from src.documents.types import DocumentType
-from src.query.schemas import QuerySourceDTO
+from src.query.schemas import QuerySource
 
 
 @dataclass(frozen=True, slots=True)
-class DraftTemplateDTO:
+class DraftTemplate:
     id: str
     name: str
     description: str
@@ -18,7 +18,7 @@ class DraftTemplateDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class DraftGenerateDTO:
+class DraftGenerationPayload:
     user_id: UUID
     prompt: str
     draft_id: UUID | None = None
@@ -35,7 +35,7 @@ class DraftGenerateDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class DraftResultDTO:
+class DraftResult:
     draft_id: UUID
     version_id: UUID
     version_number: int
@@ -43,12 +43,12 @@ class DraftResultDTO:
     template_id: str
     scope_type: str
     markdown: str
-    sources: list[QuerySourceDTO]
+    sources: list[QuerySource]
     gaps: list[str]
 
 
 @dataclass(frozen=True, slots=True)
-class DraftOutlineDTO:
+class DraftOutline:
     prompt: str
     template_id: str
     scope_type: str
@@ -57,7 +57,7 @@ class DraftOutlineDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class DraftListItemDTO:
+class DraftListItem:
     id: UUID
     collection_id: UUID | None
     title: str
@@ -72,13 +72,13 @@ class DraftListItemDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class DraftListDTO:
-    items: list[DraftListItemDTO]
+class DraftListResult:
+    items: list[DraftListItem]
     total: int
 
 
 @dataclass(frozen=True, slots=True)
-class DraftDetailDTO:
+class DraftDetail:
     id: UUID
     collection_id: UUID | None
     current_version_id: UUID
@@ -90,7 +90,7 @@ class DraftDetailDTO:
     knowledge_gap_id: str | None
     scope_metadata: dict[str, object]
     markdown: str
-    sources: list[QuerySourceDTO]
+    sources: list[QuerySource]
     gaps: list[str]
     version_number: int
     created_at: datetime
@@ -98,7 +98,7 @@ class DraftDetailDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class DraftVersionDTO:
+class DraftVersion:
     id: UUID
     draft_id: UUID
     version_number: int
@@ -110,7 +110,7 @@ class DraftVersionDTO:
     topic: str | None
     knowledge_gap_id: str | None
     markdown: str
-    sources: list[QuerySourceDTO]
+    sources: list[QuerySource]
     gaps: list[str]
     created_at: datetime
 

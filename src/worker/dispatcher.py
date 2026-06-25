@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from typing import Any
 
 from src.worker.app import celery_app
@@ -11,30 +10,7 @@ from src.worker.task_names import (
 )
 
 
-class ITaskDispatcher(ABC):
-    @abstractmethod
-    async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None: ...
-
-    @abstractmethod
-    async def dispatch_process_image_document(self, document_id: str) -> None: ...
-
-    @abstractmethod
-    async def dispatch_repo_sync_outbox(self) -> None: ...
-
-    @abstractmethod
-    async def dispatch_document_processing_outbox(self) -> None: ...
-
-    @abstractmethod
-    async def dispatch_embed_and_finalize_document(
-        self,
-        *,
-        document_id: str,
-        raw_text: str,
-        chunks_data: list[dict[str, Any]],
-        expected_content_hash: str | None = None,
-    ) -> None: ...
-
-class CeleryTaskDispatcher(ITaskDispatcher):
+class CeleryTaskDispatcher:
     async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None:
         celery_app.send_task(
             DOCUMENT_PROCESS_TASK,

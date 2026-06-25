@@ -6,28 +6,27 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from src.integrations.clients import WebResourceFetcherProtocol  # noqa: TC001
 from src.integrations.web_resource_fetcher import HTTPWebResourceFetcher
 from src.kit.exceptions import ResourceNotFoundException, ValidationException
 from src.knowledge_gaps.service import area_coverage, rubric_for_topic, to_knowledge_gap_area_response
-from src.learning_goals.repository import LearningGoalRecordDTO, LearningGoalRepository, LearningGoalResourceRecordDTO
+from src.learning_goals.repository import LearningGoalRecord, LearningGoalRepository, LearningGoalResourceRecord
 from src.learning_goals.schemas import (
-    CreateLearningGoalDTO,
-    LearningGoalDTO,
+    CreateLearningGoalPayload,
     LearningGoalRequest,
     LearningGoalResponse,
+    LearningGoalResult,
     LearningGoalUpdateRequest,
-    RankedLearningResourceDTO,
+    RankedLearningResource,
     RankedLearningResourceResponse,
-    SuggestedLearningResourceDTO,
+    SuggestedLearningResource,
     SuggestedLearningResourceResponse,
-    UpdateLearningGoalDTO,
+    UpdateLearningGoalPayload,
 )
 from src.postgres import AsyncSession  # noqa: TC001
 from src.topics.repository import TopicRepository
 
 if TYPE_CHECKING:
-    from src.knowledge_gaps.schemas import KnowledgeGapAreaDTO, KnowledgeGapAreaResponse
+    from src.knowledge_gaps.schemas import KnowledgeGapArea, KnowledgeGapAreaResponse
     from src.topics.repository import TopicDocumentRecord
 
 
@@ -36,11 +35,11 @@ LEARNING_RESOURCE_CACHE_TTL = timedelta(hours=24)
 
 class LearningGoalService:
     async def list_goals(self, session: AsyncSession, *, user_id: UUID) -> list[LearningGoalResponse]:
-        goals = await self._list_dtos(session, user_id=user_id)
+        goals = await self._list_results(session, user_id=user_id)
         return [to_learning_goal_response(goal) for goal in goals]
 
     async def reminders(self, session: AsyncSession, *, user_id: UUID) -> list[LearningGoalResponse]:
-        goals = await self._list_dtos(session, user_id=user_id)
+        goals = await self._list_results(session, user_id=user_id)
         return [
             to_learning_goal_response(goal)
             for goal in goals
@@ -48,7 +47,7 @@ class LearningGoalService:
         ]
 
     async def create(self, session: AsyncSession, *, user_id: UUID, body: LearningGoalRequest) -> LearningGoalResponse:
-        dto = CreateLearningGoalDTO(
+        dto = CreateLearningGoalPayload(
             user_id=user_id,
             topic=body.topic,
             description=body.description,
@@ -64,7 +63,7 @@ class LearningGoalService:
         )
         detail = await TopicRepository.from_session(session).get_detail_by_name(dto.user_id, name=topic, document_limit=200)
         await session.flush()
-        return to_learning_goal_response(learning_goal_to_dto(record, detail.documents if detail else []))
+        return to_learning_goal_response(learning_goal_result(record, detail.documents if detail else []))
 
     async def update(
         self,
@@ -74,7 +73,7 @@ class LearningGoalService:
         goal_id: UUID,
         body: LearningGoalUpdateRequest,
     ) -> LearningGoalResponse:
-        dto = UpdateLearningGoalDTO(
+        dto = UpdateLearningGoalPayload(
             user_id=user_id,
             goal_id=goal_id,
             topic=body.topic,
@@ -97,7 +96,7 @@ class LearningGoalService:
         )
         detail = await TopicRepository.from_session(session).get_detail_by_name(dto.user_id, name=topic, document_limit=200)
         await session.flush()
-        return to_learning_goal_response(learning_goal_to_dto(record, detail.documents if detail else []))
+        return to_learning_goal_response(learning_goal_result(record, detail.documents if detail else []))
 
     async def delete(self, session: AsyncSession, *, user_id: UUID, goal_id: UUID) -> None:
         repository = LearningGoalRepository.from_session(session)
@@ -114,7 +113,7 @@ class LearningGoalService:
         user_id: UUID,
         goal_id: UUID,
         refresh: bool,
-        web_resource_fetcher: WebResourceFetcherProtocol,
+        web_resource_fetcher: HTTPWebResourceFetcher,
     ) -> list[RankedLearningResourceResponse]:
         repository = LearningGoalRepository.from_session(session)
         record = await repository.get_by_id(goal_id)
@@ -130,7 +129,7 @@ class LearningGoalService:
         detail = await TopicRepository.from_session(session).get_detail_by_name(user_id, name=record.topic, document_limit=200)
         await session.flush()
 
-        goal = learning_goal_to_dto(record, detail.documents if detail else [])
+        goal = learning_goal_result(record, detail.documents if detail else [])
         ranked = await self._rank_resources(goal.suggested_resources, web_resource_fetcher)
         ranked = sorted(ranked, key=lambda resource: resource.score, reverse=True)
         refreshed_at = datetime.now(UTC)
@@ -138,30 +137,30 @@ class LearningGoalService:
         await self._store_resources(session, goal_id, ranked)
         return [to_ranked_resource_response(resource) for resource in ranked]
 
-    async def _list_dtos(self, session: AsyncSession, *, user_id: UUID) -> list[LearningGoalDTO]:
+    async def _list_results(self, session: AsyncSession, *, user_id: UUID) -> list[LearningGoalResult]:
         records = await LearningGoalRepository.from_session(session).list_by_user_id(user_id)
         details = await TopicRepository.from_session(session).get_details_by_names(
             user_id,
             names={record.topic for record in records},
             document_limit=200,
         )
-        goals: list[LearningGoalDTO] = []
+        goals: list[LearningGoalResult] = []
         for record in records:
             detail = details.get(record.topic.casefold())
-            goals.append(learning_goal_to_dto(record, detail.documents if detail else []))
+            goals.append(learning_goal_result(record, detail.documents if detail else []))
         return goals
 
     async def _rank_resources(
         self,
-        resources: list[SuggestedLearningResourceDTO],
-        web_resource_fetcher: WebResourceFetcherProtocol,
-    ) -> list[RankedLearningResourceDTO]:
+        resources: list[SuggestedLearningResource],
+        web_resource_fetcher: HTTPWebResourceFetcher,
+    ) -> list[RankedLearningResource]:
         semaphore = asyncio.Semaphore(3)
 
-        async def rank(resource: SuggestedLearningResourceDTO) -> RankedLearningResourceDTO:
+        async def rank(resource: SuggestedLearningResource) -> RankedLearningResource:
             async with semaphore:
                 fetched = await web_resource_fetcher.fetch(resource.url) if resource.url else None
-            return RankedLearningResourceDTO(
+            return RankedLearningResource(
                 area=resource.area,
                 title=fetched.title if fetched and fetched.title else resource.title,
                 search_query=resource.search_query,
@@ -174,7 +173,7 @@ class LearningGoalService:
 
         ranked = await asyncio.gather(*(rank(resource) for resource in resources), return_exceptions=True)
         return [
-            result if isinstance(result, RankedLearningResourceDTO) else unfetched_ranked_resource(resource, result)
+            result if isinstance(result, RankedLearningResource) else unfetched_ranked_resource(resource, result)
             for resource, result in zip(resources, ranked, strict=True)
         ]
 
@@ -182,12 +181,12 @@ class LearningGoalService:
         self,
         session: AsyncSession,
         goal_id: UUID,
-        resources: list[RankedLearningResourceDTO],
+        resources: list[RankedLearningResource],
     ) -> None:
         await LearningGoalRepository.from_session(session).replace_cached_resources(
             goal_id=goal_id,
             resources=[
-                LearningGoalResourceRecordDTO(
+                LearningGoalResourceRecord(
                     goal_id=goal_id,
                     area=resource.area,
                     title=resource.title,
@@ -205,12 +204,12 @@ class LearningGoalService:
 
 
 
-def learning_goal_to_dto(record: LearningGoalRecordDTO, documents: list[TopicDocumentRecord]) -> LearningGoalDTO:
+def learning_goal_result(record: LearningGoalRecord, documents: list[TopicDocumentRecord]) -> LearningGoalResult:
     areas = [area_coverage(area, documents) for area in rubric_for_topic(record.topic)]
     covered_count = sum(1 for area in areas if area.covered)
     missing_count = len(areas) - covered_count
     missing = missing_areas(areas)
-    return LearningGoalDTO(
+    return LearningGoalResult(
         id=record.id,
         user_id=record.user_id,
         topic=record.topic,
@@ -230,8 +229,8 @@ def learning_goal_to_dto(record: LearningGoalRecordDTO, documents: list[TopicDoc
     )
 
 
-def ranked_resource_from_record(record: LearningGoalResourceRecordDTO) -> RankedLearningResourceDTO:
-    return RankedLearningResourceDTO(
+def ranked_resource_from_record(record: LearningGoalResourceRecord) -> RankedLearningResource:
+    return RankedLearningResource(
         area=record.area,
         title=record.title,
         search_query=record.search_query,
@@ -245,13 +244,13 @@ def ranked_resource_from_record(record: LearningGoalResourceRecordDTO) -> Ranked
     )
 
 
-def missing_areas(areas: list[KnowledgeGapAreaDTO]) -> list[KnowledgeGapAreaDTO]:
+def missing_areas(areas: list[KnowledgeGapArea]) -> list[KnowledgeGapArea]:
     return [area for area in areas if not area.covered]
 
 
-def suggested_resources(topic: str, gaps: list[KnowledgeGapAreaDTO]) -> list[SuggestedLearningResourceDTO]:
+def suggested_resources(topic: str, gaps: list[KnowledgeGapArea]) -> list[SuggestedLearningResource]:
     return [
-        SuggestedLearningResourceDTO(
+        SuggestedLearningResource(
             area=area.name,
             title=f"{topic}: {area.name}",
             search_query=f"{topic} {area.name} practical guide",
@@ -288,7 +287,7 @@ def resource_url(topic: str, area: str) -> str | None:
     return None
 
 
-def resource_score(resource: SuggestedLearningResourceDTO, fetched: bool) -> float:
+def resource_score(resource: SuggestedLearningResource, fetched: bool) -> float:
     score = 0.4
     if resource.url:
         score += 0.35
@@ -297,8 +296,8 @@ def resource_score(resource: SuggestedLearningResourceDTO, fetched: bool) -> flo
     return min(score, 1.0)
 
 
-def unfetched_ranked_resource(resource: SuggestedLearningResourceDTO, exc: BaseException | None = None) -> RankedLearningResourceDTO:
-    return RankedLearningResourceDTO(
+def unfetched_ranked_resource(resource: SuggestedLearningResource, exc: BaseException | None = None) -> RankedLearningResource:
+    return RankedLearningResource(
         area=resource.area,
         title=resource.title,
         search_query=resource.search_query,
@@ -310,7 +309,7 @@ def unfetched_ranked_resource(resource: SuggestedLearningResourceDTO, exc: BaseE
     )
 
 
-def deadline_status(record: LearningGoalRecordDTO) -> str:
+def deadline_status(record: LearningGoalRecord) -> str:
     if record.status == "completed":
         return "completed"
     remaining = days_remaining(record)
@@ -323,7 +322,7 @@ def deadline_status(record: LearningGoalRecordDTO) -> str:
     return "upcoming"
 
 
-def days_remaining(record: LearningGoalRecordDTO) -> int | None:
+def days_remaining(record: LearningGoalRecord) -> int | None:
     if record.target_date is None:
         return None
     return (record.target_date - datetime.now(UTC).date()).days
@@ -356,11 +355,11 @@ def get_learning_goal_service() -> LearningGoalService:
     return learning_goals
 
 
-def get_web_resource_fetcher() -> WebResourceFetcherProtocol:
+def get_web_resource_fetcher() -> HTTPWebResourceFetcher:
     return HTTPWebResourceFetcher()
 
 
-def to_learning_goal_response(dto: LearningGoalDTO) -> LearningGoalResponse:
+def to_learning_goal_response(dto: LearningGoalResult) -> LearningGoalResponse:
     return LearningGoalResponse(
         id=dto.id,
         user_id=dto.user_id,
@@ -381,11 +380,11 @@ def to_learning_goal_response(dto: LearningGoalDTO) -> LearningGoalResponse:
     )
 
 
-def to_gap_area_response(dto: KnowledgeGapAreaDTO) -> KnowledgeGapAreaResponse:
+def to_gap_area_response(dto: KnowledgeGapArea) -> KnowledgeGapAreaResponse:
     return to_knowledge_gap_area_response(dto)
 
 
-def to_suggested_resource_response(dto: SuggestedLearningResourceDTO) -> SuggestedLearningResourceResponse:
+def to_suggested_resource_response(dto: SuggestedLearningResource) -> SuggestedLearningResourceResponse:
     return SuggestedLearningResourceResponse(
         area=dto.area,
         title=dto.title,
@@ -395,7 +394,7 @@ def to_suggested_resource_response(dto: SuggestedLearningResourceDTO) -> Suggest
     )
 
 
-def to_ranked_resource_response(dto: RankedLearningResourceDTO) -> RankedLearningResourceResponse:
+def to_ranked_resource_response(dto: RankedLearningResource) -> RankedLearningResourceResponse:
     return RankedLearningResourceResponse(
         area=dto.area,
         title=dto.title,
@@ -418,7 +417,7 @@ __all__ = [
     "LearningGoalService",
     "get_learning_goal_service",
     "get_web_resource_fetcher",
-    "learning_goal_to_dto",
+    "learning_goal_result",
     "learning_goals",
     "normalize_goal_status",
     "normalize_goal_topic",

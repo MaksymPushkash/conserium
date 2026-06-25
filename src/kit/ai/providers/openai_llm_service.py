@@ -3,13 +3,13 @@ from typing import Any, cast
 
 from openai import AsyncOpenAI
 
-from src.kit.ports.ai.llm_service import ILLMService, IStreamingLLMService
+from src.kit.ai.llm_service import LLMService, StreamingLLMService
 from src.observability.metrics_registry import metrics_registry
 from src.query.schemas import RefragChunk, RefragContextPackage
 from src.settings import settings
 
 
-class OpenAILLMService(ILLMService, IStreamingLLMService):
+class OpenAILLMService(LLMService, StreamingLLMService):
     def __init__(self) -> None:
         self._client: AsyncOpenAI | None = None
         self._model = settings.OPENAI_LLM_MODEL

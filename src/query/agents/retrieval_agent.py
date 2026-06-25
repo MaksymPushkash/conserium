@@ -1,12 +1,12 @@
 import re
 
 from src.documents.types import DocumentType
-from src.kit.ports.ai.reranker import IReranker
 from src.observability.metrics_registry import metrics_registry
 from src.query.agents.state import ConseriumQueryState
-from src.query.schemas import QuerySourceDTO
+from src.query.schemas import QuerySource
 from src.query.services.retrieval.chunk_quality_filter import ChunkQualityFilter, ChunkRelevanceFilter
 from src.query.services.retrieval.hybrid_retrieval_service import HybridRetrievalService
+from src.query.services.retrieval.reranker import Reranker
 from src.settings import settings
 
 
@@ -14,7 +14,7 @@ class RetrievalAgent:
     def __init__(
         self,
         retrieval_service: HybridRetrievalService,
-        reranker: IReranker | None = None,
+        reranker: Reranker | None = None,
         chunk_quality_filter: ChunkQualityFilter | None = None,
         chunk_relevance_filter: ChunkRelevanceFilter | None = None,
     ) -> None:
@@ -99,7 +99,7 @@ def _fallback_source_count(limit: int, *, document_scoped: bool) -> int:
     return min(max(3, limit // 2), limit)
 
 
-def _merge_relevance_fallbacks(primary: list[QuerySourceDTO], fallback: list[QuerySourceDTO]) -> list[QuerySourceDTO]:
+def _merge_relevance_fallbacks(primary: list[QuerySource], fallback: list[QuerySource]) -> list[QuerySource]:
     merged = list(primary)
     seen = {source.chunk_id for source in merged}
     for source in fallback:

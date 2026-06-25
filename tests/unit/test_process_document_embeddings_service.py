@@ -13,9 +13,9 @@ from src.documents.repository import (
     RelatedDocumentRecord,
 )
 from src.documents.status import DocumentStatus
-from src.documents.status_cache import IDocumentStatusCache
+from src.documents.status_cache import RedisDocumentStatusCache
 from src.documents.types import DocumentType
-from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
+from src.kit.ai.embedding_provider import EmbeddingProvider
 from src.models.chunk import ChunkModel
 from src.models.document import DocumentModel
 
@@ -158,7 +158,7 @@ class _FakeRepositorySession:
         return None
 
 
-class _FakeStatusCache(IDocumentStatusCache):
+class _FakeStatusCache(RedisDocumentStatusCache):
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, str]] = []
 
@@ -172,7 +172,7 @@ class _FakeStatusCache(IDocumentStatusCache):
         raise NotImplementedError
 
 
-class _FakeEmbeddingProvider(IEmbeddingProvider):
+class _FakeEmbeddingProvider(EmbeddingProvider):
     async def embed_text(self, text: str) -> list[float]:
         return [0.1] * ChunkModel.EMBEDDING_DIMENSIONS
 

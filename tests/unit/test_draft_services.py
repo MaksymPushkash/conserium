@@ -6,13 +6,13 @@ from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
 from src.drafts.operations import DraftGenerator, has_sufficient_draft_context
 from src.drafts.repository import DraftRecord, DraftVersionRecord
-from src.drafts.schemas import DraftGenerateDTO
+from src.drafts.schemas import DraftGenerationPayload
 from src.kit.exceptions import QueryValidationException
 from src.models.document import DocumentModel
-from src.query.schemas import QueryResultDTO, QuerySourceDTO, RefragContextPackage
+from src.query.schemas import QueryResult, QuerySource, RefragContextPackage
 
 if TYPE_CHECKING:
-    from src.kit.ports.ai.llm_service import ILLMService
+    from src.kit.ai.llm_service import LLMService
     from src.query.service import QueryExecutor
 
 
@@ -79,7 +79,7 @@ class _FakeQueryExecutor:
         self.received_limit = dto.limit
         self.received_document_ids = dto.document_ids
         self.received_tag_names = dto.tag_names
-        source = QuerySourceDTO(
+        source = QuerySource(
             chunk_id=uuid.uuid4(),
             document_id=uuid.uuid4(),
             document_title="Python Notes",
@@ -89,7 +89,7 @@ class _FakeQueryExecutor:
             score=0.9,
             used_in_answer=True,
         )
-        return QueryResultDTO(
+        return QueryResult(
             conversation_id=uuid.uuid4(),
             query=dto.query,
             answer="# Python generators\n\nGenerators yield values lazily [1].",
@@ -115,7 +115,7 @@ class _FakeInsufficientQueryExecutor:
         sources = []
         if self._include_unused_source:
             sources.append(
-                QuerySourceDTO(
+                QuerySource(
                     chunk_id=uuid.uuid4(),
                     document_id=uuid.uuid4(),
                     document_title="Weak match",
@@ -126,7 +126,7 @@ class _FakeInsufficientQueryExecutor:
                     used_in_answer=False,
                 )
             )
-        return QueryResultDTO(
+        return QueryResult(
             conversation_id=uuid.uuid4(),
             query=dto.query,
             answer="The provided context does not contain enough relevant information.",
@@ -149,7 +149,7 @@ async def test_generate_draft_uses_existing_query_pipeline() -> None:
     handler = _draft_generator(fake_query_executor)
 
     result = await handler(
-        DraftGenerateDTO(
+        DraftGenerationPayload(
             user_id=uuid.uuid4(),
             prompt="Write about Python generators",
             document_types=(DocumentType.TEXT,),
@@ -179,7 +179,7 @@ async def test_generate_draft_uses_explicit_document_scope() -> None:
     handler = _draft_generator(fake_query_executor, documents=[document])
 
     await handler(
-        DraftGenerateDTO(
+        DraftGenerationPayload(
             user_id=document.user_id,
             prompt="Write from selected docs",
             document_ids=(document.id,),
@@ -193,7 +193,7 @@ async def test_generate_draft_uses_topic_as_tag_scope() -> None:
     fake_query_executor = _FakeQueryExecutor()
     handler = _draft_generator(fake_query_executor)
 
-    await handler(DraftGenerateDTO(user_id=uuid.uuid4(), prompt="Write about cloud", topic="Cloud"))
+    await handler(DraftGenerationPayload(user_id=uuid.uuid4(), prompt="Write about cloud", topic="Cloud"))
 
     assert fake_query_executor.received_tag_names == ("cloud",)
 
@@ -205,7 +205,7 @@ async def test_generate_draft_appends_version_for_existing_draft() -> None:
     persistence.draft_repo.records[existing.id] = existing
     handler = _draft_generator(fake_query_executor, persistence=persistence)
 
-    result = await handler(DraftGenerateDTO(user_id=existing.user_id, draft_id=existing.id, prompt="Regenerate"))
+    result = await handler(DraftGenerationPayload(user_id=existing.user_id, draft_id=existing.id, prompt="Regenerate"))
 
     assert result.draft_id == existing.id
     assert result.version_number == 2
@@ -215,7 +215,7 @@ async def test_generate_draft_falls_back_to_document_content_when_query_abstains
     document = _make_document()
     handler = _draft_generator(_FakeInsufficientQueryExecutor(), documents=[document])
 
-    result = await handler(DraftGenerateDTO(user_id=document.user_id, prompt="Write from saved docs"))
+    result = await handler(DraftGenerationPayload(user_id=document.user_id, prompt="Write from saved docs"))
 
     assert result.markdown == "# Fallback draft"
     assert result.sources[0].document_id == document.id
@@ -226,7 +226,7 @@ async def test_generate_draft_falls_back_when_sources_are_not_used_in_answer() -
     document = _make_document()
     handler = _draft_generator(_FakeInsufficientQueryExecutor(include_unused_source=True), documents=[document])
 
-    result = await handler(DraftGenerateDTO(user_id=document.user_id, prompt="Write from saved docs"))
+    result = await handler(DraftGenerationPayload(user_id=document.user_id, prompt="Write from saved docs"))
 
     assert result.markdown == "# Fallback draft"
     assert result.sources[0].document_id == document.id
@@ -236,7 +236,7 @@ async def test_generate_draft_rejects_empty_prompt() -> None:
     handler = _draft_generator(_FakeQueryExecutor())
 
     try:
-        await handler(DraftGenerateDTO(user_id=uuid.uuid4(), prompt=" "))
+        await handler(DraftGenerationPayload(user_id=uuid.uuid4(), prompt=" "))
     except QueryValidationException as exc:
         assert str(exc) == "draft prompt cannot be empty"
     else:
@@ -259,7 +259,7 @@ def _draft_generator(
         persistence,
         persistence.draft_repo,
         persistence.document_repo,
-        cast("ILLMService", _FakeLLMService()),
+        cast("LLMService", _FakeLLMService()),
     )
 
 

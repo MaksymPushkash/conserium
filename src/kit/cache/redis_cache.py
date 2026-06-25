@@ -1,9 +1,7 @@
 from redis.asyncio import Redis
 
-from src.kit.ports.cache.cache import ICache
 
-
-class RedisCache(ICache):
+class RedisCache:
     def __init__(self, redis: Redis) -> None:
         self._redis = redis
 

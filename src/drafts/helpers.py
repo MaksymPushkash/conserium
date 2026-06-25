@@ -1,44 +1,44 @@
 from src.drafts.repository import DraftRecord, DraftVersionRecord
 from src.drafts.schemas import (
-    DraftDetailDTO,
-    DraftGenerateDTO,
-    DraftListItemDTO,
-    DraftTemplateDTO,
-    DraftVersionDTO,
+    DraftDetail,
+    DraftGenerationPayload,
+    DraftListItem,
+    DraftTemplate,
+    DraftVersion,
 )
 from src.kit.exceptions import QueryValidationException
-from src.query.schemas import QueryDTO, QuerySourceDTO
+from src.query.schemas import QueryPayload, QuerySource
 
 TEMPLATES = {
-    "brief": DraftTemplateDTO(
+    "brief": DraftTemplate(
         id="brief",
         name="Brief",
         description="Concise cited summary for quick decision-making.",
         prompt="Write a concise brief with context, key points, risks, and next actions.",
         outline=["Context", "Key points", "Risks", "Next actions"],
     ),
-    "prd": DraftTemplateDTO(
+    "prd": DraftTemplate(
         id="prd",
         name="PRD",
         description="Product requirements with problem, goals, scope, and acceptance criteria.",
         prompt="Write a PRD with problem, goals, users, requirements, non-goals, and acceptance criteria.",
         outline=["Problem", "Goals", "Users", "Requirements", "Non-goals", "Acceptance criteria"],
     ),
-    "study_guide": DraftTemplateDTO(
+    "study_guide": DraftTemplate(
         id="study_guide",
         name="Study guide",
         description="Structured learning material with concepts, examples, and checks.",
         prompt="Write a study guide with concepts, explanations, examples, and review questions.",
         outline=["Learning goals", "Core concepts", "Examples", "Common mistakes", "Review questions"],
     ),
-    "comparison_memo": DraftTemplateDTO(
+    "comparison_memo": DraftTemplate(
         id="comparison_memo",
         name="Comparison memo",
         description="Side-by-side memo focused on tradeoffs and recommendation.",
         prompt="Write a comparison memo covering options, evidence, tradeoffs, risks, and recommendation.",
         outline=["Options", "Evidence", "Tradeoffs", "Risks", "Recommendation"],
     ),
-    "implementation_plan": DraftTemplateDTO(
+    "implementation_plan": DraftTemplate(
         id="implementation_plan",
         name="Implementation plan",
         description="Ordered engineering plan with phases, risks, and validation.",
@@ -50,16 +50,16 @@ TEMPLATES = {
 SCOPE_TYPES = {"all", "documents", "collection", "topic", "knowledge_gap"}
 
 
-def draft_query_dto(
-    dto: DraftGenerateDTO,
+def draft_query_payload(
+    dto: DraftGenerationPayload,
     prompt: str,
     *,
-    template: DraftTemplateDTO,
+    template: DraftTemplate,
     outline: list[str],
     relevance_query: str,
     limit: int,
-) -> QueryDTO:
-    return QueryDTO(
+) -> QueryPayload:
+    return QueryPayload(
         user_id=dto.user_id,
         query=draft_query(prompt, template=template, outline=outline, scope=dto),
         retrieval_query=prompt,
@@ -73,10 +73,10 @@ def draft_query_dto(
     )
 
 
-def draft_list_item(record: DraftRecord) -> DraftListItemDTO:
+def draft_list_item(record: DraftRecord) -> DraftListItem:
     if record.created_at is None:
         raise ValueError("draft created_at is required")
-    return DraftListItemDTO(
+    return DraftListItem(
         id=record.id,
         collection_id=record.collection_id,
         title=record.title,
@@ -91,10 +91,10 @@ def draft_list_item(record: DraftRecord) -> DraftListItemDTO:
     )
 
 
-def draft_detail(record: DraftRecord) -> DraftDetailDTO:
+def draft_detail(record: DraftRecord) -> DraftDetail:
     if record.created_at is None:
         raise ValueError("draft created_at is required")
-    return DraftDetailDTO(
+    return DraftDetail(
         id=record.id,
         collection_id=record.collection_id,
         current_version_id=record.current_version_id,
@@ -114,10 +114,10 @@ def draft_detail(record: DraftRecord) -> DraftDetailDTO:
     )
 
 
-def draft_version(record: DraftVersionRecord) -> DraftVersionDTO:
+def draft_version(record: DraftVersionRecord) -> DraftVersion:
     if record.created_at is None:
         raise ValueError("draft version created_at is required")
-    return DraftVersionDTO(
+    return DraftVersion(
         id=record.id,
         draft_id=record.draft_id,
         version_number=record.version_number,
@@ -135,7 +135,7 @@ def draft_version(record: DraftVersionRecord) -> DraftVersionDTO:
     )
 
 
-def draft_query(prompt: str, *, template: DraftTemplateDTO, outline: list[str], scope: DraftGenerateDTO) -> str:
+def draft_query(prompt: str, *, template: DraftTemplate, outline: list[str], scope: DraftGenerationPayload) -> str:
     outline_text = "\n".join(f"- {section}" for section in outline)
     return (
         "Write a Markdown draft using only my saved Conserium materials.\n"
@@ -153,11 +153,11 @@ def draft_query(prompt: str, *, template: DraftTemplateDTO, outline: list[str], 
     )
 
 
-def has_sufficient_draft_context(sources: list[QuerySourceDTO]) -> bool:
+def has_sufficient_draft_context(sources: list[QuerySource]) -> bool:
     return any(source.used_in_answer for source in sources)
 
 
-def normalize_scope(dto: DraftGenerateDTO) -> DraftGenerateDTO:
+def normalize_scope(dto: DraftGenerationPayload) -> DraftGenerationPayload:
     scope_type = dto.scope_type.strip().lower() if dto.scope_type else "all"
     if scope_type not in SCOPE_TYPES:
         raise QueryValidationException("unsupported draft scope")
@@ -187,7 +187,7 @@ def normalize_scope(dto: DraftGenerateDTO) -> DraftGenerateDTO:
         if not topic:
             raise QueryValidationException("knowledge gap scope requires topic")
 
-    return DraftGenerateDTO(
+    return DraftGenerationPayload(
         user_id=dto.user_id,
         prompt=dto.prompt,
         draft_id=dto.draft_id,
@@ -204,7 +204,7 @@ def normalize_scope(dto: DraftGenerateDTO) -> DraftGenerateDTO:
     )
 
 
-def draft_template(template_id: str) -> DraftTemplateDTO:
+def draft_template(template_id: str) -> DraftTemplate:
     template = TEMPLATES.get(template_id.strip().lower())
     if template is None:
         raise QueryValidationException("unsupported draft template")
@@ -215,12 +215,12 @@ def normalize_outline(outline: tuple[str, ...] | None) -> list[str]:
     return [section.strip()[:120] for section in outline or () if section.strip()]
 
 
-def draft_title(prompt: str, template: DraftTemplateDTO) -> str:
+def draft_title(prompt: str, template: DraftTemplate) -> str:
     normalized = " ".join(prompt.split())
     return f"{template.name}: {normalized[:80]}"
 
 
-def scope_description(dto: DraftGenerateDTO) -> str:
+def scope_description(dto: DraftGenerationPayload) -> str:
     if dto.scope_type == "documents":
         return f"selected documents only ({len(dto.document_ids or ())} document(s))"
     if dto.scope_type == "collection":
@@ -232,7 +232,7 @@ def scope_description(dto: DraftGenerateDTO) -> str:
     return "all saved workspace sources"
 
 
-def scope_metadata(dto: DraftGenerateDTO) -> dict[str, object]:
+def scope_metadata(dto: DraftGenerationPayload) -> dict[str, object]:
     return {
         "scope_type": dto.scope_type,
         "collection_id": str(dto.collection_id) if dto.collection_id else None,

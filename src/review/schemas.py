@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 @dataclass(frozen=True, slots=True)
-class GenerateFlashcardsDTO:
+class GenerateFlashcardsPayload:
     user_id: UUID
     document_id: UUID | None = None
     collection_id: UUID | None = None
@@ -17,14 +17,14 @@ class GenerateFlashcardsDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class ReviewFlashcardDTO:
+class ReviewFlashcard:
     user_id: UUID
     flashcard_id: UUID
     grade: str
 
 
 @dataclass(frozen=True, slots=True)
-class GenerateQuizDTO:
+class GenerateQuizPayload:
     user_id: UUID
     document_id: UUID | None = None
     collection_id: UUID | None = None
@@ -33,14 +33,14 @@ class GenerateQuizDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class SubmitQuizDTO:
+class SubmitQuizPayload:
     user_id: UUID
     quiz_id: UUID
     answers: list[dict[str, object]]
 
 
 @dataclass(frozen=True, slots=True)
-class GenerateLearningPathDTO:
+class GenerateLearningPathPayload:
     user_id: UUID
     document_id: UUID | None = None
     collection_id: UUID | None = None
@@ -49,7 +49,7 @@ class GenerateLearningPathDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class UpdateLearningPathStepDTO:
+class UpdateLearningPathStepPayload:
     user_id: UUID
     path_id: UUID
     step_id: str
@@ -57,7 +57,7 @@ class UpdateLearningPathStepDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class RegenerateLearningPathDTO:
+class RegenerateLearningPathPayload:
     user_id: UUID
     path_id: UUID
     limit: int = 6

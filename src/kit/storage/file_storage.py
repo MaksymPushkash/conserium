@@ -9,7 +9,7 @@ class StoredFile:
     size_bytes: int
 
 
-class IFileStorage(ABC):
+class FileStorage(ABC):
     @abstractmethod
     async def save_document_file(
         self,

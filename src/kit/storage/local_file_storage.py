@@ -6,13 +6,13 @@ import uuid
 from pathlib import Path
 from uuid import UUID
 
-from src.kit.ports.ingestion.file_storage import IFileStorage, StoredFile
+from src.kit.storage.file_storage import FileStorage, StoredFile
 from src.settings import settings
 
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-class LocalFileStorage(IFileStorage):
+class LocalFileStorage(FileStorage):
     def __init__(self, root_path: str | Path = settings.LOCAL_STORAGE_PATH) -> None:
         self._root_path = Path(root_path).expanduser().resolve()
 

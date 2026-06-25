@@ -5,7 +5,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from src.documents.types import DocumentType
-from src.query.schemas import ConversationTurnDTO, QuerySourceDTO, RefragContextPackage
+from src.query.schemas import ConversationTurn, QuerySource, RefragContextPackage
 
 
 class QueryType(StrEnum):
@@ -25,16 +25,16 @@ class ConseriumQueryState:
     tag_names: tuple[str, ...] | None = None
     document_types: tuple[DocumentType, ...] | None = None
     document_ids: tuple[UUID, ...] | None = None
-    conversation_turns: list[ConversationTurnDTO] = field(default_factory=list)
+    conversation_turns: list[ConversationTurn] = field(default_factory=list)
     retrieval_query: str | None = None
     relevance_query: str | None = None
     answer_language: str = "match_question"
     retrieval_depth: str = "balanced"
     promoted_document_ids: list[UUID] = field(default_factory=list)
     query_type: QueryType = QueryType.SEARCH
-    sources: list[QuerySourceDTO] = field(default_factory=list)
-    retrieved_sources: list[QuerySourceDTO] = field(default_factory=list)
-    filtered_sources: list[QuerySourceDTO] = field(default_factory=list)
+    sources: list[QuerySource] = field(default_factory=list)
+    retrieved_sources: list[QuerySource] = field(default_factory=list)
+    filtered_sources: list[QuerySource] = field(default_factory=list)
     refrag_context: RefragContextPackage | None = None
     answer: str = ""
     eval_scores: dict[str, float] = field(default_factory=dict)
@@ -55,16 +55,16 @@ def coerce_conserium_query_state(value: ConseriumQueryState | Mapping[str, Any])
         tag_names=cast("tuple[str, ...] | None", value.get("tag_names")),
         document_types=cast("tuple[DocumentType, ...] | None", value.get("document_types")),
         document_ids=cast("tuple[UUID, ...] | None", value.get("document_ids")),
-        conversation_turns=cast("list[ConversationTurnDTO]", value.get("conversation_turns", [])),
+        conversation_turns=cast("list[ConversationTurn]", value.get("conversation_turns", [])),
         retrieval_query=cast("str | None", value.get("retrieval_query")),
         relevance_query=cast("str | None", value.get("relevance_query")),
         answer_language=cast("str", value.get("answer_language", "match_question")),
         retrieval_depth=cast("str", value.get("retrieval_depth", "balanced")),
         promoted_document_ids=cast("list[UUID]", value.get("promoted_document_ids", [])),
         query_type=query_type if isinstance(query_type, QueryType) else QueryType(query_type),
-        sources=cast("list[QuerySourceDTO]", value.get("sources", [])),
-        retrieved_sources=cast("list[QuerySourceDTO]", value.get("retrieved_sources", [])),
-        filtered_sources=cast("list[QuerySourceDTO]", value.get("filtered_sources", [])),
+        sources=cast("list[QuerySource]", value.get("sources", [])),
+        retrieved_sources=cast("list[QuerySource]", value.get("retrieved_sources", [])),
+        filtered_sources=cast("list[QuerySource]", value.get("filtered_sources", [])),
         refrag_context=cast("RefragContextPackage | None", value.get("refrag_context")),
         answer=cast("str", value.get("answer", "")),
         eval_scores=cast("dict[str, float]", value.get("eval_scores", {})),

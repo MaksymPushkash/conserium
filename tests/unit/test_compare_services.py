@@ -6,8 +6,8 @@ import pytest
 
 from src.compare import service as compare_service_module
 from src.compare.schemas import (
-    CompareDocumentsDTO,
-    CompareResultDTO,
+    CompareDocumentsRequest,
+    CompareResult,
 )
 from src.compare.service import CompareService
 from src.documents.chunk_repository import ChunkRepository
@@ -22,12 +22,12 @@ from src.kit.exceptions import (
 )
 from src.models.chunk import ChunkModel
 from src.models.document import DocumentModel
-from src.query.schemas import QueryResultDTO, QuerySourceDTO, RefragContextPackage
+from src.query.schemas import QueryResult, QuerySource, RefragContextPackage
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-    from src.kit.ports.ai.llm_service import ILLMService
+    from src.kit.ai.llm_service import LLMService
     from src.query.service import QueryExecutor
 
 
@@ -63,13 +63,13 @@ class _Repositories:
 
 class _FakeCompareRepository:
     def __init__(self) -> None:
-        self.records: list[CompareResultDTO] = []
+        self.records: list[CompareResult] = []
 
-    async def create(self, result: CompareResultDTO) -> CompareResultDTO:
+    async def create(self, result: CompareResult) -> CompareResult:
         self.records.append(result)
         return result
 
-    async def get_by_id(self, comparison_id: uuid.UUID) -> CompareResultDTO | None:
+    async def get_by_id(self, comparison_id: uuid.UUID) -> CompareResult | None:
         return next((record for record in self.records if record.id == comparison_id), None)
 
     async def list_by_user_id(
@@ -79,7 +79,7 @@ class _FakeCompareRepository:
         collection_id: uuid.UUID | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> list[CompareResultDTO]:
+    ) -> list[CompareResult]:
         records = [
             record
             for record in self.records
@@ -113,7 +113,7 @@ class _FakeQueryExecutor:
     async def __call__(self, dto):
         self.received_document_ids = dto.document_ids
         self.received_relevance_query = dto.relevance_query
-        source = QuerySourceDTO(
+        source = QuerySource(
             chunk_id=uuid.uuid4(),
             document_id=dto.document_ids[0],
             document_title="FastAPI Notes",
@@ -123,7 +123,7 @@ class _FakeQueryExecutor:
             score=0.9,
             used_in_answer=True,
         )
-        return QueryResultDTO(
+        return QueryResult(
             conversation_id=uuid.uuid4(),
             query=dto.query,
             answer="## Shared ideas\n\nBoth discuss Python web work [1].",
@@ -143,7 +143,7 @@ class _FakeQueryExecutor:
 
 class _FakeInsufficientQueryExecutor:
     async def __call__(self, dto):
-        return QueryResultDTO(
+        return QueryResult(
             conversation_id=uuid.uuid4(),
             query=dto.query,
             answer="The provided context does not contain enough relevant information.",
@@ -171,9 +171,9 @@ async def test_compare_documents_scopes_query_to_selected_documents(monkeypatch:
     result = await CompareService().compare_documents(
         session,
         query_executor=cast("QueryExecutor", query_executor),
-        llm_service=cast("ILLMService", _FakeLLMService()),
-        dto=CompareDocumentsDTO(
-            user_id=user_id,
+        llm_service=cast("LLMService", _FakeLLMService()),
+        user_id=user_id,
+        body=CompareDocumentsRequest(
             left_document_id=left_document.id,
             right_document_id=right_document.id,
             prompt="focus on API routing",
@@ -205,9 +205,9 @@ async def test_compare_documents_falls_back_to_direct_document_content(monkeypat
     result = await CompareService().compare_documents(
         session,
         query_executor=cast("QueryExecutor", _FakeInsufficientQueryExecutor()),
-        llm_service=cast("ILLMService", _FakeLLMService()),
-        dto=CompareDocumentsDTO(
-            user_id=user_id,
+        llm_service=cast("LLMService", _FakeLLMService()),
+        user_id=user_id,
+        body=CompareDocumentsRequest(
             left_document_id=left_document.id,
             right_document_id=right_document.id,
         ),
@@ -227,12 +227,12 @@ async def test_compare_documents_persists_shared_collection_and_requested_dimens
     result = await CompareService().compare_documents(
         session,
         query_executor=cast("QueryExecutor", _FakeInsufficientQueryExecutor()),
-        llm_service=cast("ILLMService", _FakeLLMService()),
-        dto=CompareDocumentsDTO(
-            user_id=user_id,
+        llm_service=cast("LLMService", _FakeLLMService()),
+        user_id=user_id,
+        body=CompareDocumentsRequest(
             left_document_id=left_document.id,
             right_document_id=right_document.id,
-            dimensions=("claims", "tradeoffs"),
+            dimensions=["claims", "tradeoffs"],
         ),
     )
 
@@ -273,9 +273,9 @@ async def test_compare_documents_rejects_same_document(monkeypatch: "MonkeyPatch
         await CompareService().compare_documents(
             session,
             query_executor=cast("QueryExecutor", _FakeQueryExecutor()),
-            llm_service=cast("ILLMService", _FakeLLMService()),
-            dto=CompareDocumentsDTO(
-                user_id=uuid.uuid4(),
+            llm_service=cast("LLMService", _FakeLLMService()),
+            user_id=uuid.uuid4(),
+            body=CompareDocumentsRequest(
                 left_document_id=document_id,
                 right_document_id=document_id,
             ),
@@ -292,9 +292,9 @@ async def test_compare_documents_requires_owned_documents(monkeypatch: "MonkeyPa
         await CompareService().compare_documents(
             session,
             query_executor=cast("QueryExecutor", _FakeQueryExecutor()),
-            llm_service=cast("ILLMService", _FakeLLMService()),
-            dto=CompareDocumentsDTO(
-                user_id=user_id,
+            llm_service=cast("LLMService", _FakeLLMService()),
+            user_id=user_id,
+            body=CompareDocumentsRequest(
                 left_document_id=left_document.id,
                 right_document_id=right_document.id,
             ),
@@ -308,9 +308,9 @@ async def test_compare_documents_raises_when_document_is_missing(monkeypatch: "M
         await CompareService().compare_documents(
             session,
             query_executor=cast("QueryExecutor", _FakeQueryExecutor()),
-            llm_service=cast("ILLMService", _FakeLLMService()),
-            dto=CompareDocumentsDTO(
-                user_id=uuid.uuid4(),
+            llm_service=cast("LLMService", _FakeLLMService()),
+            user_id=uuid.uuid4(),
+            body=CompareDocumentsRequest(
                 left_document_id=uuid.uuid4(),
                 right_document_id=uuid.uuid4(),
             ),
@@ -353,10 +353,10 @@ def _make_document(
     )
 
 
-def _compare_result(*, user_id: uuid.UUID) -> CompareResultDTO:
+def _compare_result(*, user_id: uuid.UUID) -> CompareResult:
     left_document_id = uuid.uuid4()
     right_document_id = uuid.uuid4()
-    return CompareResultDTO(
+    return CompareResult(
         id=uuid.uuid4(),
         user_id=user_id,
         collection_id=None,

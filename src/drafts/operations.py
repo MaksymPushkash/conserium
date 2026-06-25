@@ -10,7 +10,7 @@ from src.drafts.helpers import (
     draft_detail,
     draft_list_item,
     draft_query,
-    draft_query_dto,
+    draft_query_payload,
     draft_template,
     draft_title,
     draft_version,
@@ -23,23 +23,23 @@ from src.drafts.helpers import (
 )
 from src.drafts.repository import DraftRecord, DraftVersionRecord
 from src.drafts.schemas import (
-    DraftDetailDTO,
-    DraftGenerateDTO,
-    DraftListDTO,
-    DraftOutlineDTO,
-    DraftResultDTO,
-    DraftTemplateDTO,
-    DraftVersionDTO,
+    DraftDetail,
+    DraftGenerationPayload,
+    DraftListResult,
+    DraftOutline,
+    DraftResult,
+    DraftTemplate,
+    DraftVersion,
 )
 from src.kit.exceptions import DocumentNotFoundException, QueryValidationException, ResourceNotFoundException
-from src.query.schemas import QuerySourceDTO
+from src.query.schemas import QuerySource
 
 if TYPE_CHECKING:
     from uuid import UUID
 
     from src.documents.document_repository import DocumentRepository
     from src.drafts.repository import DraftRepository
-    from src.kit.ports.ai.llm_service import ILLMService
+    from src.kit.ai.llm_service import LLMService
     from src.postgres import AsyncSession
     from src.query.service import QueryExecutor
 
@@ -51,7 +51,7 @@ class DraftGenerator:
         session: AsyncSession,
         draft_repo: DraftRepository,
         document_repo: DocumentRepository,
-        llm_service: ILLMService,
+        llm_service: LLMService,
     ) -> None:
         self._query_executor = query_executor
         self._session = session
@@ -59,7 +59,7 @@ class DraftGenerator:
         self._document_repo = document_repo
         self._llm_service = llm_service
 
-    async def __call__(self, dto: DraftGenerateDTO) -> DraftResultDTO:
+    async def __call__(self, dto: DraftGenerationPayload) -> DraftResult:
         prompt = dto.prompt.strip()
         if not prompt:
             raise QueryValidationException("draft prompt cannot be empty")
@@ -68,7 +68,7 @@ class DraftGenerator:
         outline = normalize_outline(dto.outline) or template.outline
 
         result = await self._query_executor(
-            draft_query_dto(
+            draft_query_payload(
                 scope,
                 prompt,
                 template=template,
@@ -106,13 +106,13 @@ class DraftGenerator:
     async def _persist_result(
         self,
         *,
-        scope: DraftGenerateDTO,
+        scope: DraftGenerationPayload,
         prompt: str,
-        template: DraftTemplateDTO,
+        template: DraftTemplate,
         markdown: str,
-        sources: list[QuerySourceDTO],
+        sources: list[QuerySource],
         gaps: list[str],
-    ) -> DraftResultDTO:
+    ) -> DraftResult:
         existing = None
         if scope.draft_id is not None:
             existing = await self._draft_repo.get_by_id(scope.draft_id)
@@ -165,7 +165,7 @@ class DraftGenerator:
             else await self._draft_repo.create_with_version(draft=record, version=version)
         )
         await self._session.flush()
-        return DraftResultDTO(
+        return DraftResult(
             draft_id=saved.id,
             version_id=saved.current_version_id,
             version_number=saved.version_number,
@@ -177,7 +177,7 @@ class DraftGenerator:
             gaps=gaps,
         )
 
-    async def _fallback_sources(self, dto: DraftGenerateDTO) -> list[QuerySourceDTO]:
+    async def _fallback_sources(self, dto: DraftGenerationPayload) -> list[QuerySource]:
         if dto.document_ids:
             documents = []
             for document_id in dto.document_ids:
@@ -206,7 +206,7 @@ class DraftGenerator:
                 for document in documents
                 if tags.intersection({tag.casefold() for tag in document.tags})
             ]
-        sources: list[QuerySourceDTO] = []
+        sources: list[QuerySource] = []
         seen_documents = set()
         for document in documents:
             if document.id in seen_documents:
@@ -216,7 +216,7 @@ class DraftGenerator:
             if not content:
                 continue
             sources.append(
-                QuerySourceDTO(
+                QuerySource(
                     chunk_id=uuid5(NAMESPACE_URL, f"draft-fallback:{document.id}"),
                     document_id=document.id,
                     document_title=document.title,
@@ -232,17 +232,17 @@ class DraftGenerator:
         return sources
 
 
-def list_draft_templates() -> list[DraftTemplateDTO]:
+def list_draft_templates() -> list[DraftTemplate]:
     return list(TEMPLATES.values())
 
 
-def generate_draft_outline(dto: DraftGenerateDTO) -> DraftOutlineDTO:
+def generate_draft_outline(dto: DraftGenerationPayload) -> DraftOutline:
     prompt = dto.prompt.strip()
     if not prompt:
         raise QueryValidationException("draft prompt cannot be empty")
     scope = normalize_scope(dto)
     template = draft_template(dto.template_id)
-    return DraftOutlineDTO(
+    return DraftOutline(
         prompt=prompt,
         template_id=template.id,
         scope_type=scope.scope_type,
@@ -258,17 +258,17 @@ async def list_drafts(
     collection_id: UUID | None = None,
     limit: int = 20,
     offset: int = 0,
-) -> DraftListDTO:
+) -> DraftListResult:
     records = await draft_repo.list_by_user_id(
         user_id=user_id,
         collection_id=collection_id,
         limit=limit,
         offset=offset,
     )
-    return DraftListDTO(items=[draft_list_item(record) for record in records], total=len(records))
+    return DraftListResult(items=[draft_list_item(record) for record in records], total=len(records))
 
 
-async def get_draft(draft_repo: DraftRepository, *, user_id: UUID, draft_id: UUID) -> DraftDetailDTO:
+async def get_draft(draft_repo: DraftRepository, *, user_id: UUID, draft_id: UUID) -> DraftDetail:
     record = await draft_repo.get_by_id(draft_id)
     if record is None or record.user_id != user_id:
         raise ResourceNotFoundException("draft not found")
@@ -280,7 +280,7 @@ async def list_draft_versions(
     *,
     user_id: UUID,
     draft_id: UUID,
-) -> list[DraftVersionDTO]:
+) -> list[DraftVersion]:
     draft = await draft_repo.get_by_id(draft_id)
     if draft is None or draft.user_id != user_id:
         raise ResourceNotFoundException("draft not found")
@@ -295,7 +295,7 @@ async def restore_draft_version(
     user_id: UUID,
     draft_id: UUID,
     version_id: UUID,
-) -> DraftDetailDTO:
+) -> DraftDetail:
     version = await draft_repo.get_version(draft_id=draft_id, version_id=version_id, user_id=user_id)
     if version is None:
         raise ResourceNotFoundException("draft version not found")

@@ -7,16 +7,15 @@ from src.collections.service import CollectionService, collections
 from src.documents.ingestion import (
     ExternalIntakeService,
     ExternalItemIngester,
-    get_external_intake_service,
-    get_external_item_ingester,
 )
-from src.documents.schemas import ExternalIngestDTO
+from src.documents.ingestion_dependencies import get_external_intake_service, get_external_item_ingester
 from src.integrations.dependencies import get_api_key_authenticator
 from src.integrations.service import ApiKeyAuthenticator
 from src.postgres import AsyncReadSession, get_db_read_session
 from src.public_api.schemas import PublicIngestRequest, PublicIngestResponse
-from src.query.schemas import QueryDTO, QueryRequest, QueryResponse
-from src.query.service import QueryExecutor, get_query_executor, to_query_response
+from src.query.dependencies import get_query_executor
+from src.query.schemas import QueryPayload, QueryRequest, QueryResponse
+from src.query.service import QueryExecutor, to_query_response
 from src.routing import APIRouter
 from src.webhooks.endpoints import to_external_ingest_response, to_external_intake_item_response
 from src.webhooks.schemas import ExternalIngestResponse, ExternalIntakeListResponse
@@ -37,21 +36,19 @@ async def public_ingest(
 ) -> PublicIngestResponse:
     principal = await authenticate_api_key(authorization, required_scope="ingest:write")
     result = await ingest_external_item(
-        ExternalIngestDTO(
-            user_id=principal.user_id,
-            api_key_id=principal.api_key_id,
-            provider=body.provider or "public-api",
-            title=body.title,
-            type=body.type,
-            collection_id=body.collection_id,
-            tags=body.tags,
-            source_url=body.source_url,
-            raw_content=body.raw_content,
-            language=body.language,
-            external_id=body.external_id,
-            idempotency_key=body.idempotency_key,
-            payload_metadata=body.metadata,
-        )
+        user_id=principal.user_id,
+        api_key_id=principal.api_key_id,
+        provider=body.provider or "public-api",
+        title=body.title,
+        type=body.type,
+        collection_id=body.collection_id,
+        tags=body.tags,
+        source_url=body.source_url,
+        raw_content=body.raw_content,
+        language=body.language,
+        external_id=body.external_id,
+        idempotency_key=body.idempotency_key,
+        payload_metadata=body.metadata,
     )
     response = to_external_ingest_response(result)
     return PublicIngestResponse(intake_item=response.intake_item, document=response.document)
@@ -126,7 +123,7 @@ async def public_query(
 ) -> QueryResponse:
     principal = await authenticate_api_key(authorization, required_scope="query:write")
     result = await query_executor(
-        QueryDTO(
+        QueryPayload(
             user_id=principal.user_id,
             query=body.query,
             conversation_id=body.conversation_id,

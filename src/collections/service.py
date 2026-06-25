@@ -21,22 +21,10 @@ from src.collections.access import (
 from src.collections.access import (
     normalize_member_role as normalize_member_role,
 )
-from src.collections.mapping import (
-    collection_to_dto as _collection_to_dto,
-)
-from src.collections.mapping import (
-    to_collection_audit_event_list_response,
-    to_collection_list_response,
-    to_collection_member_list_response,
-    to_collection_member_response,
-    to_collection_response,
-    to_collection_share_response,
-    to_collection_workspace_response,
-    to_public_ask_event_list_response,
-)
 from src.collections.repository import CollectionRepository, CollectionWorkspaceRepository
 from src.collections.schemas import (
     CollectionAuditEventListResponse,
+    CollectionAuditEventResponse,
     CollectionListResponse,
     CollectionMemberListResponse,
     CollectionMemberResponse,
@@ -49,6 +37,7 @@ from src.collections.schemas import (
     CollectionWorkspaceResponse,
     CollectionWorkspaceStatsResponse,
     PublicAskEventListResponse,
+    PublicAskEventResponse,
 )
 from src.collections.workspace import (
     preview_text,
@@ -64,12 +53,10 @@ from src.knowledge_gaps.service import collection_topic_gaps
 from src.models.collection import CollectionModel
 from src.postgres import AsyncSession
 from src.public_shares.repository import CollectionShareRepository
+from src.public_shares.schemas import CollectionShareRecord, PublicAskEventRecord
 from src.users.repository import UserRepository
 from src.workspaces.repository import SharedWorkspaceRepository
-from src.workspaces.schemas import (
-    CollectionAuditEventListDTO,
-    CollectionMemberListDTO,
-)
+from src.workspaces.schemas import CollectionAuditEventRecord, CollectionMemberRecord
 
 
 class CollectionService:
@@ -104,7 +91,7 @@ class CollectionService:
                 metadata={"collection_id": str(collection.id), "name": collection.name},
             )
         await session.flush()
-        return to_collection_response(_collection_to_dto(collection, access_role="owner" if collection.user_id == user_id else "editor"))
+        return collection_response(collection, access_role="owner" if collection.user_id == user_id else "editor")
 
     async def list(
         self,
@@ -124,13 +111,13 @@ class CollectionService:
             collections = await collection_repository.get_visible_by_workspace_id(user_id, workspace_id, limit=limit, offset=offset)
             total = await collection_repository.count_visible_by_workspace_id(user_id, workspace_id)
         items = [
-            _collection_to_dto(
+            collection_response(
                 collection,
                 access_role=await ensure_collection_visible(session, collection_id=collection.id, user_id=user_id),
             )
             for collection in collections
         ]
-        return to_collection_list_response(CollectionListResponse(items=items, total=total, limit=limit, offset=offset))
+        return CollectionListResponse(items=items, total=total, limit=limit, offset=offset)
 
     async def update(
         self,
@@ -149,7 +136,7 @@ class CollectionService:
         collection.update_details(name=name, description=description, color=color)
         await repository.update(collection)
         await session.flush()
-        return to_collection_response(_collection_to_dto(collection, access_role="owner"))
+        return collection_response(collection, access_role="owner")
 
     async def delete(self, session: AsyncSession, *, user_id: UUID, collection_id: UUID) -> None:
         repository = CollectionRepository.from_session(session)
@@ -162,7 +149,7 @@ class CollectionService:
     async def list_members(self, session: AsyncSession, *, collection_id: UUID, user_id: UUID) -> CollectionMemberListResponse:
         await ensure_collection_visible(session, collection_id=collection_id, user_id=user_id)
         members = await SharedWorkspaceRepository.from_session(session).list_members(collection_id=collection_id)
-        return to_collection_member_list_response(CollectionMemberListDTO(items=members))
+        return CollectionMemberListResponse(items=[to_collection_member_response(member) for member in members])
 
     async def invite_member(
         self,
@@ -259,8 +246,11 @@ class CollectionService:
             limit=limit,
             offset=offset,
         )
-        return to_collection_audit_event_list_response(
-            CollectionAuditEventListDTO(items=events, total=total, limit=limit, offset=offset)
+        return CollectionAuditEventListResponse(
+            items=[to_collection_audit_event_response(event) for event in events],
+            total=total,
+            limit=limit,
+            offset=offset,
         )
 
     async def workspace(self, session: AsyncSession, *, collection_id: UUID, user_id: UUID) -> CollectionWorkspaceResponse:
@@ -298,9 +288,8 @@ class CollectionService:
             failed_documents=failed_documents,
             topic_count=len(topics),
         )
-        return to_collection_workspace_response(
-            CollectionWorkspaceResponse(
-                collection=_collection_to_dto(collection, access_role=access_role),
+        return CollectionWorkspaceResponse(
+                collection=collection_response(collection, access_role=access_role),
                 stats=CollectionWorkspaceStatsResponse(
                     total_documents=total_documents,
                     ready_documents=ready_documents,
@@ -364,7 +353,6 @@ class CollectionService:
                     )
                     for comparison in recent_activity.comparisons
                 ],
-            )
         )
 
 
@@ -452,6 +440,75 @@ class CollectionShareService:
             revoked_at=datetime.now(UTC),
         )
         await session.flush()
+
+
+def collection_response(collection: CollectionModel, *, access_role: str) -> CollectionResponse:
+    return CollectionResponse(
+        id=collection.id,
+        user_id=collection.user_id,
+        workspace_id=collection.workspace_id,
+        access_role=access_role,
+        name=collection.name,
+        description=collection.description,
+        color=collection.color,
+        created_at=collection.created_at,
+        updated_at=collection.updated_at,
+    )
+
+
+def to_collection_share_response(dto: CollectionShareRecord) -> CollectionShareResponse:
+    return CollectionShareResponse(
+        id=dto.id,
+        collection_id=dto.collection_id,
+        slug=dto.slug,
+        include_summaries=dto.include_summaries,
+        include_notes=dto.include_notes,
+        ask_enabled=dto.ask_enabled,
+        daily_ask_limit=dto.daily_ask_limit,
+        revoked_at=dto.revoked_at,
+        created_at=dto.created_at,
+        updated_at=dto.updated_at,
+    )
+
+
+def to_public_ask_event_list_response(items: list[PublicAskEventRecord]) -> PublicAskEventListResponse:
+    return PublicAskEventListResponse(items=[to_public_ask_event_response(item) for item in items])
+
+
+def to_public_ask_event_response(dto: PublicAskEventRecord) -> PublicAskEventResponse:
+    return PublicAskEventResponse(
+        id=dto.id,
+        share_slug=dto.share_slug,
+        status=dto.status,
+        reason=dto.reason,
+        query_text=dto.query_text,
+        answer_share_slug=dto.answer_share_slug,
+        created_at=dto.created_at,
+    )
+
+
+def to_collection_member_response(dto: CollectionMemberRecord) -> CollectionMemberResponse:
+    return CollectionMemberResponse(
+        id=dto.id,
+        collection_id=dto.collection_id,
+        user_id=dto.user_id,
+        email=dto.email,
+        role=dto.role,
+        invited_by_user_id=dto.invited_by_user_id,
+        created_at=dto.created_at,
+        updated_at=dto.updated_at,
+    )
+
+
+def to_collection_audit_event_response(dto: CollectionAuditEventRecord) -> CollectionAuditEventResponse:
+    return CollectionAuditEventResponse(
+        id=dto.id,
+        collection_id=dto.collection_id,
+        actor_user_id=dto.actor_user_id,
+        event_type=dto.event_type,
+        metadata=dto.metadata,
+        created_at=dto.created_at,
+    )
 
 
 

@@ -15,7 +15,6 @@ from src.documents.service import (
     DocumentService,
 )
 from src.documents.status_cache import (
-    IDocumentStatusCache,
     RedisDocumentStatusCache,
 )
 from src.kit.ai.providers.cached_embedding_provider import CachedEmbeddingProvider
@@ -31,13 +30,11 @@ from src.workspaces.repository import SharedWorkspaceRepository
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
-    from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
-    from src.kit.ports.cache.cache import ICache
-    from src.kit.ports.ingestion.file_storage import IFileStorage
-    from src.worker.dispatcher import ITaskDispatcher
+    from src.kit.ai.embedding_provider import EmbeddingProvider
+    from src.kit.storage.file_storage import FileStorage
 
 
-def get_cache(redis: Redis = Depends(get_redis)) -> ICache:
+def get_cache(redis: Redis = Depends(get_redis)) -> RedisCache:
     return RedisCache(redis)
 
 
@@ -45,15 +42,15 @@ def get_document_repository(session: AsyncSession = Depends(get_db_session)) -> 
     return DocumentRepository.from_session(session)
 
 
-def get_document_status_cache(redis: Redis = Depends(get_redis)) -> IDocumentStatusCache:
+def get_document_status_cache(redis: Redis = Depends(get_redis)) -> RedisDocumentStatusCache:
     return RedisDocumentStatusCache(redis)
 
 
-def get_task_dispatcher() -> ITaskDispatcher:
+def get_task_dispatcher() -> CeleryTaskDispatcher:
     return CeleryTaskDispatcher()
 
 
-def get_embedding_provider(cache: ICache = Depends(get_cache)) -> IEmbeddingProvider:
+def get_embedding_provider(cache: RedisCache = Depends(get_cache)) -> EmbeddingProvider:
     return CachedEmbeddingProvider(OpenAIEmbeddingProvider(), cache)
 
 
@@ -74,8 +71,8 @@ def get_chunk_repository(session: AsyncSession = Depends(get_db_session)) -> Chu
 def get_document_processing_service(
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
-    status_cache: IDocumentStatusCache = Depends(get_document_status_cache),
-    task_dispatcher: ITaskDispatcher = Depends(get_task_dispatcher),
+    status_cache: RedisDocumentStatusCache = Depends(get_document_status_cache),
+    task_dispatcher: CeleryTaskDispatcher = Depends(get_task_dispatcher),
 ) -> DocumentProcessingService:
     return DocumentProcessingService(
         session,
@@ -112,10 +109,10 @@ def get_document_service(
     document_repo: DocumentRepository = Depends(get_document_repository),
     collection_access: DocumentCollectionAccess = Depends(get_document_collection_access),
     activity_repo: DocumentActivityRepository = Depends(get_document_activity_repository),
-    embedding_provider: IEmbeddingProvider = Depends(get_embedding_provider),
+    embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
     chunk_repo: ChunkRepository = Depends(get_chunk_repository),
     search_query_repo: SearchQueryRepository = Depends(get_search_query_repository),
-    file_storage: IFileStorage = Depends(build_file_storage),
+    file_storage: FileStorage = Depends(build_file_storage),
     processing_service: DocumentProcessingService = Depends(get_document_processing_service),
 ) -> DocumentService:
     return DocumentService(

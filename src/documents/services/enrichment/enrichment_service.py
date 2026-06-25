@@ -15,20 +15,20 @@ if TYPE_CHECKING:
 
     from src.documents.chunk_repository import ChunkRepository
     from src.documents.document_repository import DocumentRepository
-    from src.documents.schemas import CategoryDTO, EntityDTO
+    from src.documents.schemas import CategoryMetadata, EntityMetadata
     from src.documents.tag_sync import DocumentTagSync
     from src.documents.topic_sync import DocumentTopicSync
-    from src.kit.ports.ai.classifier_provider import IClassifierProvider
-    from src.kit.ports.ai.document_summary_service import IDocumentSummaryService
-    from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
-    from src.kit.ports.ai.ner_provider import INERProvider
+    from src.kit.ai.embedding_provider import EmbeddingProvider
+    from src.kit.ai.providers.hf_classifier_provider import HFClassifierProvider
+    from src.kit.ai.providers.hf_ner_provider import HFNERProvider
+    from src.kit.ai.providers.openai_document_summary_service import OpenAIDocumentSummaryService
     from src.postgres import AsyncSession
 
 
 class EnrichmentResult(TypedDict):
     summary: str | None
-    entities: list[EntityDTO]
-    categories: list[CategoryDTO]
+    entities: list[EntityMetadata]
+    categories: list[CategoryMetadata]
     tags: list[str]
     suggested_questions: list[str]
     is_duplicate: bool
@@ -40,13 +40,13 @@ class EnrichmentService:
         self,
         session: AsyncSession,
         document_repo: DocumentRepository,
-        embedding_provider: IEmbeddingProvider,
+        embedding_provider: EmbeddingProvider,
         chunk_repo: ChunkRepository,
-        ner_provider: INERProvider | None = None,
-        classifier_provider: IClassifierProvider | None = None,
+        ner_provider: HFNERProvider | None = None,
+        classifier_provider: HFClassifierProvider | None = None,
         tag_sync: DocumentTagSync | None = None,
         topic_sync: DocumentTopicSync | None = None,
-        summary_service: IDocumentSummaryService | None = None,
+        summary_service: OpenAIDocumentSummaryService | None = None,
     ) -> None:
         self._session = session
         self._document_repo = document_repo
@@ -81,11 +81,11 @@ class EnrichmentService:
                 doc.update_summary(result["summary"])
 
         if self._ner and text:
-            entities: list[EntityDTO] = await self._ner.extract_entities(text)
+            entities: list[EntityMetadata] = await self._ner.extract_entities(text)
             result["entities"] = entities
 
         if self._clf and text:
-            cats: list[CategoryDTO] = await self._clf.classify(text)
+            cats: list[CategoryMetadata] = await self._clf.classify(text)
             result["categories"] = cats
 
         await self._document_embedding.ensure_embedding(doc)

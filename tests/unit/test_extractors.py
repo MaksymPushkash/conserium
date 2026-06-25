@@ -9,7 +9,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from src.kit.ports.ingestion.content_extractor import ExtractedContent
+from src.documents.extraction import ExtractedContent
 
 # ---------------------------------------------------------------------------
 # ExtractedContent dataclass validation

@@ -2,15 +2,15 @@ from uuid import UUID
 
 from src.documents.chunk_repository import ChunkRepository
 from src.documents.types import DocumentType
-from src.kit.ports.ai.embedding_provider import IEmbeddingProvider
-from src.query.schemas import QuerySourceDTO
+from src.kit.ai.embedding_provider import EmbeddingProvider
+from src.query.schemas import QuerySource
 
 
 class HybridRetrievalService:
     def __init__(
         self,
         chunk_repo: ChunkRepository,
-        embedding_provider: IEmbeddingProvider,
+        embedding_provider: EmbeddingProvider,
     ) -> None:
         self._chunk_repo = chunk_repo
         self._embedding_provider = embedding_provider
@@ -25,7 +25,7 @@ class HybridRetrievalService:
         tag_names: tuple[str, ...] | None = None,
         document_types: tuple[DocumentType, ...] | None = None,
         document_ids: tuple[UUID, ...] | None = None,
-    ) -> list[QuerySourceDTO]:
+    ) -> list[QuerySource]:
         embedding = await self._embedding_provider.embed_text(query)
         results = await self._chunk_repo.hybrid_search(
             query=query,
@@ -39,7 +39,7 @@ class HybridRetrievalService:
         )
 
         return [
-            QuerySourceDTO(
+            QuerySource(
                 chunk_id=result.chunk.id,
                 document_id=result.chunk.document_id,
                 document_title=result.document_title,

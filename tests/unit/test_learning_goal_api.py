@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
-from src.learning_goals.schemas import LearningGoalDTO
+from src.auth.jwt_service import JWTService
+from src.learning_goals.schemas import LearningGoalResult
 from src.learning_goals.service import get_learning_goal_service, to_learning_goal_response
 from src.main import create_app
 from src.models.user import UserModel
@@ -62,7 +62,7 @@ class _FakeRepositorySession:
 
 
 class _ReturningLearningGoalService:
-    def __init__(self, result: list[LearningGoalDTO]) -> None:
+    def __init__(self, result: list[LearningGoalResult]) -> None:
         self._result = result
         self.received_user_id: uuid.UUID | None = None
 
@@ -81,7 +81,7 @@ def test_list_learning_goals_route_serializes_response() -> None:
     now = datetime.now(UTC)
     service = _ReturningLearningGoalService(
         [
-            LearningGoalDTO(
+            LearningGoalResult(
                 id=goal_id,
                 user_id=user.id,
                 topic="Python",
@@ -106,7 +106,7 @@ def test_list_learning_goals_route_serializes_response() -> None:
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
         }
     )._dependencies)

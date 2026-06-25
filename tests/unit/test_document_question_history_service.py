@@ -1,7 +1,6 @@
 import uuid
 from datetime import UTC, datetime
 
-from src.documents.schemas import GetDocumentDTO
 from src.documents.service import DocumentService
 from src.documents.types import DocumentType
 from src.models.document import DocumentModel
@@ -43,7 +42,7 @@ async def test_document_question_history_lists_recent_document_queries() -> None
         object(),
     )
 
-    result = await service.question_history(GetDocumentDTO(user_id=user_id, document_id=document_id), limit=5)
+    result = await service.question_history(user_id=user_id, document_id=document_id, limit=5)
 
     assert result.document_id == document_id
     assert result.limit == 5

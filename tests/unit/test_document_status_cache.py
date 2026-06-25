@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.documents.status_cache import DocumentStatusDTO, RedisDocumentStatusCache
+from src.documents.status_cache import DocumentStatusSnapshot, RedisDocumentStatusCache
 
 
 def _make_cache(redis_mock: AsyncMock) -> RedisDocumentStatusCache:
@@ -68,7 +68,7 @@ class TestRedisDocumentStatusCache:
         result = await cache.get_status(doc_id)
 
         assert result is not None
-        assert isinstance(result, DocumentStatusDTO)
+        assert isinstance(result, DocumentStatusSnapshot)
         assert result.document_id == doc_id
         assert result.status == "READY"
         assert result.progress == 100

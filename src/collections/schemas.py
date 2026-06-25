@@ -1,49 +1,10 @@
-from dataclasses import dataclass
 from datetime import datetime
-from typing import final
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class CreateCollectionDTO:
-    user_id: UUID
-    name: str
-    workspace_id: UUID | None = None
-    description: str | None = None
-    color: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class UpdateCollectionDTO:
-    user_id: UUID
-    collection_id: UUID
-    name: str
-    workspace_id: UUID | None = None
-    description: str | None = None
-    color: str | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class DeleteCollectionDTO:
-    user_id: UUID
-    collection_id: UUID
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class ListCollectionsDTO:
-    user_id: UUID
-    limit: int = 100
-    offset: int = 0
-    workspace_id: UUID | None = None
 
 
 class CollectionRequest(BaseModel):

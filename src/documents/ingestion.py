@@ -7,34 +7,17 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from fastapi import Depends
-
 from src.documents.access import record_shared_document_event
-from src.documents.dependencies import (
-    get_document_activity_repository,
-    get_document_collection_access,
-    get_document_processing_service,
-    get_document_repository,
-    get_document_status_cache,
-    get_task_dispatcher,
-)
-from src.documents.document_repository import DocumentRepository
-from src.documents.external_intake_repository import ExternalIntakeRepository
 from src.documents.repository import ExternalIntakeItemRecord
 from src.documents.schemas import (
-    DocumentDTO,
-    ExternalIngestDTO,
-    ExternalIngestResultDTO,
-    ExternalIntakeItemDTO,
-    IngestDocumentDTO,
-    IngestTextDocumentDTO,
-    ReprocessDocumentDTO,
-    RetryDocumentDTO,
+    DocumentResult,
+    ExternalIngestResult,
+    ExternalIntakeItem,
 )
 from src.documents.service import (
     DocumentCollectionAccess,
     collection_document_owner_id,
-    document_to_dto,
+    document_result,
     ensure_document_owner,
 )
 from src.documents.status import DocumentStatus
@@ -47,75 +30,19 @@ from src.kit.exceptions import (
 )
 from src.models.chunk import ChunkModel
 from src.models.document import DocumentModel
-from src.postgres import AsyncSession, get_db_session
 
 if TYPE_CHECKING:
     from src.documents.activity_repository import DocumentActivityRepository
     from src.documents.chunk_repository import ChunkRepository
+    from src.documents.document_repository import DocumentRepository
+    from src.documents.external_intake_repository import ExternalIntakeRepository
     from src.documents.processing import DocumentProcessingService
-    from src.documents.status_cache import IDocumentStatusCache
+    from src.documents.status_cache import RedisDocumentStatusCache
     from src.documents.text_chunker import SimpleTextChunker
-    from src.worker.dispatcher import ITaskDispatcher
+    from src.postgres import AsyncSession
+    from src.worker.dispatcher import CeleryTaskDispatcher
 
 logger = logging.getLogger(__name__)
-
-
-def get_document_retryer(
-    document_repo: DocumentRepository = Depends(get_document_repository),
-    processing_service: DocumentProcessingService = Depends(get_document_processing_service),
-) -> DocumentRetryer:
-    return DocumentRetryer(document_repo, processing_service)
-
-
-def get_document_reprocessor(
-    document_repo: DocumentRepository = Depends(get_document_repository),
-    processing_service: DocumentProcessingService = Depends(get_document_processing_service),
-) -> DocumentReprocessor:
-    return DocumentReprocessor(document_repo, processing_service)
-
-
-def get_document_ingester(
-    session: AsyncSession = Depends(get_db_session),
-    document_repo: DocumentRepository = Depends(get_document_repository),
-    status_cache: IDocumentStatusCache = Depends(get_document_status_cache),
-    task_dispatcher: ITaskDispatcher = Depends(get_task_dispatcher),
-    collection_access: DocumentCollectionAccess = Depends(get_document_collection_access),
-    activity_repo: DocumentActivityRepository = Depends(get_document_activity_repository),
-    processing_service: DocumentProcessingService = Depends(get_document_processing_service),
-) -> DocumentIngester:
-    return DocumentIngester(
-        session,
-        document_repo,
-        status_cache,
-        task_dispatcher,
-        collection_access,
-        activity_repo,
-        processing_service,
-    )
-
-
-def get_external_item_ingester(
-    session: AsyncSession = Depends(get_db_session),
-    ingest_document: DocumentIngester = Depends(get_document_ingester),
-) -> ExternalItemIngester:
-    return ExternalItemIngester(
-        session,
-        ExternalIntakeRepository.from_session(session),
-        DocumentRepository.from_session(session),
-        ingest_document,
-    )
-
-
-def get_external_intake_service(
-    session: AsyncSession = Depends(get_db_session),
-    ingest_document: DocumentIngester = Depends(get_document_ingester),
-) -> ExternalIntakeService:
-    return ExternalIntakeService(
-        session,
-        ExternalIntakeRepository.from_session(session),
-        DocumentRepository.from_session(session),
-        ingest_document,
-    )
 
 
 class TextDocumentIngester:
@@ -133,32 +60,42 @@ class TextDocumentIngester:
         self._collection_access = collection_access
         self._chunk_repo = chunk_repo
 
-    async def __call__(self, dto: IngestTextDocumentDTO) -> DocumentDTO:
-        if not dto.raw_text.strip():
+    async def __call__(
+        self,
+        *,
+        user_id: UUID,
+        title: str,
+        raw_text: str,
+        collection_id: UUID | None = None,
+        type: DocumentType = DocumentType.TEXT,
+        source_url: str | None = None,
+        language: str | None = None,
+    ) -> DocumentResult:
+        if not raw_text.strip():
             raise DocumentValidationException("raw_text cannot be empty")
 
         document_owner_id = await collection_document_owner_id(
             self._collection_access,
-            dto.collection_id,
-            dto.user_id,
+            collection_id,
+            user_id,
         )
 
         document = DocumentModel.create(
             id=uuid.uuid4(),
             user_id=document_owner_id,
-            collection_id=dto.collection_id,
-            title=dto.title,
-            type=dto.type,
-            source_url=dto.source_url,
-            file_size_bytes=len(dto.raw_text.encode()),
-            raw_content=dto.raw_text,
-            word_count=len(dto.raw_text.split()),
-            language=dto.language,
+            collection_id=collection_id,
+            title=title,
+            type=type,
+            source_url=source_url,
+            file_size_bytes=len(raw_text.encode()),
+            raw_content=raw_text,
+            word_count=len(raw_text.split()),
+            language=language,
         )
 
         await self._document_repo.create(document)
 
-        text_chunks = self._text_chunker.chunk_text(dto.raw_text)
+        text_chunks = self._text_chunker.chunk_text(raw_text)
         if not text_chunks:
             raise DocumentValidationException("raw_text produced no chunks")
 
@@ -179,25 +116,25 @@ class TextDocumentIngester:
         await self._chunk_repo.create_batch(chunks)
         document.mark_ready()
         await self._document_repo.update(document)
-        if dto.collection_id is not None:
+        if collection_id is not None:
             await record_shared_document_event(
                 self._collection_access,
-                collection_id=dto.collection_id,
-                actor_user_id=dto.user_id,
+                collection_id=collection_id,
+                actor_user_id=user_id,
                 document_id=document.id,
                 title=document.title,
             )
         await self._session.flush()
 
-        return document_to_dto(document)
+        return document_result(document)
 
 class DocumentIngester:
     def __init__(
         self,
         session: AsyncSession,
         document_repo: DocumentRepository,
-        status_cache: IDocumentStatusCache,
-        task_dispatcher: ITaskDispatcher,
+        status_cache: RedisDocumentStatusCache,
+        task_dispatcher: CeleryTaskDispatcher,
         collection_access: DocumentCollectionAccess,
         activity_repo: DocumentActivityRepository,
         processing_service: DocumentProcessingService,
@@ -210,33 +147,46 @@ class DocumentIngester:
         self._activity_repo = activity_repo
         self._processing_service = processing_service
 
-    async def __call__(self, dto: IngestDocumentDTO) -> DocumentDTO:
-        if dto.type in (DocumentType.TEXT, DocumentType.MARKDOWN) and not (dto.raw_content and dto.raw_content.strip()):
+    async def __call__(
+        self,
+        *,
+        user_id: UUID,
+        title: str,
+        type: DocumentType,
+        collection_id: UUID | None = None,
+        tags: list[str] | None = None,
+        source_url: str | None = None,
+        file_path: str | None = None,
+        file_size_bytes: int | None = None,
+        raw_content: str | None = None,
+        language: str | None = None,
+    ) -> DocumentResult:
+        if type in (DocumentType.TEXT, DocumentType.MARKDOWN) and not (raw_content and raw_content.strip()):
             raise DocumentValidationException("raw_content is required for text ingestion")
-        if dto.type in (DocumentType.URL, DocumentType.YOUTUBE) and not dto.source_url:
-            raise DocumentValidationException(f"source_url is required for {dto.type.value.lower()} ingestion")
-        if dto.type in (DocumentType.PDF, DocumentType.IMAGE) and not dto.file_path:
-            raise DocumentValidationException(f"file_path is required for {dto.type.value} ingestion")
+        if type in (DocumentType.URL, DocumentType.YOUTUBE) and not source_url:
+            raise DocumentValidationException(f"source_url is required for {type.value.lower()} ingestion")
+        if type in (DocumentType.PDF, DocumentType.IMAGE) and not file_path:
+            raise DocumentValidationException(f"file_path is required for {type.value} ingestion")
 
         document_owner_id = await collection_document_owner_id(
             self._collection_access,
-            dto.collection_id,
-            dto.user_id,
+            collection_id,
+            user_id,
         )
 
         document = DocumentModel.create(
             id=uuid.uuid4(),
             user_id=document_owner_id,
-            title=dto.title,
-            type=dto.type,
-            collection_id=dto.collection_id,
-            source_url=dto.source_url,
-            file_path=dto.file_path,
-            file_size_bytes=dto.file_size_bytes,
-            raw_content=dto.raw_content,
-            word_count=len(dto.raw_content.split()) if dto.raw_content else None,
-            language=dto.language,
-            tags=dto.tags,
+            title=title,
+            type=type,
+            collection_id=collection_id,
+            source_url=source_url,
+            file_path=file_path,
+            file_size_bytes=file_size_bytes,
+            raw_content=raw_content,
+            word_count=len(raw_content.split()) if raw_content else None,
+            language=language,
+            tags=tags,
         )
 
         await self._document_repo.create(document)
@@ -245,11 +195,11 @@ class DocumentIngester:
             document_id=document.id,
             event_type="created",
         )
-        if dto.collection_id is not None:
+        if collection_id is not None:
             await record_shared_document_event(
                 self._collection_access,
-                collection_id=dto.collection_id,
-                actor_user_id=dto.user_id,
+                collection_id=collection_id,
+                actor_user_id=user_id,
                 document_id=document.id,
                 title=document.title,
             )
@@ -257,7 +207,7 @@ class DocumentIngester:
 
         await self._processing_service.queue(document, message="Queued for processing.")
 
-        return document_to_dto(document)
+        return document_result(document)
 
 
 
@@ -271,17 +221,17 @@ class DocumentRetryer:
         self._document_repo = document_repo
         self._processing_service = processing_service
 
-    async def __call__(self, dto: RetryDocumentDTO) -> DocumentDTO:
-        document = await self._document_repo.get_by_id(dto.document_id)
+    async def __call__(self, *, user_id: UUID, document_id: UUID) -> DocumentResult:
+        document = await self._document_repo.get_by_id(document_id)
 
         if document is None:
             raise DocumentNotFoundException("document not found")
-        ensure_document_owner(document, dto.user_id)
+        ensure_document_owner(document, user_id)
         if document.status != DocumentStatus.FAILED:
             raise DocumentValidationException("only failed documents can be retried")
 
         await self._processing_service.queue(document, message="Queued retry for failed document.")
-        return document_to_dto(document)
+        return document_result(document)
 
 
 
@@ -295,14 +245,14 @@ class DocumentReprocessor:
         self._document_repo = document_repo
         self._processing_service = processing_service
 
-    async def __call__(self, dto: ReprocessDocumentDTO) -> DocumentDTO:
-        document = await self._document_repo.get_by_id(dto.document_id)
+    async def __call__(self, *, user_id: UUID, document_id: UUID) -> DocumentResult:
+        document = await self._document_repo.get_by_id(document_id)
 
         if document is None:
             raise DocumentNotFoundException("document not found")
-        ensure_document_owner(document, dto.user_id)
+        ensure_document_owner(document, user_id)
         await self._processing_service.queue(document, message="Queued for reprocessing.")
-        return document_to_dto(document)
+        return document_result(document)
 
 
 
@@ -325,41 +275,73 @@ class ExternalItemIngester:
         self._document_repo = document_repo
         self._ingest_document = ingest_document
 
-    async def __call__(self, dto: ExternalIngestDTO) -> ExternalIngestResultDTO:
-        provider = normalize_provider(dto.provider)
-        idempotency_key = normalize_idempotency_key(dto)
-        tags = normalize_tags(dto.tags or [])
-        payload_metadata = dict(dto.payload_metadata or {})
-        if tags:
-            payload_metadata["tags"] = tags
+    async def __call__(
+        self,
+        *,
+        user_id: UUID,
+        api_key_id: UUID | None,
+        provider: str,
+        title: str,
+        type: DocumentType,
+        collection_id: UUID | None = None,
+        tags: list[str] | None = None,
+        source_url: str | None = None,
+        raw_content: str | None = None,
+        language: str | None = None,
+        external_id: str | None = None,
+        idempotency_key: str | None = None,
+        payload_metadata: dict[str, object] | None = None,
+    ) -> ExternalIngestResult:
+        normalized_provider = normalize_provider(provider)
+        normalized_idempotency_key = normalize_idempotency_key(
+            explicit=idempotency_key,
+            external_id=external_id,
+            source_url=source_url,
+        )
+        normalized_tags = normalize_tags(tags or [])
+        metadata = dict(payload_metadata or {})
+        if normalized_tags:
+            metadata["tags"] = normalized_tags
 
-        existing = await self._get_existing(dto.user_id, provider, idempotency_key)
+        existing = await self._get_existing(user_id, normalized_provider, normalized_idempotency_key)
         if existing is not None:
             return await self._existing_result(existing)
 
-        intake_item, created = await self._create_intake_item(dto, provider, idempotency_key, tags, payload_metadata)
+        intake_item, created = await self._create_intake_item(
+            user_id=user_id,
+            api_key_id=api_key_id,
+            provider=normalized_provider,
+            title=title,
+            type=type,
+            collection_id=collection_id,
+            tags=normalized_tags,
+            source_url=source_url,
+            raw_content=raw_content,
+            language=language,
+            external_id=external_id,
+            idempotency_key=normalized_idempotency_key,
+            payload_metadata=metadata,
+        )
         if not created:
             return await self._existing_result(intake_item)
 
         try:
             document = await self._ingest_document(
-                IngestDocumentDTO(
-                    user_id=dto.user_id,
-                    title=dto.title,
-                    type=dto.type,
-                    collection_id=dto.collection_id,
-                    tags=tags,
-                    source_url=dto.source_url,
-                    raw_content=dto.raw_content,
-                    language=dto.language,
-                )
+                user_id=user_id,
+                title=title,
+                type=type,
+                collection_id=collection_id,
+                tags=normalized_tags,
+                source_url=source_url,
+                raw_content=raw_content,
+                language=language,
             )
         except Exception as exc:
             await self._mark_failed(intake_item.id, sanitize_error(exc))
             raise
 
         queued = await self._mark_queued(intake_item.id, document.id)
-        return ExternalIngestResultDTO(intake_item=external_intake_dto(queued), document=document)
+        return ExternalIngestResult(intake_item=external_intake_item(queued), document=document)
 
     async def _get_existing(
         self,
@@ -375,37 +357,46 @@ class ExternalItemIngester:
             idempotency_key=idempotency_key,
         )
 
-    async def _existing_result(self, record: ExternalIntakeItemRecord) -> ExternalIngestResultDTO:
+    async def _existing_result(self, record: ExternalIntakeItemRecord) -> ExternalIngestResult:
         document = None
         if record.document_id is not None:
             entity = await self._document_repo.get_by_id(record.document_id)
             if entity is not None and entity.user_id == record.user_id:
-                document = document_to_dto(entity)
-        return ExternalIngestResultDTO(intake_item=external_intake_dto(record), document=document)
+                document = document_result(entity)
+        return ExternalIngestResult(intake_item=external_intake_item(record), document=document)
 
     async def _create_intake_item(
         self,
-        dto: ExternalIngestDTO,
+        *,
+        user_id: UUID,
+        api_key_id: UUID | None,
         provider: str,
+        title: str,
+        type: DocumentType,
+        collection_id: UUID | None,
         idempotency_key: str | None,
         tags: list[str],
+        source_url: str | None,
+        raw_content: str | None,
+        language: str | None,
+        external_id: str | None,
         payload_metadata: dict[str, object],
     ) -> tuple[ExternalIntakeItemRecord, bool]:
         now = datetime.now(UTC)
         record = ExternalIntakeItemRecord(
             id=uuid4(),
-            user_id=dto.user_id,
-            api_key_id=dto.api_key_id,
+            user_id=user_id,
+            api_key_id=api_key_id,
             provider=provider,
-            external_id=normalize_optional(dto.external_id),
+            external_id=normalize_optional(external_id),
             idempotency_key=idempotency_key,
-            title=dto.title.strip(),
-            type=dto.type,
-            collection_id=dto.collection_id,
+            title=title.strip(),
+            type=type,
+            collection_id=collection_id,
             tags=tags,
-            source_url=normalize_optional(dto.source_url),
-            raw_content=dto.raw_content,
-            language=normalize_optional(dto.language),
+            source_url=normalize_optional(source_url),
+            raw_content=raw_content,
+            language=normalize_optional(language),
             status=INTAKE_STATUS_RECEIVED,
             error_reason=None,
             document_id=None,
@@ -446,21 +437,21 @@ class ExternalIntakeService:
         self._document_repo = document_repo
         self._ingest_document = ingest_document
 
-    async def get(self, *, user_id: UUID, intake_item_id: UUID) -> ExternalIngestResultDTO:
+    async def get(self, *, user_id: UUID, intake_item_id: UUID) -> ExternalIngestResult:
         record = await self._external_intake_repo.get_by_id(user_id=user_id, intake_item_id=intake_item_id)
         if record is None:
             raise ResourceNotFoundException("intake item not found")
         return await _intake_result(self._document_repo, record)
 
-    async def list(self, *, user_id: UUID, limit: int = 20, offset: int = 0) -> list[ExternalIntakeItemDTO]:
+    async def list(self, *, user_id: UUID, limit: int = 20, offset: int = 0) -> list[ExternalIntakeItem]:
         records = await self._external_intake_repo.list_by_user_id(
             user_id=user_id,
             limit=limit,
             offset=offset,
         )
-        return [external_intake_dto(record) for record in records]
+        return [external_intake_item(record) for record in records]
 
-    async def retry(self, *, user_id: UUID, intake_item_id: UUID) -> ExternalIngestResultDTO:
+    async def retry(self, *, user_id: UUID, intake_item_id: UUID) -> ExternalIngestResult:
         record = await self._external_intake_repo.get_by_id(user_id=user_id, intake_item_id=intake_item_id)
         if record is None:
             raise ResourceNotFoundException("intake item not found")
@@ -469,16 +460,14 @@ class ExternalIntakeService:
 
         try:
             document = await self._ingest_document(
-                IngestDocumentDTO(
-                    user_id=record.user_id,
-                    title=record.title,
-                    type=record.type,
-                    collection_id=record.collection_id,
-                    tags=record.tags,
-                    source_url=record.source_url,
-                    raw_content=record.raw_content,
-                    language=record.language,
-                )
+                user_id=record.user_id,
+                title=record.title,
+                type=record.type,
+                collection_id=record.collection_id,
+                tags=record.tags,
+                source_url=record.source_url,
+                raw_content=record.raw_content,
+                language=record.language,
             )
         except Exception as exc:
             await self._external_intake_repo.mark_failed(
@@ -493,7 +482,7 @@ class ExternalIntakeService:
             document_id=document.id,
         )
         await self._session.flush()
-        return ExternalIngestResultDTO(intake_item=external_intake_dto(queued), document=document)
+        return ExternalIngestResult(intake_item=external_intake_item(queued), document=document)
 
 
 def normalize_provider(provider: str) -> str:
@@ -505,15 +494,15 @@ def normalize_provider(provider: str) -> str:
     return normalized
 
 
-def normalize_idempotency_key(dto: ExternalIngestDTO) -> str | None:
-    explicit = normalize_optional(dto.idempotency_key)
+def normalize_idempotency_key(*, explicit: str | None, external_id: str | None, source_url: str | None) -> str | None:
+    explicit = normalize_optional(explicit)
     if explicit:
         return explicit[:200]
-    external_id = normalize_optional(dto.external_id)
+    external_id = normalize_optional(external_id)
     if external_id:
         return external_id[:200]
-    if dto.source_url:
-        return hashlib.sha256(dto.source_url.strip().encode("utf-8")).hexdigest()
+    if source_url:
+        return hashlib.sha256(source_url.strip().encode("utf-8")).hexdigest()
     return None
 
 
@@ -541,8 +530,8 @@ def sanitize_error(exc: Exception) -> str:
     return message[:500]
 
 
-def external_intake_dto(record: ExternalIntakeItemRecord) -> ExternalIntakeItemDTO:
-    return ExternalIntakeItemDTO(
+def external_intake_item(record: ExternalIntakeItemRecord) -> ExternalIntakeItem:
+    return ExternalIntakeItem(
         id=record.id,
         user_id=record.user_id,
         api_key_id=record.api_key_id,
@@ -566,10 +555,10 @@ def external_intake_dto(record: ExternalIntakeItemRecord) -> ExternalIntakeItemD
 async def _intake_result(
     document_repo: DocumentRepository,
     record: ExternalIntakeItemRecord,
-) -> ExternalIngestResultDTO:
+) -> ExternalIngestResult:
     document = None
     if record.document_id is not None:
         entity = await document_repo.get_by_id(record.document_id)
         if entity is not None and entity.user_id == record.user_id:
-            document = document_to_dto(entity)
-    return ExternalIngestResultDTO(intake_item=external_intake_dto(record), document=document)
+            document = document_result(entity)
+    return ExternalIngestResult(intake_item=external_intake_item(record), document=document)

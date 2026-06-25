@@ -1,12 +1,12 @@
 import uuid
 
-from src.query.schemas import QuerySourceDTO, RefragRepresentation
+from src.query.schemas import QuerySource, RefragRepresentation
 from src.query.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
 from src.query.services.retrieval.chunk_quality_filter import ChunkQualityFilter, ChunkRelevanceFilter
 
 
-def _source(index: int, *, score: float | None, content: str | None = None) -> QuerySourceDTO:
-    return QuerySourceDTO(
+def _source(index: int, *, score: float | None, content: str | None = None) -> QuerySource:
+    return QuerySource(
         chunk_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         document_title=f"Document {index}",
@@ -140,7 +140,7 @@ def test_chunk_relevance_filter_uses_document_title_for_title_based_queries() ->
         score=0.9,
         content="Python is a high-level programming language with significant indentation.",
     )
-    source = QuerySourceDTO(
+    source = QuerySource(
         chunk_id=source.chunk_id,
         document_id=source.document_id,
         document_title="python wiki url",

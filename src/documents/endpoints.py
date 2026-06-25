@@ -4,26 +4,16 @@ from fastapi import Depends, Query, Response, status
 
 from src.auth.auth import CurrentUser
 from src.documents.dependencies import get_document_service
-from src.documents.exports import (
-    DocumentExporter,
-    get_document_exporter,
-)
+from src.documents.export_dependencies import get_document_exporter
+from src.documents.exports import DocumentExporter
 from src.documents.ingestion import (
     DocumentReprocessor,
     DocumentRetryer,
-    get_document_reprocessor,
-    get_document_retryer,
 )
+from src.documents.ingestion_dependencies import get_document_reprocessor, get_document_retryer
+from src.documents.note_dependencies import get_note_service
 from src.documents.notes import (
     NoteService,
-    get_note_service,
-    to_create_note_dto,
-    to_get_note_dto,
-    to_list_notes_dto,
-    to_note_list_response,
-    to_note_response,
-    to_note_version_response,
-    to_update_note_dto,
 )
 from src.documents.schemas import (
     BulkAddDocumentTagsRequest,
@@ -46,25 +36,10 @@ from src.documents.schemas import (
 )
 from src.documents.service import (
     DocumentService,
-    to_bulk_add_document_tags_dto,
-    to_bulk_document_operation_dto,
-    to_bulk_move_documents_dto,
-    to_create_document_dto,
-    to_delete_document_dto,
-    to_document_chunk_response,
     to_document_connections_response,
     to_document_list_response,
-    to_document_question_history_response,
     to_document_response,
     to_document_search_response,
-    to_get_document_chunk_dto,
-    to_get_document_dto,
-    to_list_documents_dto,
-    to_move_document_dto,
-    to_rename_document_dto,
-    to_reprocess_document_dto,
-    to_retry_document_dto,
-    to_search_documents_dto,
 )
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
@@ -81,7 +56,7 @@ async def create_document(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentResponse:
-    result = await service.create(to_create_document_dto(body, current_user.id))
+    result = await service.create(user_id=current_user.id, body=body)
     return to_document_response(result)
 
 
@@ -97,15 +72,13 @@ async def list_documents(
     tag: str | None = Query(default=None, min_length=1, max_length=100),
 ) -> DocumentListResponse:
     result = await service.list(
-        to_list_documents_dto(
-            current_user.id,
-            limit,
-            offset,
-            collection_id,
-            document_status,
-            document_type,
-            tag,
-        )
+        user_id=current_user.id,
+        limit=limit,
+        offset=offset,
+        collection_id=collection_id,
+        status=document_status,
+        document_type=document_type,
+        tag_name=tag,
     )
     return to_document_list_response(result)
 
@@ -122,15 +95,13 @@ async def search_documents(
     tag: str | None = Query(default=None, min_length=1, max_length=100),
 ) -> DocumentSearchResponse:
     result = await service.search(
-        to_search_documents_dto(
-            user_id=current_user.id,
-            query=query,
-            limit=limit,
-            collection_id=collection_id,
-            status=document_status,
-            document_type=document_type,
-            tag_name=tag,
-        )
+        user_id=current_user.id,
+        query=query,
+        limit=limit,
+        collection_id=collection_id,
+        status=document_status,
+        document_type=document_type,
+        tag_name=tag,
     )
     return to_document_search_response(result)
 
@@ -141,7 +112,7 @@ async def get_document(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentResponse:
-    result = await service.get(to_get_document_dto(document_id, current_user.id))
+    result = await service.get(user_id=current_user.id, document_id=document_id)
     return to_document_response(result)
 
 
@@ -151,7 +122,7 @@ async def get_document_suggested_questions(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> list[str]:
-    result = await service.get(to_get_document_dto(document_id, current_user.id))
+    result = await service.get(user_id=current_user.id, document_id=document_id)
     return result.suggested_questions or []
 
 
@@ -162,7 +133,7 @@ async def get_document_connections(
     service: DocumentService = Depends(get_document_service),
     limit: int = Query(default=5, ge=1, le=20),
 ) -> DocumentConnectionsResponse:
-    result = await service.connections(to_get_document_dto(document_id, current_user.id), limit=limit)
+    result = await service.connections(user_id=current_user.id, document_id=document_id, limit=limit)
     return to_document_connections_response(result)
 
 
@@ -173,7 +144,7 @@ async def export_document(
     handler: DocumentExporter = Depends(get_document_exporter),
     export_format: str = Query(default="markdown", alias="format", pattern="^(markdown|md|pdf)$"),
 ) -> Response:
-    result = await handler(to_get_document_dto(document_id, current_user.id), export_format=export_format)
+    result = await handler(user_id=current_user.id, document_id=document_id, export_format=export_format)
     return Response(
         content=result.content,
         media_type=result.media_type,
@@ -188,8 +159,8 @@ async def get_document_chunk(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentChunkResponse:
-    result = await service.chunk(to_get_document_chunk_dto(document_id, chunk_id, current_user.id))
-    return to_document_chunk_response(result)
+    result = await service.chunk(user_id=current_user.id, document_id=document_id, chunk_id=chunk_id)
+    return result
 
 
 @documents_router.get("/{document_id}/questions", response_model=DocumentQuestionHistoryResponse)
@@ -199,8 +170,8 @@ async def get_document_question_history(
     service: DocumentService = Depends(get_document_service),
     limit: int = Query(default=5, ge=1, le=20),
 ) -> DocumentQuestionHistoryResponse:
-    result = await service.question_history(to_get_document_dto(document_id, current_user.id), limit=limit)
-    return to_document_question_history_response(result)
+    result = await service.question_history(user_id=current_user.id, document_id=document_id, limit=limit)
+    return result
 
 
 @documents_router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -209,7 +180,7 @@ async def delete_document(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> Response:
-    await service.delete(to_delete_document_dto(document_id, current_user.id))
+    await service.delete(user_id=current_user.id, document_id=document_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -220,7 +191,7 @@ async def rename_document(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentResponse:
-    result = await service.rename(to_rename_document_dto(document_id, body, current_user.id))
+    result = await service.rename(user_id=current_user.id, document_id=document_id, body=body)
     return to_document_response(result)
 
 
@@ -231,7 +202,7 @@ async def move_document(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentResponse:
-    result = await service.move(to_move_document_dto(document_id, body, current_user.id))
+    result = await service.move(user_id=current_user.id, document_id=document_id, body=body)
     return to_document_response(result)
 
 
@@ -241,7 +212,7 @@ async def bulk_delete_documents(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> Response:
-    await service.bulk_delete(to_bulk_document_operation_dto(body.document_ids, current_user.id))
+    await service.bulk_delete(user_id=current_user.id, document_ids=body.document_ids)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -251,7 +222,7 @@ async def bulk_move_documents(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> Response:
-    await service.bulk_move(to_bulk_move_documents_dto(body.document_ids, body.collection_id, current_user.id))
+    await service.bulk_move(user_id=current_user.id, document_ids=body.document_ids, collection_id=body.collection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -261,7 +232,7 @@ async def bulk_add_document_tags(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> Response:
-    await service.bulk_add_tags(to_bulk_add_document_tags_dto(body, current_user.id))
+    await service.bulk_add_tags(user_id=current_user.id, body=body)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -271,7 +242,7 @@ async def bulk_reprocess_documents(
     current_user: CurrentUser,
     service: DocumentService = Depends(get_document_service),
 ) -> Response:
-    await service.bulk_reprocess(to_bulk_document_operation_dto(body.document_ids, current_user.id))
+    await service.bulk_reprocess(user_id=current_user.id, document_ids=body.document_ids)
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
@@ -281,7 +252,7 @@ async def retry_document(
     current_user: CurrentUser,
     handler: DocumentRetryer = Depends(get_document_retryer),
 ) -> DocumentResponse:
-    result = await handler(to_retry_document_dto(document_id, current_user.id))
+    result = await handler(user_id=current_user.id, document_id=document_id)
     return to_document_response(result)
 
 
@@ -291,7 +262,7 @@ async def reprocess_document(
     current_user: CurrentUser,
     handler: DocumentReprocessor = Depends(get_document_reprocessor),
 ) -> DocumentResponse:
-    result = await handler(to_reprocess_document_dto(document_id, current_user.id))
+    result = await handler(user_id=current_user.id, document_id=document_id)
     return to_document_response(result)
 
 
@@ -301,8 +272,8 @@ async def create_note(
     current_user: CurrentUser,
     service: NoteService = Depends(get_note_service),
 ) -> NoteResponse:
-    result = await service.create(to_create_note_dto(body, current_user.id))
-    return to_note_response(result)
+    result = await service.create(user_id=current_user.id, body=body)
+    return result
 
 
 @notes_router.get("", response_model=NoteListResponse)
@@ -313,8 +284,8 @@ async def list_notes(
     offset: int = Query(default=0, ge=0),
     collection_id: UUID | None = Query(default=None),
 ) -> NoteListResponse:
-    result = await service.list(to_list_notes_dto(current_user.id, limit, offset, collection_id))
-    return to_note_list_response(result)
+    result = await service.list(user_id=current_user.id, limit=limit, offset=offset, collection_id=collection_id)
+    return result
 
 
 @notes_router.get("/{note_id}", response_model=NoteResponse)
@@ -323,8 +294,8 @@ async def get_note(
     current_user: CurrentUser,
     service: NoteService = Depends(get_note_service),
 ) -> NoteResponse:
-    result = await service.get(to_get_note_dto(note_id, current_user.id))
-    return to_note_response(result)
+    result = await service.get(user_id=current_user.id, note_id=note_id)
+    return result
 
 
 @notes_router.get("/{note_id}/versions", response_model=list[NoteVersionResponse])
@@ -334,7 +305,7 @@ async def list_note_versions(
     service: NoteService = Depends(get_note_service),
 ) -> list[NoteVersionResponse]:
     result = await service.list_versions(user_id=current_user.id, note_id=note_id)
-    return [to_note_version_response(version) for version in result]
+    return list(result)
 
 
 @notes_router.patch("/{note_id}", response_model=NoteResponse)
@@ -344,8 +315,8 @@ async def update_note(
     current_user: CurrentUser,
     service: NoteService = Depends(get_note_service),
 ) -> NoteResponse:
-    result = await service.update(to_update_note_dto(note_id, body, current_user.id))
-    return to_note_response(result)
+    result = await service.update(user_id=current_user.id, note_id=note_id, body=body)
+    return result
 
 
 @notes_router.post("/{note_id}/versions/{version_id}/restore", response_model=NoteResponse)
@@ -356,7 +327,7 @@ async def restore_note_version(
     service: NoteService = Depends(get_note_service),
 ) -> NoteResponse:
     result = await service.restore_version(user_id=current_user.id, note_id=note_id, version_id=version_id)
-    return to_note_response(result)
+    return result
 
 
 @notes_router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from src.query.schemas import RefragContextPackage
 
 
-class IEvalScorer(ABC):
+class EvalScorer(ABC):
     @abstractmethod
     async def score(
         self,
@@ -15,5 +15,4 @@ class IEvalScorer(ABC):
         query: str,
         answer: str,
         context: RefragContextPackage,
-    ) -> dict[str, float]:
-        """Return RAGAS-compatible evaluation scores."""
+    ) -> dict[str, float]: ...

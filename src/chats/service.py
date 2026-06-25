@@ -1,14 +1,16 @@
 from uuid import UUID
 
-from src.chats.repository import ChatRepository
+from src.chats.repository import (
+    ChatDetailRecord,
+    ChatMessageRecord,
+    ChatRepository,
+    ChatSessionListRecord,
+    ChatSessionRecord,
+)
 from src.chats.schemas import (
-    ChatDetailDTO,
     ChatDetailResponse,
     ChatListResponse,
-    ChatMessageDTO,
     ChatMessageResponse,
-    ChatSessionDTO,
-    ChatSessionListDTO,
     ChatSessionResponse,
 )
 from src.kit.exceptions import ChatNotFoundException
@@ -79,7 +81,7 @@ def get_chat_service() -> ChatService:
     return chats
 
 
-def to_chat_session_response(dto: ChatSessionDTO) -> ChatSessionResponse:
+def to_chat_session_response(dto: ChatSessionRecord) -> ChatSessionResponse:
     return ChatSessionResponse(
         id=dto.id,
         user_id=dto.user_id,
@@ -90,7 +92,7 @@ def to_chat_session_response(dto: ChatSessionDTO) -> ChatSessionResponse:
     )
 
 
-def to_chat_list_response(dto: ChatSessionListDTO) -> ChatListResponse:
+def to_chat_list_response(dto: ChatSessionListRecord) -> ChatListResponse:
     return ChatListResponse(
         items=[to_chat_session_response(item) for item in dto.items],
         total=dto.total,
@@ -99,7 +101,7 @@ def to_chat_list_response(dto: ChatSessionListDTO) -> ChatListResponse:
     )
 
 
-def to_chat_message_response(dto: ChatMessageDTO) -> ChatMessageResponse:
+def to_chat_message_response(dto: ChatMessageRecord) -> ChatMessageResponse:
     return ChatMessageResponse(
         id=dto.id,
         chat_id=dto.chat_id,
@@ -113,7 +115,7 @@ def to_chat_message_response(dto: ChatMessageDTO) -> ChatMessageResponse:
     )
 
 
-def to_chat_detail_response(dto: ChatDetailDTO) -> ChatDetailResponse:
+def to_chat_detail_response(dto: ChatDetailRecord) -> ChatDetailResponse:
     return ChatDetailResponse(
         session=to_chat_session_response(dto.session),
         messages=[to_chat_message_response(message) for message in dto.messages],

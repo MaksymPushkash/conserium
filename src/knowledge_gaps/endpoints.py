@@ -3,7 +3,8 @@ from uuid import UUID
 from fastapi import Depends, Query, status
 
 from src.auth.auth import CurrentUser
-from src.documents.notes import NoteService, get_note_service
+from src.documents.note_dependencies import get_note_service
+from src.documents.notes import NoteService
 from src.knowledge_gaps.schemas import (
     KnowledgeGapListResponse,
     KnowledgeGapNoteRequest,

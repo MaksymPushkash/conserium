@@ -11,7 +11,6 @@ from src.documents.ingestion import (
     TextDocumentIngester,
 )
 from src.documents.processing import DocumentProcessingService
-from src.documents.schemas import IngestDocumentDTO, IngestTextDocumentDTO
 from src.documents.text_chunker import SimpleTextChunker
 from src.documents.types import DocumentType
 from src.kit.exceptions import ValidationException
@@ -19,16 +18,16 @@ from src.models.collection import CollectionModel
 from src.models.user import UserModel
 from src.users.repository import UserRepository
 from src.workspaces.repository import SharedWorkspaceRepository
-from src.workspaces.schemas import WorkspaceAuditEventDTO, WorkspaceDTO, WorkspaceMemberDTO
+from src.workspaces.schemas import WorkspaceAuditEventRecord, WorkspaceMemberRecord, WorkspaceRecord
 from src.workspaces.service import WorkspaceService
 
 if TYPE_CHECKING:
     from src.documents.document_repository import DocumentRepository
     from src.documents.service import DocumentCollectionAccess
-    from src.documents.status_cache import IDocumentStatusCache
+    from src.documents.status_cache import RedisDocumentStatusCache
     from src.models.chunk import ChunkModel
     from src.models.document import DocumentModel
-    from src.worker.dispatcher import ITaskDispatcher
+    from src.worker.dispatcher import CeleryTaskDispatcher
 
 
 class _FakeUserRepository:
@@ -124,23 +123,23 @@ class _FakeChunkRepository:
 
 
 class _FakeSharedWorkspaceRepository:
-    def __init__(self, workspace: WorkspaceDTO, member: WorkspaceMemberDTO | None = None) -> None:
+    def __init__(self, workspace: WorkspaceRecord, member: WorkspaceMemberRecord | None = None) -> None:
         self.workspace = workspace
         self.member = member
         self.force_stale_owner_transfer = False
         self.collection_audit_events: list[tuple[uuid.UUID, uuid.UUID, str, dict[str, object]]] = []
-        self.workspace_audit_events: list[WorkspaceAuditEventDTO] = []
+        self.workspace_audit_events: list[WorkspaceAuditEventRecord] = []
         self.removed_member_id: uuid.UUID | None = None
         self.archived_workspace_id: uuid.UUID | None = None
         self.upserted_workspace_members: list[tuple[uuid.UUID, str, str, uuid.UUID, uuid.UUID | None]] = []
 
-    async def get_workspace(self, *, workspace_id: uuid.UUID) -> WorkspaceDTO | None:
+    async def get_workspace(self, *, workspace_id: uuid.UUID) -> WorkspaceRecord | None:
         return self.workspace if self.workspace.id == workspace_id else None
 
-    async def update_workspace(self, *, workspace_id: uuid.UUID, name: str, description: str | None) -> WorkspaceDTO | None:
+    async def update_workspace(self, *, workspace_id: uuid.UUID, name: str, description: str | None) -> WorkspaceRecord | None:
         if self.workspace.id != workspace_id:
             return None
-        self.workspace = WorkspaceDTO(
+        self.workspace = WorkspaceRecord(
             id=self.workspace.id,
             user_id=self.workspace.user_id,
             name=name,
@@ -157,20 +156,20 @@ class _FakeSharedWorkspaceRepository:
         self.archived_workspace_id = workspace_id
         return True
 
-    async def get_workspace_member_for_user(self, *, workspace_id: uuid.UUID, user_id: uuid.UUID) -> WorkspaceMemberDTO | None:
+    async def get_workspace_member_for_user(self, *, workspace_id: uuid.UUID, user_id: uuid.UUID) -> WorkspaceMemberRecord | None:
         if self.member and self.member.workspace_id == workspace_id and self.member.user_id == user_id:
             return self.member
         return None
 
-    async def get_workspace_member(self, *, workspace_id: uuid.UUID, member_id: uuid.UUID) -> WorkspaceMemberDTO | None:
+    async def get_workspace_member(self, *, workspace_id: uuid.UUID, member_id: uuid.UUID) -> WorkspaceMemberRecord | None:
         if self.member and self.member.workspace_id == workspace_id and self.member.id == member_id:
             return self.member
         return None
 
-    async def update_workspace_owner(self, *, workspace_id: uuid.UUID, user_id: uuid.UUID) -> WorkspaceDTO | None:
+    async def update_workspace_owner(self, *, workspace_id: uuid.UUID, user_id: uuid.UUID) -> WorkspaceRecord | None:
         if self.workspace.id != workspace_id:
             return None
-        self.workspace = WorkspaceDTO(
+        self.workspace = WorkspaceRecord(
             id=self.workspace.id,
             user_id=user_id,
             name=self.workspace.name,
@@ -187,12 +186,12 @@ class _FakeSharedWorkspaceRepository:
         workspace_id: uuid.UUID,
         current_owner_user_id: uuid.UUID,
         new_owner_user_id: uuid.UUID,
-    ) -> WorkspaceDTO | None:
+    ) -> WorkspaceRecord | None:
         if self.force_stale_owner_transfer:
             return None
         if self.workspace.id != workspace_id or self.workspace.user_id != current_owner_user_id:
             return None
-        self.workspace = WorkspaceDTO(
+        self.workspace = WorkspaceRecord(
             id=self.workspace.id,
             user_id=new_owner_user_id,
             name=self.workspace.name,
@@ -211,9 +210,9 @@ class _FakeSharedWorkspaceRepository:
         role: str,
         invited_by_user_id: uuid.UUID,
         user_id: uuid.UUID | None,
-    ) -> WorkspaceMemberDTO:
+    ) -> WorkspaceMemberRecord:
         self.upserted_workspace_members.append((workspace_id, email, role, invited_by_user_id, user_id))
-        self.member = WorkspaceMemberDTO(
+        self.member = WorkspaceMemberRecord(
             id=uuid.uuid4(),
             workspace_id=workspace_id,
             user_id=user_id,
@@ -226,10 +225,10 @@ class _FakeSharedWorkspaceRepository:
         )
         return self.member
 
-    async def update_workspace_member_role(self, *, member_id: uuid.UUID, role: str) -> WorkspaceMemberDTO | None:
+    async def update_workspace_member_role(self, *, member_id: uuid.UUID, role: str) -> WorkspaceMemberRecord | None:
         if self.member is None or self.member.id != member_id:
             return None
-        self.member = WorkspaceMemberDTO(
+        self.member = WorkspaceMemberRecord(
             id=self.member.id,
             workspace_id=self.member.workspace_id,
             user_id=self.member.user_id,
@@ -253,8 +252,8 @@ class _FakeSharedWorkspaceRepository:
         actor_user_id: uuid.UUID,
         event_type: str,
         metadata: dict[str, object],
-    ) -> WorkspaceAuditEventDTO:
-        event = WorkspaceAuditEventDTO(
+    ) -> WorkspaceAuditEventRecord:
+        event = WorkspaceAuditEventRecord(
             id=uuid.uuid4(),
             workspace_id=workspace_id,
             actor_user_id=actor_user_id,
@@ -277,7 +276,7 @@ class _FakeSharedWorkspaceRepository:
 
 
 class _FakeRepositorySession:
-    def __init__(self, *, workspace: WorkspaceDTO, member: WorkspaceMemberDTO | None = None, collection: CollectionModel | None = None, users: list[UserModel] | None = None) -> None:
+    def __init__(self, *, workspace: WorkspaceRecord, member: WorkspaceMemberRecord | None = None, collection: CollectionModel | None = None, users: list[UserModel] | None = None) -> None:
         self.shared_workspace_repo = _FakeSharedWorkspaceRepository(workspace, member)
         self.collection_repo = _FakeCollectionRepository(collection)
         self.user_repo = _FakeUserRepository(users)
@@ -372,8 +371,8 @@ def _user(user_id: uuid.UUID, email: str) -> UserModel:
     )
 
 
-def _workspace(owner_id: uuid.UUID, workspace_id: uuid.UUID | None = None) -> WorkspaceDTO:
-    return WorkspaceDTO(
+def _workspace(owner_id: uuid.UUID, workspace_id: uuid.UUID | None = None) -> WorkspaceRecord:
+    return WorkspaceRecord(
         id=workspace_id or uuid.uuid4(),
         user_id=owner_id,
         name="Research",
@@ -384,8 +383,8 @@ def _workspace(owner_id: uuid.UUID, workspace_id: uuid.UUID | None = None) -> Wo
     )
 
 
-def _member(workspace_id: uuid.UUID, user_id: uuid.UUID, role: str = "editor") -> WorkspaceMemberDTO:
-    return WorkspaceMemberDTO(
+def _member(workspace_id: uuid.UUID, user_id: uuid.UUID, role: str = "editor") -> WorkspaceMemberRecord:
+    return WorkspaceMemberRecord(
         id=uuid.uuid4(),
         workspace_id=workspace_id,
         user_id=user_id,
@@ -550,12 +549,10 @@ async def test_shared_text_ingestion_uses_workspace_owner_and_records_audit_even
         cast("DocumentCollectionAccess", _FakeDocumentCollectionAccess(repository_session)),
         repository_session.chunk_repo,
     )(
-        IngestTextDocumentDTO(
-            user_id=editor_id,
-            title="Shared note",
-            raw_text="Shared workspace ingestion should be audited.",
-            collection_id=collection.id,
-        )
+        user_id=editor_id,
+        title="Shared note",
+        raw_text="Shared workspace ingestion should be audited.",
+        collection_id=collection.id,
     )
 
     assert result.user_id == owner_id
@@ -594,26 +591,24 @@ async def test_shared_file_ingestion_uses_workspace_owner_and_records_audit_even
     result = await DocumentIngester(
         repository_session,  # type: ignore[arg-type]
         _as_document_repository(repository_session),
-        cast("IDocumentStatusCache", status_cache),
-        cast("ITaskDispatcher", dispatcher),
+        cast("RedisDocumentStatusCache", status_cache),
+        cast("CeleryTaskDispatcher", dispatcher),
         cast("DocumentCollectionAccess", _FakeDocumentCollectionAccess(repository_session)),
         repository_session.document_activity_repo,
         DocumentProcessingService(
             repository_session,  # type: ignore[arg-type]
             repository_session.document_repo,  # type: ignore[arg-type]
             repository_session.document_processing_outbox_repo,  # type: ignore[arg-type]
-            cast("IDocumentStatusCache", status_cache),
-            cast("ITaskDispatcher", dispatcher),
+            cast("RedisDocumentStatusCache", status_cache),
+            cast("CeleryTaskDispatcher", dispatcher),
         ),
     )(
-        IngestDocumentDTO(
-            user_id=editor_id,
-            title=f"Shared {document_type.value}",
-            type=document_type,
-            collection_id=collection.id,
-            file_path=file_path,
-            file_size_bytes=128,
-        )
+        user_id=editor_id,
+        title=f"Shared {document_type.value}",
+        type=document_type,
+        collection_id=collection.id,
+        file_path=file_path,
+        file_size_bytes=128,
     )
 
     assert result.user_id == owner_id

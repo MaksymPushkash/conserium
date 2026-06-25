@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
 from src.documents.exports import NotionMarkdownExporter
 from src.integrations.schemas import NotionPageResponse
 from src.integrations.service import NotionWorkspaceService
@@ -64,7 +64,8 @@ class _FakeRepositorySession:
 
 
 class _MissingParentNotionExportService:
-    async def __call__(self, dto: object) -> object:
+    async def __call__(self, **kwargs: object) -> object:
+        _ = kwargs
         raise IntegrationConfigurationException("set a default Notion parent page before exporting")
 
 
@@ -124,7 +125,7 @@ def _make_app(user: UserModel, dependencies: Mapping[type[object], object]) -> F
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
             **dependencies,
         }

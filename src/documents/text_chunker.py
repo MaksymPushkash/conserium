@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.documents.schemas import TextChunkDTO
+from src.documents.schemas import TextChunk
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,11 +19,11 @@ class SimpleTextChunker:
             raise ValueError("max_chunk_chars must be positive")
         self._max_chunk_chars = max_chunk_chars
 
-    def chunk_text(self, text: str) -> list[TextChunkDTO]:
+    def chunk_text(self, text: str) -> list[TextChunk]:
         if not text.strip():
             return []
 
-        chunks: list[TextChunkDTO] = []
+        chunks: list[TextChunk] = []
         current_start: int | None = None
         current_end: int | None = None
 
@@ -118,9 +118,9 @@ class SimpleTextChunker:
         return spans
 
     @staticmethod
-    def _build_chunk(text: str, start_char: int, end_char: int, chunk_index: int) -> TextChunkDTO:
+    def _build_chunk(text: str, start_char: int, end_char: int, chunk_index: int) -> TextChunk:
         content = text[start_char:end_char]
-        return TextChunkDTO(
+        return TextChunk(
             content=content,
             chunk_index=chunk_index,
             start_char=start_char,

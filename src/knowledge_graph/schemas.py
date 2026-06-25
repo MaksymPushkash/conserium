@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeGraphNodeDTO:
+class KnowledgeGraphNode:
     id: str
     kind: str
     label: str
@@ -24,7 +24,7 @@ class KnowledgeGraphNodeDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeGraphEdgeDTO:
+class KnowledgeGraphEdge:
     id: str
     source_id: str
     target_id: str
@@ -34,28 +34,28 @@ class KnowledgeGraphEdgeDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeGraphDTO:
-    nodes: list[KnowledgeGraphNodeDTO]
-    edges: list[KnowledgeGraphEdgeDTO]
+class KnowledgeGraphResult:
+    nodes: list[KnowledgeGraphNode]
+    edges: list[KnowledgeGraphEdge]
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeGraphInsightDTO:
+class KnowledgeGraphInsight:
     kind: str
     title: str
     description: str
     severity: str
     count: int
-    nodes: list[KnowledgeGraphNodeDTO]
+    nodes: list[KnowledgeGraphNode]
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeGraphInsightsDTO:
-    items: list[KnowledgeGraphInsightDTO]
+class KnowledgeGraphInsights:
+    items: list[KnowledgeGraphInsight]
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeGraphConcernDTO:
+class KnowledgeGraphConcern:
     id: UUID
     user_id: UUID
     node_id: str | None

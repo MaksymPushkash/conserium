@@ -50,7 +50,7 @@ class RefragContextPackage:
 
 @final
 @dataclass(frozen=True, slots=True)
-class QueryDTO:
+class QueryPayload:
     user_id: UUID
     query: str
     retrieval_query: str | None = None
@@ -67,7 +67,7 @@ class QueryDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class QuerySourceDTO:
+class QuerySource:
     chunk_id: UUID
     document_id: UUID
     document_title: str | None
@@ -80,33 +80,33 @@ class QuerySourceDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class QueryDebugDTO:
+class QueryDebug:
     original_query: str
     retrieval_query: str
     selected_collection_id: UUID | None
     selected_tags: list[str]
     promoted_document_ids: list[UUID]
-    retrieved_sources: list[QuerySourceDTO]
-    final_sources: list[QuerySourceDTO]
-    used_sources: list[QuerySourceDTO]
-    filtered_sources: list[QuerySourceDTO]
+    retrieved_sources: list[QuerySource]
+    final_sources: list[QuerySource]
+    used_sources: list[QuerySource]
+    filtered_sources: list[QuerySource]
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class QueryResultDTO:
+class QueryResult:
     conversation_id: UUID
     query: str
     answer: str
-    sources: list[QuerySourceDTO]
+    sources: list[QuerySource]
     refrag_context: RefragContextPackage
-    debug: QueryDebugDTO | None = None
+    debug: QueryDebug | None = None
     suggested_follow_up_questions: list[str] = field(default_factory=list)
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class ConversationSourceDTO:
+class ConversationSource:
     chunk_id: UUID
     document_id: UUID
     document_title: str | None
@@ -117,16 +117,16 @@ class ConversationSourceDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class ConversationTurnDTO:
+class ConversationTurn:
     query: str
     answer: str
-    sources: list[ConversationSourceDTO]
+    sources: list[ConversationSource]
     created_at: datetime
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class QueryEvaluationRecordDTO:
+class QueryEvaluationRecord:
     user_id: UUID
     collection_id: UUID | None
     document_ids: tuple[UUID, ...]
@@ -153,14 +153,14 @@ class QueryStreamEventType(StrEnum):
 
 @final
 @dataclass(frozen=True, slots=True)
-class QueryStreamEventDTO:
+class QueryStreamEvent:
     event: QueryStreamEventType
     data: dict[str, Any]
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class QueryStreamMetadataDTO:
+class QueryStreamMetadata:
     query_id: UUID
     query: str
     source_count: int

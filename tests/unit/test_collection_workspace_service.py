@@ -12,7 +12,7 @@ from src.collections.repository import (
     CollectionWorkspaceRepository,
 )
 from src.collections.service import CollectionService
-from src.compare.schemas import CompareResultDTO
+from src.compare.schemas import CompareResult
 from src.documents.activity_repository import DocumentActivityRepository
 from src.documents.document_repository import DocumentRepository
 from src.documents.types import DocumentType
@@ -266,7 +266,7 @@ class _DraftRepo:
 
 class _CompareRepo:
     def __init__(self) -> None:
-        self.records: list[CompareResultDTO] = []
+        self.records: list[CompareResult] = []
 
     async def list_by_user_id(
         self,
@@ -275,7 +275,7 @@ class _CompareRepo:
         collection_id: UUID | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> list[CompareResultDTO]:
+    ) -> list[CompareResult]:
         records = [
             record
             for record in self.records
@@ -306,8 +306,8 @@ def _draft(*, user_id: UUID, collection_id: UUID) -> DraftRecord:
     )
 
 
-def _comparison(*, user_id: UUID, collection_id: UUID) -> CompareResultDTO:
-    return CompareResultDTO(
+def _comparison(*, user_id: UUID, collection_id: UUID) -> CompareResult:
+    return CompareResult(
         id=uuid4(),
         user_id=user_id,
         collection_id=collection_id,

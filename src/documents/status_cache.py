@@ -1,5 +1,4 @@
 import json
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -12,7 +11,7 @@ logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
-class DocumentProcessingStepDTO:
+class DocumentProcessingStep:
     key: str
     label: str
     state: str
@@ -21,37 +20,20 @@ class DocumentProcessingStepDTO:
 
 
 @dataclass(frozen=True, slots=True)
-class DocumentStatusDTO:
+class DocumentStatusSnapshot:
     document_id: UUID
     status: str
     progress: int
     message: str
     failure_reason: str | None = None
-    timeline: list[DocumentProcessingStepDTO] | None = None
-
-
-class IDocumentStatusCache(ABC):
-    @abstractmethod
-    async def set_status(
-        self,
-        document_id: UUID,
-        status: str,
-        progress: int,
-        message: str,
-    ) -> None: ...
-
-    @abstractmethod
-    async def get_status(self, document_id: UUID) -> DocumentStatusDTO | None: ...
-
-    @abstractmethod
-    async def delete_status(self, document_id: UUID) -> None: ...
+    timeline: list[DocumentProcessingStep] | None = None
 
 
 def _key(document_id: UUID) -> str:
     return f"doc:status:{document_id}"
 
 
-class RedisDocumentStatusCache(IDocumentStatusCache):
+class RedisDocumentStatusCache:
     def __init__(self, redis: Redis) -> None:
         self._redis = redis
 
@@ -80,19 +62,19 @@ class RedisDocumentStatusCache(IDocumentStatusCache):
             progress=progress,
         )
 
-    async def get_status(self, document_id: UUID) -> DocumentStatusDTO | None:
+    async def get_status(self, document_id: UUID) -> DocumentStatusSnapshot | None:
         raw = await self._redis.get(_key(document_id))
         if raw is None:
             return None
         data = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
-        return DocumentStatusDTO(
+        return DocumentStatusSnapshot(
             document_id=UUID(data["document_id"]),
             status=data["status"],
             progress=int(data["progress"]),
             message=data["message"],
             failure_reason=data.get("failure_reason") or _failure_reason(data["status"], data["message"]),
             timeline=[
-                DocumentProcessingStepDTO(
+                DocumentProcessingStep(
                     key=str(step["key"]),
                     label=str(step["label"]),
                     state=str(step["state"]),
@@ -116,7 +98,7 @@ def _failure_reason(status: str, message: str) -> str | None:
     return message.removeprefix(prefix).strip() or message
 
 
-def _build_timeline(status: str, progress: int, message: str) -> list[DocumentProcessingStepDTO]:
+def _build_timeline(status: str, progress: int, message: str) -> list[DocumentProcessingStep]:
     clamped_progress = max(0, min(100, progress))
     failed = status == "FAILED"
     return [
@@ -137,7 +119,7 @@ def _step(
     message: str,
     *,
     ready: bool = False,
-) -> DocumentProcessingStepDTO:
+) -> DocumentProcessingStep:
     if failed and progress < threshold:
         state = "failed" if _is_current_failure_stage(progress, threshold) else "pending"
     elif failed or ready or progress >= threshold:
@@ -146,7 +128,7 @@ def _step(
         state = "current"
     else:
         state = "pending"
-    return DocumentProcessingStepDTO(
+    return DocumentProcessingStep(
         key=key,
         label=label,
         state=state,
@@ -169,7 +151,7 @@ def _is_current_failure_stage(progress: int, threshold: int) -> bool:
     return previous <= progress < threshold
 
 
-def _step_payload(step: DocumentProcessingStepDTO) -> dict[str, object]:
+def _step_payload(step: DocumentProcessingStep) -> dict[str, object]:
     return {
         "key": step.key,
         "label": step.label,

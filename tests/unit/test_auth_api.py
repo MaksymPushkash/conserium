@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
-from src.auth.jwt_service import JWTServiceProtocol
+from src.auth.jwt_service import JWTService
 from src.auth.oauth_clients import GoogleOAuthClient
-from src.auth.schemas import TokenResponseDTO
+from src.auth.schemas import TokenPair
 from src.auth.service import (
     OAuthLoginCompleter,
     RefreshTokenRotator,
@@ -60,22 +60,22 @@ class _RaisingService:
     def __init__(self, exc: Exception) -> None:
         self._exc = exc
 
-    async def __call__(self, dto: object) -> TokenResponseDTO:
+    async def __call__(self, dto: object) -> TokenPair:
         raise self._exc
 
 
 class _SuccessfulService:
-    async def __call__(self, dto: object) -> TokenResponseDTO:
-        return TokenResponseDTO(access_token="api-access-token", refresh_token="api-refresh-token")
+    async def __call__(self, dto: object) -> TokenPair:
+        return TokenPair(access_token="api-access-token", refresh_token="api-refresh-token")
 
 
 class _SuccessfulOAuthService:
-    async def __call__(self, dto: object, provider: object) -> TokenResponseDTO:
-        return TokenResponseDTO(access_token="oauth-access-token", refresh_token="oauth-refresh-token")
+    async def __call__(self, *, code: str, redirect_uri: str, provider: object) -> TokenPair:
+        return TokenPair(access_token="oauth-access-token", refresh_token="oauth-refresh-token")
 
 
 class _FailingOAuthService:
-    async def __call__(self, dto: object, provider: object) -> TokenResponseDTO:
+    async def __call__(self, *, code: str, redirect_uri: str, provider: object) -> TokenPair:
         raise OAuthAuthenticationException("no_email", "oauth provider did not return an email")
 
 
@@ -290,7 +290,7 @@ def test_get_me_returns_401_for_deleted_user() -> None:
     user_id = uuid.uuid4()
     client = _make_client(
         {
-            JWTServiceProtocol: _make_jwt_service(user_id),
+            JWTService: _make_jwt_service(user_id),
             UserRepository: _FakeRepositorySession(user=None),
         }
     )
@@ -308,7 +308,7 @@ def test_get_me_returns_403_for_inactive_user() -> None:
     user_id = uuid.uuid4()
     client = _make_client(
         {
-            JWTServiceProtocol: _make_jwt_service(user_id),
+            JWTService: _make_jwt_service(user_id),
             UserRepository: _FakeRepositorySession(user=_make_user(is_active=False)),
         }
     )
@@ -326,7 +326,7 @@ def test_get_me_returns_401_without_authorization_header() -> None:
     user_id = uuid.uuid4()
     client = _make_client(
         {
-            JWTServiceProtocol: _make_jwt_service(user_id),
+            JWTService: _make_jwt_service(user_id),
             UserRepository: _FakeRepositorySession(_make_user()),
         }
     )
@@ -350,7 +350,7 @@ def test_get_preferences_returns_current_user_preferences() -> None:
     )
     client = _make_client(
         {
-            JWTServiceProtocol: _make_jwt_service(user.id),
+            JWTService: _make_jwt_service(user.id),
             UserRepository: _FakeRepositorySession(user),
         }
     )
@@ -385,7 +385,7 @@ def test_update_preferences_returns_saved_preferences(monkeypatch: MonkeyPatch) 
     app.dependency_overrides[get_db_session] = _fake_session
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: _make_jwt_service(user.id),
+            JWTService: _make_jwt_service(user.id),
             UserRepository: _FakeRepositorySession(user),
             UserPreferencesUpdater: _PreferencesService(user),
         }

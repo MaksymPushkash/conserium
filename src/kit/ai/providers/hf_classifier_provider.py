@@ -4,21 +4,19 @@ import asyncio
 from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from src.kit.ports.ai.classifier_provider import IClassifierProvider
-
 if TYPE_CHECKING:
-    from src.documents.schemas import CategoryDTO
+    from src.documents.schemas import CategoryMetadata
 
 
-class HFClassifierProvider(IClassifierProvider):
+class HFClassifierProvider:
     _pipeline: ClassVar[Any | None] = None
     _labels: ClassVar[list[str]] = ["business", "technical", "educational", "personal", "news", "other"]
 
-    async def classify(self, text: str) -> list[CategoryDTO]:
+    async def classify(self, text: str) -> list[CategoryMetadata]:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, partial(self._classify_sync, text))
 
-    def _classify_sync(self, text: str) -> list[CategoryDTO]:
+    def _classify_sync(self, text: str) -> list[CategoryMetadata]:
         if HFClassifierProvider._pipeline is None:
             from transformers import pipeline
 

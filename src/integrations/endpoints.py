@@ -5,7 +5,6 @@ from fastapi.responses import RedirectResponse
 
 from src.auth.auth import CurrentUser
 from src.auth.oauth_redirects import build_callback_uri
-from src.documents.schemas import ExternalIngestDTO
 from src.integrations.dependencies import (
     get_notion_connection_service,
     get_notion_workspace_service,
@@ -26,15 +25,12 @@ from src.integrations.schemas import (
     TelegramStatusResponse,
 )
 from src.integrations.service import (
-    ConsumeTelegramPairingCodeDTO,
+    ConsumeTelegramPairingCodePayload,
     NotionConnectionService,
     NotionWorkspaceService,
     TelegramIngestionService,
     TelegramPairingService,
     notion_settings_redirect,
-    to_notion_connection_response,
-    to_notion_page_response,
-    to_telegram_pairing_code_response,
     to_telegram_status_response,
 )
 from src.kit.exceptions import DomainException
@@ -50,7 +46,7 @@ async def get_notion_connection(
     current_user: CurrentUser,
     service: NotionConnectionService = Depends(get_notion_connection_service),
 ) -> NotionConnectionResponse:
-    return to_notion_connection_response(await service.get(user_id=current_user.id))
+    return await service.get(user_id=current_user.id)
 
 
 @router.patch("/notion", response_model=NotionConnectionResponse)
@@ -64,7 +60,7 @@ async def update_notion_connection_settings(
         default_parent_page_id=body.default_parent_page_id,
         default_parent_page_title=body.default_parent_page_title,
     )
-    return to_notion_connection_response(result)
+    return result
 
 
 @router.get("/notion/pages", response_model=list[NotionPageResponse])
@@ -75,7 +71,7 @@ async def search_notion_pages(
     service: NotionWorkspaceService = Depends(get_notion_workspace_service),
 ) -> list[NotionPageResponse]:
     result = await service.search_pages(user_id=current_user.id, query=query, limit=limit)
-    return [to_notion_page_response(page) for page in result]
+    return result
 
 
 @router.post("/notion/import", response_model=NotionImportResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -150,7 +146,7 @@ async def create_telegram_pairing_code(
     current_user: CurrentUser,
     service: TelegramPairingService = Depends(get_telegram_pairing_service),
 ) -> TelegramPairingCodeResponse:
-    return to_telegram_pairing_code_response(await service.create_pairing_code(user_id=current_user.id))
+    return await service.create_pairing_code(user_id=current_user.id)
 
 
 @router.delete("/telegram/bindings/{binding_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -171,7 +167,7 @@ async def telegram_bot_consume_pairing(
 ) -> dict[str, object]:
     _ensure_telegram_secret(x_conserium_telegram_secret)
     binding = await service.consume_pairing_code(
-        ConsumeTelegramPairingCodeDTO(
+        ConsumeTelegramPairingCodePayload(
             code=body.code,
             chat_id=body.chat_id,
             chat_username=body.chat_username,
@@ -191,21 +187,17 @@ async def telegram_bot_ingest(
     response = to_external_ingest_response(
         await service.ingest(
             chat_id=body.chat_id,
-            dto=ExternalIngestDTO(
-                user_id=UUID(int=0),
-                api_key_id=None,
-                provider=body.provider or "telegram",
-                title=body.title,
-                type=body.type,
-                collection_id=body.collection_id,
-                tags=body.tags,
-                source_url=body.source_url,
-                raw_content=body.raw_content,
-                language=body.language,
-                external_id=body.external_id,
-                idempotency_key=body.idempotency_key,
-                payload_metadata=body.metadata,
-            ),
+            provider=body.provider or "telegram",
+            title=body.title,
+            type=body.type,
+            collection_id=body.collection_id,
+            tags=body.tags,
+            source_url=body.source_url,
+            raw_content=body.raw_content,
+            language=body.language,
+            external_id=body.external_id,
+            idempotency_key=body.idempotency_key,
+            payload_metadata=body.metadata,
         )
     )
     return TelegramIngestResponse(intake_item=response.intake_item, document=response.document)

@@ -6,7 +6,7 @@ from src.documents.exports import (
     markdown_to_pdf,
     safe_filename,
 )
-from src.documents.schemas import ExportedFileDTO, NotionExportDTO
+from src.documents.schemas import ExportedFile
 from src.exports.dependencies import get_notion_markdown_exporter
 from src.exports.schemas import MarkdownExportRequest, NotionExportRequest, NotionExportResponse
 from src.routing import APIRouter
@@ -25,16 +25,16 @@ async def export_markdown(body: MarkdownExportRequest, current_user: CurrentUser
     )
 
 
-def markdown_export_file(*, title: str, markdown: str, export_format: str) -> ExportedFileDTO:
+def markdown_export_file(*, title: str, markdown: str, export_format: str) -> ExportedFile:
     filename_stem = safe_filename(title)
     normalized_format = export_format.lower()
     if normalized_format in {"md", "markdown"}:
-        return ExportedFileDTO(
+        return ExportedFile(
             filename=f"{filename_stem}.md",
             media_type="text/markdown; charset=utf-8",
             content=markdown.encode("utf-8"),
         )
-    return ExportedFileDTO(
+    return ExportedFile(
         filename=f"{filename_stem}.pdf",
         media_type="application/pdf",
         content=markdown_to_pdf(markdown),
@@ -48,12 +48,10 @@ async def export_notion(
     handler: NotionMarkdownExporter = Depends(get_notion_markdown_exporter),
 ) -> NotionExportResponse:
     result = await handler(
-        NotionExportDTO(
-            user_id=current_user.id,
-            title=body.title,
-            markdown=body.markdown,
-            parent_page_id=body.parent_page_id,
-        )
+        user_id=current_user.id,
+        title=body.title,
+        markdown=body.markdown,
+        parent_page_id=body.parent_page_id,
     )
     return NotionExportResponse(page_id=result.page_id, url=result.url)
 

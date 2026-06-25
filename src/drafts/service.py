@@ -3,9 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID  # noqa: TC003
 
-from fastapi import Depends
-
-from src.documents.document_repository import DocumentRepository
 from src.drafts.operations import (
     DraftGenerator,
     delete_draft,
@@ -16,11 +13,10 @@ from src.drafts.operations import (
     list_drafts,
     restore_draft_version,
 )
-from src.drafts.repository import DraftRepository
 from src.drafts.schemas import (
     DraftDetailResponse,
-    DraftGenerateDTO,
     DraftGenerateRequest,
+    DraftGenerationPayload,
     DraftListItemResponse,
     DraftListResponse,
     DraftOutlineResponse,
@@ -31,21 +27,23 @@ from src.drafts.schemas import (
     DraftVersionResponse,
     QuerySourceResponse,
 )
-from src.postgres import AsyncSession, get_db_session
-from src.query.service import get_llm_service, get_query_executor
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from src.documents.document_repository import DocumentRepository
+    from src.drafts.repository import DraftRepository
     from src.drafts.schemas import (
-        DraftDetailDTO,
-        DraftListDTO,
-        DraftListItemDTO,
-        DraftOutlineDTO,
-        DraftResultDTO,
-        DraftTemplateDTO,
-        DraftVersionDTO,
+        DraftDetail,
+        DraftListItem,
+        DraftListResult,
+        DraftOutline,
+        DraftResult,
+        DraftTemplate,
+        DraftVersion,
     )
-    from src.kit.ports.ai.llm_service import ILLMService
-    from src.query.schemas import QuerySourceDTO
+    from src.kit.ai.llm_service import LLMService
+    from src.query.schemas import QuerySource
     from src.query.service import QueryExecutor
 
 
@@ -56,7 +54,7 @@ class DraftService:
         draft_repo: DraftRepository,
         document_repo: DocumentRepository,
         query_executor: QueryExecutor,
-        llm_service: ILLMService,
+        llm_service: LLMService,
     ) -> None:
         self._session = session
         self._draft_repo = draft_repo
@@ -86,7 +84,7 @@ class DraftService:
         return to_draft_template_list_response(result)
 
     async def generate_outline(self, *, user_id: UUID, body: DraftGenerateRequest) -> DraftOutlineResponse:
-        result = generate_draft_outline(to_draft_generate_dto(body, user_id))
+        result = generate_draft_outline(build_draft_generation_payload(body, user_id))
         return to_draft_outline_response(result)
 
     async def generate(self, *, user_id: UUID, body: DraftGenerateRequest) -> DraftResponse:
@@ -96,7 +94,7 @@ class DraftService:
             self._draft_repo,
             self._document_repo,
             self._llm_service,
-        )(to_draft_generate_dto(body, user_id))
+        )(build_draft_generation_payload(body, user_id))
         return to_draft_response(result)
 
     async def get(self, *, user_id: UUID, draft_id: UUID) -> DraftDetailResponse:
@@ -121,31 +119,9 @@ class DraftService:
         await delete_draft(self._session, self._draft_repo, user_id=user_id, draft_id=draft_id)
 
 
-def get_query_executor_for_drafts(query_executor: QueryExecutor = Depends(get_query_executor)) -> QueryExecutor:
-    return query_executor
-
-
-def get_llm_service_for_drafts(llm_service: ILLMService = Depends(get_llm_service)) -> ILLMService:
-    return llm_service
-
-
-def get_draft_service(
-    session: AsyncSession = Depends(get_db_session),
-    query_executor: QueryExecutor = Depends(get_query_executor_for_drafts),
-    llm_service: ILLMService = Depends(get_llm_service_for_drafts),
-) -> DraftService:
-    return DraftService(
-        session,
-        DraftRepository(session),
-        DocumentRepository.from_session(session),
-        query_executor,
-        llm_service,
-    )
-
-
-def to_draft_generate_dto(body: DraftGenerateRequest, user_id: UUID) -> DraftGenerateDTO:
+def build_draft_generation_payload(body: DraftGenerateRequest, user_id: UUID) -> DraftGenerationPayload:
     tag_names = tuple(tag.strip().lower() for tag in body.tag_names or [] if tag.strip())
-    return DraftGenerateDTO(
+    return DraftGenerationPayload(
         user_id=user_id,
         prompt=body.prompt,
         draft_id=body.draft_id,
@@ -162,7 +138,7 @@ def to_draft_generate_dto(body: DraftGenerateRequest, user_id: UUID) -> DraftGen
     )
 
 
-def to_draft_response(dto: DraftResultDTO) -> DraftResponse:
+def to_draft_response(dto: DraftResult) -> DraftResponse:
     return DraftResponse(
         draft_id=dto.draft_id,
         version_id=dto.version_id,
@@ -176,11 +152,11 @@ def to_draft_response(dto: DraftResultDTO) -> DraftResponse:
     )
 
 
-def to_draft_list_response(dto: DraftListDTO) -> DraftListResponse:
+def to_draft_list_response(dto: DraftListResult) -> DraftListResponse:
     return DraftListResponse(items=[to_draft_list_item_response(item) for item in dto.items], total=dto.total)
 
 
-def to_draft_list_item_response(dto: DraftListItemDTO) -> DraftListItemResponse:
+def to_draft_list_item_response(dto: DraftListItem) -> DraftListItemResponse:
     return DraftListItemResponse(
         id=dto.id,
         collection_id=dto.collection_id,
@@ -196,7 +172,7 @@ def to_draft_list_item_response(dto: DraftListItemDTO) -> DraftListItemResponse:
     )
 
 
-def to_draft_detail_response(dto: DraftDetailDTO) -> DraftDetailResponse:
+def to_draft_detail_response(dto: DraftDetail) -> DraftDetailResponse:
     return DraftDetailResponse(
         id=dto.id,
         collection_id=dto.collection_id,
@@ -217,11 +193,11 @@ def to_draft_detail_response(dto: DraftDetailDTO) -> DraftDetailResponse:
     )
 
 
-def to_draft_version_list_response(items: list[DraftVersionDTO]) -> DraftVersionListResponse:
+def to_draft_version_list_response(items: list[DraftVersion]) -> DraftVersionListResponse:
     return DraftVersionListResponse(items=[to_draft_version_response(item) for item in items])
 
 
-def to_draft_version_response(dto: DraftVersionDTO) -> DraftVersionResponse:
+def to_draft_version_response(dto: DraftVersion) -> DraftVersionResponse:
     return DraftVersionResponse(
         id=dto.id,
         draft_id=dto.draft_id,
@@ -240,11 +216,11 @@ def to_draft_version_response(dto: DraftVersionDTO) -> DraftVersionResponse:
     )
 
 
-def to_draft_template_list_response(items: list[DraftTemplateDTO]) -> DraftTemplateListResponse:
+def to_draft_template_list_response(items: list[DraftTemplate]) -> DraftTemplateListResponse:
     return DraftTemplateListResponse(items=[to_draft_template_response(item) for item in items])
 
 
-def to_draft_query_source_response(dto: QuerySourceDTO, index: int) -> QuerySourceResponse:
+def to_draft_query_source_response(dto: QuerySource, index: int) -> QuerySourceResponse:
     return QuerySourceResponse(
         chunk_id=dto.chunk_id,
         document_id=dto.document_id,
@@ -258,7 +234,7 @@ def to_draft_query_source_response(dto: QuerySourceDTO, index: int) -> QuerySour
     )
 
 
-def to_draft_template_response(dto: DraftTemplateDTO) -> DraftTemplateResponse:
+def to_draft_template_response(dto: DraftTemplate) -> DraftTemplateResponse:
     return DraftTemplateResponse(
         id=dto.id,
         name=dto.name,
@@ -268,7 +244,7 @@ def to_draft_template_response(dto: DraftTemplateDTO) -> DraftTemplateResponse:
     )
 
 
-def to_draft_outline_response(dto: DraftOutlineDTO) -> DraftOutlineResponse:
+def to_draft_outline_response(dto: DraftOutline) -> DraftOutlineResponse:
     return DraftOutlineResponse(
         prompt=dto.prompt,
         template_id=dto.template_id,
@@ -280,9 +256,8 @@ def to_draft_outline_response(dto: DraftOutlineDTO) -> DraftOutlineResponse:
 
 __all__ = [
     "DraftService",
-    "get_draft_service",
+    "build_draft_generation_payload",
     "to_draft_detail_response",
-    "to_draft_generate_dto",
     "to_draft_list_response",
     "to_draft_outline_response",
     "to_draft_response",

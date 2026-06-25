@@ -8,6 +8,24 @@
 - Make sure that all the new code is maintanable and follows the SOLID principles.
 - Do not modify unrelated code to the task or issue you are working on.
 
+## Architecture
+
+Conserium is a feature-first modular monolith.
+
+- Keep feature behavior under `src/{feature}`.
+- Keep FastAPI handlers in `endpoints.py` thin.
+- Keep business orchestration in feature service modules.
+- Keep SQLAlchemy statements and persistence operations in repository modules.
+- Keep shared SQLAlchemy models in `src/models`.
+- Keep cross-cutting helpers and external adapter protocols in `src/kit`.
+- Keep Celery configuration in `src/worker` and task entry points in feature `tasks.py` files.
+- Use FastAPI dependencies. Do not introduce a dependency injection container.
+- Do not recreate `application`, `presentation`, `domain`, `infrastructure`, `use_cases`, `dtos`, or feature-local `ports` layers.
+- Do not create empty convention files. Add `auth.py`, `sorting.py`, or `tasks.py` only when the feature owns that behavior.
+- Let the request or worker boundary own transactions. Request-path services must not call `session.commit()`.
+
+See `docs/architecture.md` for the complete structure and enforced boundaries.
+
 ## 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**

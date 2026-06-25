@@ -3,15 +3,10 @@ from uuid import UUID
 from fastapi import Depends, Query, Response, status
 
 from src.auth.auth import CurrentUser
+from src.compare.dependencies import get_compare_llm_service, get_compare_query_executor, get_compare_service
 from src.compare.schemas import CompareDocumentsRequest, CompareDocumentsResponse, CompareListResponse
-from src.compare.service import (
-    CompareService,
-    get_compare_llm_service,
-    get_compare_query_executor,
-    get_compare_service,
-    to_compare_documents_dto,
-)
-from src.kit.ports.ai.llm_service import ILLMService
+from src.compare.service import CompareService
+from src.kit.ai.llm_service import LLMService
 from src.postgres import AsyncReadSession, AsyncSession, get_db_read_session, get_db_session
 from src.query.service import QueryExecutor
 from src.routing import APIRouter
@@ -26,13 +21,14 @@ async def compare_documents(
     session: AsyncSession = Depends(get_db_session),
     service: CompareService = Depends(get_compare_service),
     query_executor: QueryExecutor = Depends(get_compare_query_executor),
-    llm_service: ILLMService = Depends(get_compare_llm_service),
+    llm_service: LLMService = Depends(get_compare_llm_service),
 ) -> CompareDocumentsResponse:
     return await service.compare_documents(
         session,
         query_executor=query_executor,
         llm_service=llm_service,
-        dto=to_compare_documents_dto(body, current_user.id),
+        user_id=current_user.id,
+        body=body,
     )
 
 

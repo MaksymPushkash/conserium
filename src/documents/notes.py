@@ -5,26 +5,13 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import Depends
-
-from src.documents.dependencies import (
-    get_chunk_repository,
-    get_document_collection_access,
-    get_document_processing_service,
-    get_document_repository,
-)
-from src.documents.note_version_repository import NoteVersionRepository
 from src.documents.repository import NoteVersionRecord
 from src.documents.schemas import (
-    CreateNoteDTO,
     CreateNoteRequest,
-    GetNoteDTO,
-    ListNotesDTO,
     NoteListItemResponse,
     NoteListResponse,
     NoteResponse,
     NoteVersionResponse,
-    UpdateNoteDTO,
     UpdateNoteRequest,
 )
 from src.documents.service import (
@@ -36,115 +23,15 @@ from src.documents.service import (
 from src.documents.types import DocumentType
 from src.kit.exceptions import DocumentNotFoundException
 from src.models.document import DocumentModel
-from src.postgres import get_db_session
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from src.documents.chunk_repository import ChunkRepository
     from src.documents.document_repository import DocumentRepository
+    from src.documents.note_version_repository import NoteVersionRepository
     from src.documents.processing import DocumentProcessingService
     from src.postgres import AsyncSession
-
-
-def get_note_version_repository(session: AsyncSession = Depends(get_db_session)) -> NoteVersionRepository:
-    return NoteVersionRepository.from_session(session)
-
-
-def get_note_service(
-    session: AsyncSession = Depends(get_db_session),
-    document_repo: DocumentRepository = Depends(get_document_repository),
-    collection_access: DocumentCollectionAccess = Depends(get_document_collection_access),
-    note_version_repo: NoteVersionRepository = Depends(get_note_version_repository),
-    processing_service: DocumentProcessingService = Depends(get_document_processing_service),
-    chunk_repo: ChunkRepository = Depends(get_chunk_repository),
-) -> NoteService:
-    return NoteService(session, document_repo, collection_access, note_version_repo, processing_service, chunk_repo)
-
-
-
-
-def to_create_note_dto(body: CreateNoteRequest, user_id: UUID) -> CreateNoteDTO:
-    return CreateNoteDTO(
-        user_id=user_id,
-        title=body.title,
-        content=body.content,
-        collection_id=body.collection_id,
-        language=body.language,
-    )
-
-
-def to_list_notes_dto(user_id: UUID, limit: int, offset: int, collection_id: UUID | None) -> ListNotesDTO:
-    return ListNotesDTO(user_id=user_id, limit=limit, offset=offset, collection_id=collection_id)
-
-
-def to_get_note_dto(note_id: UUID, user_id: UUID) -> GetNoteDTO:
-    return GetNoteDTO(user_id=user_id, note_id=note_id)
-
-
-def to_update_note_dto(note_id: UUID, body: UpdateNoteRequest, user_id: UUID) -> UpdateNoteDTO:
-    return UpdateNoteDTO(
-        user_id=user_id,
-        note_id=note_id,
-        title=body.title,
-        content=body.content,
-        collection_id=body.collection_id,
-        language=body.language,
-    )
-
-
-def to_note_response(dto: NoteResponse) -> NoteResponse:
-    return NoteResponse(
-        id=dto.id,
-        collection_id=dto.collection_id,
-        title=dto.title,
-        content=dto.content,
-        status=dto.status,
-        word_count=dto.word_count,
-        language=dto.language,
-        created_at=dto.created_at,
-        updated_at=dto.updated_at,
-    )
-
-
-def to_note_list_item_response(dto: NoteListItemResponse) -> NoteListItemResponse:
-    return NoteListItemResponse(
-        id=dto.id,
-        collection_id=dto.collection_id,
-        title=dto.title,
-        status=dto.status,
-        word_count=dto.word_count,
-        language=dto.language,
-        created_at=dto.created_at,
-        updated_at=dto.updated_at,
-    )
-
-
-def to_note_list_response(dto: NoteListResponse) -> NoteListResponse:
-    return NoteListResponse(
-        items=[to_note_list_item_response(item) for item in dto.items],
-        total=dto.total,
-        limit=dto.limit,
-        offset=dto.offset,
-    )
-
-
-def to_note_version_response(dto: NoteVersionResponse) -> NoteVersionResponse:
-    return NoteVersionResponse(
-        id=dto.id,
-        note_id=dto.note_id,
-        version_number=dto.version_number,
-        title=dto.title,
-        content=dto.content,
-        created_at=dto.created_at,
-    )
-
-
-
-
-
-
-
 
 NOTE_VERSION_COALESCE_WINDOW = timedelta(seconds=60)
 
@@ -218,7 +105,7 @@ async def queue_note_processing(
     await processing_service.queue(document, message="Queued note for memory indexing.")
 
 
-def note_to_dto(document: DocumentModel) -> NoteResponse:
+def note_response(document: DocumentModel) -> NoteResponse:
     return NoteResponse(
         id=document.id,
         collection_id=document.collection_id,
@@ -232,7 +119,7 @@ def note_to_dto(document: DocumentModel) -> NoteResponse:
     )
 
 
-def note_version_to_dto(version: NoteVersionRecord) -> NoteVersionResponse:
+def note_version_response(version: NoteVersionRecord) -> NoteVersionResponse:
     if version.created_at is None:
         raise ValueError("note version created_at is required")
     return NoteVersionResponse(
@@ -245,7 +132,7 @@ def note_version_to_dto(version: NoteVersionRecord) -> NoteVersionResponse:
     )
 
 
-def note_to_list_item_dto(document: DocumentModel) -> NoteListItemResponse:
+def note_list_item_response(document: DocumentModel) -> NoteListItemResponse:
     return NoteListItemResponse(
         id=document.id,
         collection_id=document.collection_id,
@@ -289,24 +176,24 @@ class NoteService:
         self._processing_service = processing_service
         self._chunk_repo = chunk_repo
 
-    async def create(self, dto: CreateNoteDTO) -> NoteResponse:
-        title = normalize_title(dto.title, dto.content)
-        content = normalize_content(dto.content)
+    async def create(self, *, user_id: UUID, body: CreateNoteRequest) -> NoteResponse:
+        title = normalize_title(body.title, body.content)
+        content = normalize_content(body.content)
         has_content = bool(content.strip())
         document_owner_id = await collection_document_owner_id(
             self._collection_access,
-            dto.collection_id,
-            dto.user_id,
+            body.collection_id,
+            user_id,
         )
         document = DocumentModel.create(
             id=uuid.uuid4(),
             user_id=document_owner_id,
-            collection_id=dto.collection_id,
+            collection_id=body.collection_id,
             title=title,
             type=DocumentType.MARKDOWN,
             raw_content=content if has_content else None,
             word_count=len(content.split()),
-            language=dto.language,
+            language=body.language,
         )
         if not has_content:
             document.mark_ready()
@@ -319,41 +206,48 @@ class NoteService:
                 document=document,
                 processing_service=self._processing_service,
             )
-        return note_to_dto(document)
+        return note_response(document)
 
     async def delete(self, *, user_id: UUID, note_id: UUID) -> None:
         document = await get_note(self._document_repo, user_id=user_id, note_id=note_id)
         await self._document_repo.delete(document.id)
         await self._session.flush()
 
-    async def get(self, dto: GetNoteDTO) -> NoteResponse:
-        document = await get_note(self._document_repo, user_id=dto.user_id, note_id=dto.note_id)
-        return note_to_dto(document)
+    async def get(self, *, user_id: UUID, note_id: UUID) -> NoteResponse:
+        document = await get_note(self._document_repo, user_id=user_id, note_id=note_id)
+        return note_response(document)
 
-    async def list(self, dto: ListNotesDTO) -> NoteListResponse:
+    async def list(
+        self,
+        *,
+        user_id: UUID,
+        limit: int = 100,
+        offset: int = 0,
+        collection_id: UUID | None = None,
+    ) -> NoteListResponse:
         paged_notes = await self._document_repo.get_by_user_id(
-            dto.user_id,
-            limit=dto.limit,
-            offset=dto.offset,
+            user_id,
+            limit=limit,
+            offset=offset,
             document_type=DocumentType.MARKDOWN,
-            collection_id=dto.collection_id,
+            collection_id=collection_id,
         )
         total = await self._document_repo.count_by_user_id(
-            dto.user_id,
+            user_id,
             document_type=DocumentType.MARKDOWN,
-            collection_id=dto.collection_id,
+            collection_id=collection_id,
         )
         return NoteListResponse(
-            items=[note_to_list_item_dto(document) for document in paged_notes],
+            items=[note_list_item_response(document) for document in paged_notes],
             total=total,
-            limit=dto.limit,
-            offset=dto.offset,
+            limit=limit,
+            offset=offset,
         )
 
     async def list_versions(self, *, user_id: UUID, note_id: UUID) -> Sequence[NoteVersionResponse]:
         await get_note(self._document_repo, user_id=user_id, note_id=note_id)
         versions = await self._note_version_repo.list_by_note_id(note_id=note_id, user_id=user_id)
-        return [note_version_to_dto(version) for version in versions]
+        return [note_version_response(version) for version in versions]
 
     async def restore_version(self, *, user_id: UUID, note_id: UUID, version_id: UUID) -> NoteResponse:
         document = await get_note(self._document_repo, user_id=user_id, note_id=note_id)
@@ -375,7 +269,7 @@ class NoteService:
             collection_id=document.collection_id,
             language=document.language,
         ):
-            return note_to_dto(document)
+            return note_response(document)
 
         document.rename(version.title)
         document.update_content(
@@ -397,30 +291,30 @@ class NoteService:
                 document=document,
                 processing_service=self._processing_service,
             )
-        return note_to_dto(document)
+        return note_response(document)
 
-    async def update(self, dto: UpdateNoteDTO) -> NoteResponse:
-        document = await get_note(self._document_repo, user_id=dto.user_id, note_id=dto.note_id)
-        content = normalize_content(dto.content)
+    async def update(self, *, user_id: UUID, note_id: UUID, body: UpdateNoteRequest) -> NoteResponse:
+        document = await get_note(self._document_repo, user_id=user_id, note_id=note_id)
+        content = normalize_content(body.content)
         has_content = bool(content.strip())
-        await ensure_collection_owner(self._collection_access, dto.collection_id, dto.user_id)
+        await ensure_collection_owner(self._collection_access, body.collection_id, user_id)
         previous_document = document.snapshot()
-        next_title = normalize_title(dto.title, content)
+        next_title = normalize_title(body.title, content)
         if not note_update_changed(
             document,
             title=next_title,
             content=content,
-            collection_id=dto.collection_id,
-            language=dto.language,
+            collection_id=body.collection_id,
+            language=body.language,
         ):
-            return note_to_dto(document)
+            return note_response(document)
 
         document.rename(next_title)
-        document.assign_collection(dto.collection_id)
+        document.assign_collection(body.collection_id)
         document.update_content(
             raw_content=content if has_content else None,
             word_count=len(content.split()),
-            language=dto.language,
+            language=body.language,
         )
         if not has_content:
             document.mark_ready()
@@ -436,4 +330,4 @@ class NoteService:
                 document=document,
                 processing_service=self._processing_service,
             )
-        return note_to_dto(document)
+        return note_response(document)

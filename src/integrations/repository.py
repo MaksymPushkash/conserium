@@ -7,7 +7,7 @@ from uuid import uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from src.integrations.schemas import ExternalConnectionDTO
+from src.integrations.schemas import ExternalConnectionRecord
 from src.models.external_connection import ExternalConnectionModel
 from src.models.telegram import TelegramChatBindingModel, TelegramPairingCodeModel
 
@@ -62,7 +62,7 @@ class ExternalConnectionRepository:
     def from_session(cls, session: AsyncSession) -> ExternalConnectionRepository:
         return cls(session)
 
-    async def get_by_provider(self, *, user_id: UUID, provider: str) -> ExternalConnectionDTO | None:
+    async def get_by_provider(self, *, user_id: UUID, provider: str) -> ExternalConnectionRecord | None:
         result = await self._session.execute(
             select(ExternalConnectionModel).where(
                 ExternalConnectionModel.user_id == user_id,
@@ -70,7 +70,7 @@ class ExternalConnectionRepository:
             )
         )
         model = result.scalar_one_or_none()
-        return self._to_dto(model) if model else None
+        return self._to_record(model) if model else None
 
     async def upsert(
         self,
@@ -82,7 +82,7 @@ class ExternalConnectionRepository:
         access_token_encrypted: str,
         bot_id: str | None,
         owner: dict[str, Any] | None,
-    ) -> ExternalConnectionDTO:
+    ) -> ExternalConnectionRecord:
         result = await self._session.execute(
             select(ExternalConnectionModel).where(
                 ExternalConnectionModel.user_id == user_id,
@@ -101,7 +101,7 @@ class ExternalConnectionRepository:
         model.owner = owner
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_dto(model)
+        return self._to_record(model)
 
     async def update_settings(
         self,
@@ -110,7 +110,7 @@ class ExternalConnectionRepository:
         provider: str,
         default_parent_page_id: str | None,
         default_parent_page_title: str | None,
-    ) -> ExternalConnectionDTO | None:
+    ) -> ExternalConnectionRecord | None:
         result = await self._session.execute(
             select(ExternalConnectionModel).where(
                 ExternalConnectionModel.user_id == user_id,
@@ -124,7 +124,7 @@ class ExternalConnectionRepository:
         model.default_parent_page_title = default_parent_page_title if default_parent_page_id else None
         await self._session.flush()
         await self._session.refresh(model)
-        return self._to_dto(model)
+        return self._to_record(model)
 
     async def delete_by_provider(self, *, user_id: UUID, provider: str) -> bool:
         result = await self._session.execute(
@@ -138,8 +138,8 @@ class ExternalConnectionRepository:
         return result.scalar_one_or_none() is not None
 
     @staticmethod
-    def _to_dto(model: ExternalConnectionModel) -> ExternalConnectionDTO:
-        return ExternalConnectionDTO(
+    def _to_record(model: ExternalConnectionModel) -> ExternalConnectionRecord:
+        return ExternalConnectionRecord(
             id=model.id,
             user_id=model.user_id,
             provider=model.provider,

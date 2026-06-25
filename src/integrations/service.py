@@ -2,27 +2,26 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from src.api_keys.repository import ApiKeyRecord
-from src.documents.schemas import ExternalIngestDTO, ExternalIngestResultDTO
 from src.documents.types import DocumentType
 from src.integrations.repository import (
     TelegramChatBindingRecord,
     TelegramPairingCodeRecord,
 )
 from src.integrations.schemas import (
-    ApiKeyPrincipalDTO,
-    ExternalConnectionDTO,
+    ApiKeyPrincipal,
+    ExternalConnectionRecord,
     NotionConnectionResponse,
     NotionPageResponse,
-    TelegramChatBindingDTO,
     TelegramChatBindingResponse,
+    TelegramChatBindingResult,
     TelegramPairingCodeResponse,
-    TelegramStatusDTO,
+    TelegramStatus,
     TelegramStatusResponse,
 )
 from src.kit.exceptions import InvalidTokenException, ResourceNotFoundException, ValidationException
@@ -31,9 +30,11 @@ from src.settings import settings
 if TYPE_CHECKING:
     from src.api_keys.repository import ApiKeyRepository
     from src.documents.ingestion import ExternalItemIngester
-    from src.integrations.clients import NotionOAuthClientProtocol, NotionWorkspaceClientProtocol
+    from src.documents.schemas import ExternalIngestResult
+    from src.integrations.notion_oauth_client import NotionOAuthClient
+    from src.integrations.notion_workspace_client import NotionWorkspaceClient
     from src.integrations.repository import ExternalConnectionRepository, TelegramRepository
-    from src.kit.ports.security.token_cipher import ITokenCipher
+    from src.kit.security.fernet_token_cipher import FernetTokenCipher
     from src.kit.security.signed_state import SignedState
     from src.postgres import AsyncSession
 
@@ -45,7 +46,7 @@ TELEGRAM_PAIRING_TTL = timedelta(minutes=10)
 TELEGRAM_API_KEY_SCOPES = ["ingest:write", "status:read"]
 
 
-def notion_connection_dto(connection: ExternalConnectionDTO) -> NotionConnectionResponse:
+def notion_connection_response(connection: ExternalConnectionRecord) -> NotionConnectionResponse:
     return NotionConnectionResponse(
         connected=True,
         workspace_id=connection.workspace_id,
@@ -57,7 +58,7 @@ def notion_connection_dto(connection: ExternalConnectionDTO) -> NotionConnection
 
 
 @dataclass(frozen=True, slots=True)
-class ConsumeTelegramPairingCodeDTO:
+class ConsumeTelegramPairingCodePayload:
     code: str
     chat_id: str
     chat_username: str | None = None
@@ -69,7 +70,7 @@ class ApiKeyAuthenticator:
         self._session = session
         self._repository = repository
 
-    async def __call__(self, token: str, *, required_scope: str) -> ApiKeyPrincipalDTO:
+    async def __call__(self, token: str, *, required_scope: str) -> ApiKeyPrincipal:
         if required_scope not in ALLOWED_API_KEY_SCOPES:
             raise ValidationException("unsupported api key scope")
         normalized = normalize_bearer_token(token)
@@ -78,7 +79,7 @@ class ApiKeyAuthenticator:
             raise InvalidTokenException("invalid api key")
         await self._repository.mark_used(record.id, datetime.now(UTC))
         await self._session.flush()
-        return ApiKeyPrincipalDTO(user_id=record.user_id, api_key_id=record.id, scopes=record.scopes)
+        return ApiKeyPrincipal(user_id=record.user_id, api_key_id=record.id, scopes=record.scopes)
 
 
 class NotionConnectionService:
@@ -86,8 +87,8 @@ class NotionConnectionService:
         self,
         session: AsyncSession,
         repository: ExternalConnectionRepository,
-        oauth_client: NotionOAuthClientProtocol,
-        token_cipher: ITokenCipher,
+        oauth_client: NotionOAuthClient,
+        token_cipher: FernetTokenCipher,
         signed_state: SignedState,
     ) -> None:
         self._session = session
@@ -107,7 +108,7 @@ class NotionConnectionService:
                 default_parent_page_id=None,
                 default_parent_page_title=None,
             )
-        return notion_connection_dto(connection)
+        return notion_connection_response(connection)
 
     async def create_connect_url(self, *, user_id: UUID, redirect_uri: str) -> str:
         state = self._signed_state.sign({"user_id": str(user_id), "provider": "notion"})
@@ -152,15 +153,15 @@ class NotionConnectionService:
         if connection is None:
             raise ResourceNotFoundException("notion connection not found")
         await self._session.flush()
-        return notion_connection_dto(connection)
+        return notion_connection_response(connection)
 
 
 class NotionWorkspaceService:
     def __init__(
         self,
         repository: ExternalConnectionRepository,
-        workspace_client: NotionWorkspaceClientProtocol,
-        token_cipher: ITokenCipher,
+        workspace_client: NotionWorkspaceClient,
+        token_cipher: FernetTokenCipher,
         ingest_external_item: ExternalItemIngester,
     ) -> None:
         self._repository = repository
@@ -189,7 +190,7 @@ class NotionWorkspaceService:
         page_id: str,
         collection_id: UUID | None,
         tags: list[str],
-    ) -> ExternalIngestResultDTO:
+    ) -> ExternalIngestResult:
         notion_page_id = normalize_notion_parent_page_id(page_id)
         if notion_page_id is None:
             raise ValidationException("notion page id is required")
@@ -202,19 +203,17 @@ class NotionWorkspaceService:
             raise ValidationException("reconnect Notion before importing pages") from exc
         page = await self._workspace_client.get_page_markdown(access_token=access_token, page_id=notion_page_id)
         return await self._ingest_external_item(
-            ExternalIngestDTO(
-                user_id=user_id,
-                api_key_id=None,
-                provider="notion",
-                external_id=page.id,
-                idempotency_key=f"notion:{page.id}",
-                title=page.title,
-                type=DocumentType.MARKDOWN,
-                collection_id=collection_id,
-                tags=tags,
-                raw_content=page.markdown,
-                payload_metadata={"notion_page_id": page.id, "notion_workspace_id": connection.workspace_id or ""},
-            )
+            user_id=user_id,
+            api_key_id=None,
+            provider="notion",
+            external_id=page.id,
+            idempotency_key=f"notion:{page.id}",
+            title=page.title,
+            type=DocumentType.MARKDOWN,
+            collection_id=collection_id,
+            tags=tags,
+            raw_content=page.markdown,
+            payload_metadata={"notion_page_id": page.id, "notion_workspace_id": connection.workspace_id or ""},
         )
 
 
@@ -258,9 +257,9 @@ class TelegramPairingService:
         await self._session.flush()
         return TelegramPairingCodeResponse(id=created.id, code=code, expires_at=created.expires_at)
 
-    async def get_status(self, *, user_id: UUID) -> TelegramStatusDTO:
+    async def get_status(self, *, user_id: UUID) -> TelegramStatus:
         bindings = await self._telegram_repository.list_bindings_by_user_id(user_id)
-        return TelegramStatusDTO(bindings=[telegram_binding_dto(binding) for binding in bindings])
+        return TelegramStatus(bindings=[telegram_binding_result(binding) for binding in bindings])
 
     async def revoke_binding(self, *, user_id: UUID, binding_id: UUID) -> None:
         now = datetime.now(UTC)
@@ -275,7 +274,7 @@ class TelegramPairingService:
             await self._api_key_repository.revoke(api_key_id=binding.api_key_id, user_id=user_id, revoked_at=now)
         await self._session.flush()
 
-    async def consume_pairing_code(self, dto: ConsumeTelegramPairingCodeDTO) -> TelegramChatBindingDTO:
+    async def consume_pairing_code(self, dto: ConsumeTelegramPairingCodePayload) -> TelegramChatBindingResult:
         now = datetime.now(UTC)
         pairing = await self._telegram_repository.get_pairing_code_by_hash(hash_pairing_code(dto.code))
         if pairing is None or pairing.consumed_at is not None or pairing.expires_at < now:
@@ -290,7 +289,7 @@ class TelegramPairingService:
             paired_at=now,
         )
         await self._session.flush()
-        return telegram_binding_dto(binding)
+        return telegram_binding_result(binding)
 
 
 class TelegramIngestionService:
@@ -298,16 +297,39 @@ class TelegramIngestionService:
         self._repository = repository
         self._ingest_external_item = ingest_external_item
 
-    async def ingest(self, *, chat_id: str, dto: ExternalIngestDTO) -> ExternalIngestResultDTO:
+    async def ingest(
+        self,
+        *,
+        chat_id: str,
+        provider: str,
+        title: str,
+        type: DocumentType,
+        collection_id: UUID | None,
+        tags: list[str],
+        source_url: str | None,
+        raw_content: str | None,
+        language: str | None,
+        external_id: str | None,
+        idempotency_key: str | None,
+        payload_metadata: dict[str, object],
+    ) -> ExternalIngestResult:
         binding = await self._repository.get_active_binding_by_chat_id(normalize_chat_id(chat_id))
         if binding is None:
             raise ResourceNotFoundException("telegram chat is not paired")
         return await self._ingest_external_item(
-            replace(
-                dto,
-                user_id=binding.user_id,
-                api_key_id=binding.api_key_id,
-            )
+            user_id=binding.user_id,
+            api_key_id=binding.api_key_id,
+            provider=provider,
+            title=title,
+            type=type,
+            collection_id=collection_id,
+            tags=tags,
+            source_url=source_url,
+            raw_content=raw_content,
+            language=language,
+            external_id=external_id,
+            idempotency_key=idempotency_key,
+            payload_metadata=payload_metadata,
         )
 
 
@@ -358,8 +380,8 @@ def notion_settings_redirect(status: str) -> str:
     return f"{settings.FRONTEND_URL}/settings?integration=notion&status={status}"
 
 
-def telegram_binding_dto(record: TelegramChatBindingRecord) -> TelegramChatBindingDTO:
-    return TelegramChatBindingDTO(
+def telegram_binding_result(record: TelegramChatBindingRecord) -> TelegramChatBindingResult:
+    return TelegramChatBindingResult(
         id=record.id,
         user_id=record.user_id,
         api_key_id=record.api_key_id,
@@ -403,26 +425,7 @@ def normalize_optional(value: str | None) -> str | None:
     return normalized or None
 
 
-def to_notion_connection_response(dto: NotionConnectionResponse) -> NotionConnectionResponse:
-    return NotionConnectionResponse(
-        connected=dto.connected,
-        workspace_id=dto.workspace_id,
-        workspace_name=dto.workspace_name,
-        bot_id=dto.bot_id,
-        default_parent_page_id=dto.default_parent_page_id,
-        default_parent_page_title=dto.default_parent_page_title,
-    )
-
-
-def to_notion_page_response(dto: NotionPageResponse) -> NotionPageResponse:
-    return NotionPageResponse(id=dto.id, title=dto.title)
-
-
-def to_telegram_pairing_code_response(dto: TelegramPairingCodeResponse) -> TelegramPairingCodeResponse:
-    return TelegramPairingCodeResponse(id=dto.id, code=dto.code, expires_at=dto.expires_at)
-
-
-def to_telegram_binding_response(dto: TelegramChatBindingDTO) -> TelegramChatBindingResponse:
+def to_telegram_binding_response(dto: TelegramChatBindingResult) -> TelegramChatBindingResponse:
     return TelegramChatBindingResponse(
         id=dto.id,
         chat_id=dto.chat_id,
@@ -435,5 +438,5 @@ def to_telegram_binding_response(dto: TelegramChatBindingDTO) -> TelegramChatBin
     )
 
 
-def to_telegram_status_response(dto: TelegramStatusDTO) -> TelegramStatusResponse:
+def to_telegram_status_response(dto: TelegramStatus) -> TelegramStatusResponse:
     return TelegramStatusResponse(bindings=[to_telegram_binding_response(binding) for binding in dto.bindings])

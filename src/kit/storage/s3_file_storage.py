@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from src.kit.ports.ingestion.file_storage import IFileStorage, StoredFile
+from src.kit.storage.file_storage import FileStorage, StoredFile
 from src.settings import settings
 
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-class S3FileStorage(IFileStorage):
+class S3FileStorage(FileStorage):
     def __init__(
         self,
         *,

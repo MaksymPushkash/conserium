@@ -1,6 +1,5 @@
 from uuid import UUID, uuid4
 
-from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.compare.helpers import (
@@ -15,27 +14,26 @@ from src.compare.helpers import (
 )
 from src.compare.repository import CompareRepository
 from src.compare.schemas import (
-    CompareDocumentsDTO,
     CompareDocumentsRequest,
     CompareDocumentsResponse,
     CompareEvidenceRowResponse,
-    CompareListDTO,
     CompareListResponse,
-    CompareResultDTO,
+    CompareListResult,
+    CompareResult,
 )
 from src.documents.chunk_repository import ChunkRepository
 from src.documents.document_repository import DocumentRepository
 from src.documents.services.context_fallback import refrag_context_from_sources
+from src.kit.ai.llm_service import LLMService
 from src.kit.exceptions import (
     DocumentAccessDeniedException,
     DocumentNotFoundException,
     QueryValidationException,
     ResourceNotFoundException,
 )
-from src.kit.ports.ai.llm_service import ILLMService
 from src.models.document import DocumentModel
-from src.query.schemas import QueryDTO, QuerySourceDTO, QuerySourceResponse
-from src.query.service import QueryExecutor, get_llm_service, get_query_executor
+from src.query.schemas import QueryPayload, QuerySource, QuerySourceResponse
+from src.query.service import QueryExecutor
 
 
 class CompareService:
@@ -44,26 +42,32 @@ class CompareService:
         session: AsyncSession,
         *,
         query_executor: QueryExecutor,
-        llm_service: ILLMService,
-        dto: CompareDocumentsDTO,
+        llm_service: LLMService,
+        user_id: UUID,
+        body: CompareDocumentsRequest,
     ) -> CompareDocumentsResponse:
-        if dto.left_document_id == dto.right_document_id:
+        if body.left_document_id == body.right_document_id:
             raise QueryValidationException("choose two different documents")
 
-        left_document, right_document = await self._load_documents(session, dto)
-        dimensions = normalize_dimensions(dto.dimensions)
-        retrieval_query = compare_retrieval_query(left_document, right_document, dto.prompt)
-        prompt = compare_prompt(left_document, right_document, dto.prompt, dimensions)
+        left_document, right_document = await self._load_documents(
+            session,
+            user_id=user_id,
+            left_document_id=body.left_document_id,
+            right_document_id=body.right_document_id,
+        )
+        dimensions = normalize_dimensions(tuple(body.dimensions) if body.dimensions else None)
+        retrieval_query = compare_retrieval_query(left_document, right_document, body.prompt)
+        prompt = compare_prompt(left_document, right_document, body.prompt, dimensions)
         await session.flush()
 
         result = await query_executor(
-            QueryDTO(
-                user_id=dto.user_id,
+            QueryPayload(
+                user_id=user_id,
                 query=prompt,
                 retrieval_query=retrieval_query,
                 relevance_query="",
-                document_ids=(dto.left_document_id, dto.right_document_id),
-                limit=dto.limit,
+                document_ids=(body.left_document_id, body.right_document_id),
+                limit=body.limit,
             )
         )
         used_sources = [source for source in result.sources if source.used_in_answer]
@@ -73,7 +77,7 @@ class CompareService:
                 session,
                 left_document,
                 right_document,
-                limit=max(dto.limit, 8),
+                limit=max(body.limit, 8),
             )
             markdown = await llm_service.synthesize_answer(
                 query=prompt,
@@ -85,7 +89,7 @@ class CompareService:
         persisted = await self._persist_result(
             session,
             llm_service=llm_service,
-            dto=dto,
+            user_id=user_id,
             left_document=left_document,
             right_document=right_document,
             markdown=markdown,
@@ -104,7 +108,7 @@ class CompareService:
         offset: int,
     ) -> CompareListResponse:
         repository = CompareRepository(session)
-        result = CompareListDTO(
+        result = CompareListResult(
             items=await repository.list_by_user_id(
                 user_id=user_id,
                 collection_id=collection_id,
@@ -133,15 +137,18 @@ class CompareService:
     async def _load_documents(
         self,
         session: AsyncSession,
-        dto: CompareDocumentsDTO,
+        *,
+        user_id: UUID,
+        left_document_id: UUID,
+        right_document_id: UUID,
     ) -> tuple[DocumentModel, DocumentModel]:
         repository = DocumentRepository.from_session(session)
-        left_document = await repository.get_by_id(dto.left_document_id)
-        right_document = await repository.get_by_id(dto.right_document_id)
+        left_document = await repository.get_by_id(left_document_id)
+        right_document = await repository.get_by_id(right_document_id)
         if left_document is None or right_document is None:
             raise DocumentNotFoundException("document not found")
-        _ensure_document_owner(left_document, dto.user_id)
-        _ensure_document_owner(right_document, dto.user_id)
+        _ensure_document_owner(left_document, user_id)
+        _ensure_document_owner(right_document, user_id)
         return left_document, right_document
 
     async def _load_direct_sources(
@@ -151,7 +158,7 @@ class CompareService:
         right_document: DocumentModel,
         *,
         limit: int,
-    ) -> list[QuerySourceDTO]:
+    ) -> list[QuerySource]:
         repository = ChunkRepository.from_session(session)
         left_chunks = await repository.get_by_document_id(left_document.id)
         right_chunks = await repository.get_by_document_id(right_document.id)
@@ -174,17 +181,17 @@ class CompareService:
         self,
         session: AsyncSession,
         *,
-        llm_service: ILLMService,
-        dto: CompareDocumentsDTO,
+        llm_service: LLMService,
+        user_id: UUID,
         left_document: DocumentModel,
         right_document: DocumentModel,
         markdown: str,
         dimensions: list[str],
-        sources: list[QuerySourceDTO],
-    ) -> CompareResultDTO:
-        result = CompareResultDTO(
+        sources: list[QuerySource],
+    ) -> CompareResult:
+        result = CompareResult(
             id=uuid4(),
-            user_id=dto.user_id,
+            user_id=user_id,
             collection_id=shared_collection_id(left_document, right_document),
             left_document_id=left_document.id,
             right_document_id=right_document.id,
@@ -209,30 +216,7 @@ class CompareService:
         return created
 
 
-def get_compare_query_executor(query_executor: QueryExecutor = Depends(get_query_executor)) -> QueryExecutor:
-    return query_executor
-
-
-def get_compare_llm_service(llm_service: ILLMService = Depends(get_llm_service)) -> ILLMService:
-    return llm_service
-
-
-def get_compare_service() -> CompareService:
-    return compare
-
-
-def to_compare_documents_dto(body: CompareDocumentsRequest, user_id: UUID) -> CompareDocumentsDTO:
-    return CompareDocumentsDTO(
-        user_id=user_id,
-        left_document_id=body.left_document_id,
-        right_document_id=body.right_document_id,
-        prompt=body.prompt,
-        dimensions=tuple(body.dimensions) if body.dimensions else None,
-        limit=body.limit,
-    )
-
-
-def to_compare_documents_response(dto: CompareResultDTO) -> CompareDocumentsResponse:
+def to_compare_documents_response(dto: CompareResult) -> CompareDocumentsResponse:
     return CompareDocumentsResponse(
         id=dto.id,
         collection_id=dto.collection_id,
@@ -264,14 +248,14 @@ def to_compare_documents_response(dto: CompareResultDTO) -> CompareDocumentsResp
     )
 
 
-def to_compare_list_response(dto: CompareListDTO) -> CompareListResponse:
+def to_compare_list_response(dto: CompareListResult) -> CompareListResponse:
     return CompareListResponse(
         items=[to_compare_documents_response(item) for item in dto.items],
         total=dto.total,
     )
 
 
-def to_query_source_response(dto: QuerySourceDTO, index: int) -> QuerySourceResponse:
+def to_query_source_response(dto: QuerySource, index: int) -> QuerySourceResponse:
     return QuerySourceResponse(
         chunk_id=dto.chunk_id,
         document_id=dto.document_id,
@@ -295,10 +279,6 @@ compare = CompareService()
 __all__ = [
     "CompareService",
     "compare",
-    "get_compare_llm_service",
-    "get_compare_query_executor",
-    "get_compare_service",
-    "to_compare_documents_dto",
     "to_compare_documents_response",
     "to_compare_list_response",
 ]

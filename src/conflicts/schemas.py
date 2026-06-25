@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 @final
 @dataclass(frozen=True, slots=True)
-class ConflictClaimRecordDTO:
+class ConflictClaimRecord:
     document_id: UUID
     subject: str
     polarity: str
@@ -16,7 +16,7 @@ class ConflictClaimRecordDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class PersistedConflictRecordDTO:
+class PersistedConflictRecord:
     subject: str
     summary: str
     document_ids: list[UUID]
@@ -26,35 +26,27 @@ class PersistedConflictRecordDTO:
 
 @final
 @dataclass(frozen=True, slots=True)
-class ConflictDetectionDTO:
-    user_id: UUID
-    collection_id: UUID | None = None
-    limit: int = 100
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class ConflictDocumentDTO:
+class ConflictDocument:
     id: UUID
     title: str
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class ConflictFindingDTO:
+class ConflictFinding:
     subject: str
     summary: str
-    documents: list[ConflictDocumentDTO]
+    documents: list[ConflictDocument]
     evidence: list[str]
     score: float
 
 
 @final
 @dataclass(frozen=True, slots=True)
-class ConflictDetectionResultDTO:
+class ConflictDetectionResult:
     collection_id: UUID | None
     analyzed_document_count: int
-    conflicts: list[ConflictFindingDTO]
+    conflicts: list[ConflictFinding]
 
 
 class ConflictDocumentResponse(BaseModel):

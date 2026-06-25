@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from fastapi import Depends
 
 from src.api_keys.repository import ApiKeyRepository
-from src.documents.ingestion import get_external_item_ingester
+from src.documents.ingestion_dependencies import get_external_item_ingester
 from src.integrations.notion_oauth_client import NotionOAuthClient
 from src.integrations.notion_workspace_client import NotionWorkspaceClient
 from src.integrations.repository import (
@@ -26,8 +26,6 @@ from src.settings import settings
 
 if TYPE_CHECKING:
     from src.documents.ingestion import ExternalItemIngester
-    from src.integrations.clients import NotionOAuthClientProtocol, NotionWorkspaceClientProtocol
-    from src.kit.ports.security.token_cipher import ITokenCipher
 
 
 def get_api_key_repository(session: AsyncSession = Depends(get_db_session)) -> ApiKeyRepository:
@@ -51,15 +49,15 @@ def get_api_key_authenticator(
     return ApiKeyAuthenticator(session, repository)
 
 
-def get_token_cipher() -> ITokenCipher:
+def get_token_cipher() -> FernetTokenCipher:
     return FernetTokenCipher(settings.TOKEN_ENCRYPTION_KEY, key_version=settings.TOKEN_ENCRYPTION_KEY_VERSION)
 
 
-def get_notion_oauth_client() -> NotionOAuthClientProtocol:
+def get_notion_oauth_client() -> NotionOAuthClient:
     return NotionOAuthClient()
 
 
-def get_notion_workspace_client() -> NotionWorkspaceClientProtocol:
+def get_notion_workspace_client() -> NotionWorkspaceClient:
     return NotionWorkspaceClient()
 
 
@@ -70,16 +68,16 @@ def _get_signed_state() -> SignedState:
 def get_notion_connection_service(
     session: AsyncSession = Depends(get_db_session),
     repository: ExternalConnectionRepository = Depends(get_external_connection_repository),
-    notion_oauth_client: NotionOAuthClientProtocol = Depends(get_notion_oauth_client),
-    token_cipher: ITokenCipher = Depends(get_token_cipher),
+    notion_oauth_client: NotionOAuthClient = Depends(get_notion_oauth_client),
+    token_cipher: FernetTokenCipher = Depends(get_token_cipher),
 ) -> NotionConnectionService:
     return NotionConnectionService(session, repository, notion_oauth_client, token_cipher, _get_signed_state())
 
 
 def get_notion_workspace_service(
     repository: ExternalConnectionRepository = Depends(get_external_connection_repository),
-    notion_workspace_client: NotionWorkspaceClientProtocol = Depends(get_notion_workspace_client),
-    token_cipher: ITokenCipher = Depends(get_token_cipher),
+    notion_workspace_client: NotionWorkspaceClient = Depends(get_notion_workspace_client),
+    token_cipher: FernetTokenCipher = Depends(get_token_cipher),
     ingest_external_item: ExternalItemIngester = Depends(get_external_item_ingester),
 ) -> NotionWorkspaceService:
     return NotionWorkspaceService(repository, notion_workspace_client, token_cipher, ingest_external_item)

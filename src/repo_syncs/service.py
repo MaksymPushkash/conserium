@@ -7,10 +7,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 from uuid import UUID
-
-from fastapi import Depends
 
 from src.collections.repository import CollectionRepository
 from src.documents.activity_repository import DocumentActivityRepository
@@ -24,22 +22,21 @@ from src.kit.exceptions import (
     ValidationException,
 )
 from src.models.document import DocumentModel
-from src.postgres import AsyncSession, get_db_session, get_session_factory
 from src.repo_syncs.github_repository_client import GitHubRepositoryClient
 from src.repo_syncs.repository import RepoSyncRepository
 from src.repo_syncs.schemas import (
-    CreateRepoSyncDTO,
+    CreateRepoSyncPayload,
     CreateRepoSyncRequest,
-    MarkdownRepoFileDTO,
-    RepoSyncDTO,
-    RepoSyncItemDTO,
-    RepoSyncListDTO,
+    MarkdownRepoFile,
+    RepoSyncItem,
     RepoSyncListResponse,
-    RepoSyncOutboxDTO,
+    RepoSyncListResult,
+    RepoSyncOutboxRecord,
     RepoSyncResponse,
+    RepoSyncResult,
     RepoSyncRunResponse,
-    RepoSyncRunResultDTO,
-    RunRepoSyncDTO,
+    RepoSyncRunResult,
+    RunRepoSyncPayload,
     RunRepoSyncRequest,
 )
 from src.worker.dispatcher import CeleryTaskDispatcher
@@ -47,9 +44,8 @@ from src.worker.dispatcher import CeleryTaskDispatcher
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    from src.documents.status_cache import IDocumentStatusCache
-    from src.integrations.clients import GitHubRepositoryClientProtocol
-    from src.worker.dispatcher import ITaskDispatcher
+    from src.documents.status_cache import RedisDocumentStatusCache
+    from src.postgres import AsyncSession
 
 
 logger = logging.getLogger(__name__)
@@ -64,9 +60,7 @@ _OUTBOX_LOCK_TIMEOUT = timedelta(minutes=15)
 _OUTBOX_BATCH_LIMIT = 100
 
 
-class _RepoPathItem(Protocol):
-    @property
-    def path(self) -> str: ...
+type RepoPathItem = RepoSyncItem | MarkdownRepoFile
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,10 +100,10 @@ class RepoSyncService:
 
     async def list(self, *, user_id: UUID) -> RepoSyncListResponse:
         items = await self.repo_sync_repo.list_by_user_id(user_id)
-        return to_repo_sync_list_response(RepoSyncListDTO(items=items))
+        return to_repo_sync_list_response(RepoSyncListResult(items=items))
 
     async def create(self, *, user_id: UUID, body: CreateRepoSyncRequest) -> RepoSyncResponse:
-        dto = to_create_repo_sync_dto(body, user_id)
+        dto = build_create_repo_sync_payload(body, user_id)
         repo_ref = parse_github_repo_url(dto.repo_url)
         branch = dto.branch.strip() or "main"
         include_paths = normalize_repo_path_patterns(dto.include_paths, _DEFAULT_INCLUDE_PATHS)
@@ -152,8 +146,8 @@ class RepoSyncRunner:
         document_repo: DocumentRepository,
         document_activity_repo: DocumentActivityRepository,
         repo_sync_repo: RepoSyncRepository,
-        github_client: GitHubRepositoryClientProtocol,
-        task_dispatcher: ITaskDispatcher,
+        github_client: GitHubRepositoryClient,
+        task_dispatcher: CeleryTaskDispatcher,
     ) -> None:
         self._session = session
         self._document_repo = document_repo
@@ -162,7 +156,7 @@ class RepoSyncRunner:
         self._github_client = github_client
         self._task_dispatcher = task_dispatcher
 
-    async def __call__(self, dto: RunRepoSyncDTO) -> RepoSyncRunResultDTO:
+    async def __call__(self, dto: RunRepoSyncPayload) -> RepoSyncRunResult:
         max_files = normalize_max_files(dto.max_files)
         repo_sync = await self._load_user_repo_sync(dto.user_id, dto.repo_sync_id)
         await self._set_repo_sync_state(repo_sync.id, status="running")
@@ -193,7 +187,7 @@ class RepoSyncRunner:
             await self._mark_repo_sync_failed(repo_sync.id, message)
             raise sanitized_repo_sync_exception(exc, message) from exc
 
-        return RepoSyncRunResultDTO(
+        return RepoSyncRunResult(
             repo_sync=repo_sync,
             created=created,
             updated=updated,
@@ -204,9 +198,9 @@ class RepoSyncRunner:
 
     async def _sync_files(
         self,
-        repo_sync: RepoSyncDTO,
-        files: list[MarkdownRepoFileDTO],
-    ) -> tuple[RepoSyncDTO, int, int, int, int]:
+        repo_sync: RepoSyncResult,
+        files: list[MarkdownRepoFile],
+    ) -> tuple[RepoSyncResult, int, int, int, int]:
         now = datetime.now(UTC)
         created = 0
         updated = 0
@@ -262,7 +256,7 @@ class RepoSyncRunner:
                 },
             )
 
-    async def _load_user_repo_sync(self, user_id: UUID, repo_sync_id: UUID) -> RepoSyncDTO:
+    async def _load_user_repo_sync(self, user_id: UUID, repo_sync_id: UUID) -> RepoSyncResult:
         repo_sync = await self._repo_sync_repo.get_by_id(repo_sync_id)
         if repo_sync is None or repo_sync.user_id != user_id:
             raise ResourceNotFoundException("repo sync not found")
@@ -275,7 +269,7 @@ class RepoSyncRunner:
         status: str,
         last_error: str | None = None,
         last_synced_at: datetime | None = None,
-    ) -> RepoSyncDTO:
+    ) -> RepoSyncResult:
         repo_sync = await self._repo_sync_repo.update_state(
             repo_sync_id=repo_sync_id,
             status=status,
@@ -300,8 +294,8 @@ class RepoSyncRunner:
 
     async def _sync_file(
         self,
-        repo_sync: RepoSyncDTO,
-        file: MarkdownRepoFileDTO,
+        repo_sync: RepoSyncResult,
+        file: MarkdownRepoFile,
         synced_at: datetime,
     ) -> _SyncFileResult:
         item = await self._repo_sync_repo.get_item_by_path(repo_sync_id=repo_sync.id, path=file.path)
@@ -338,13 +332,13 @@ class RepoSyncRunner:
         )
         return _SyncFileResult(state=state, document=document)
 
-    async def _load_item_document(self, item: RepoSyncItemDTO) -> DocumentModel:
+    async def _load_item_document(self, item: RepoSyncItem) -> DocumentModel:
         document = await self._document_repo.get_by_id(item.document_id)
         if document is None:
             raise ResourceNotFoundException("synced document not found")
         return document
 
-    def _create_document(self, repo_sync: RepoSyncDTO, file: MarkdownRepoFileDTO) -> DocumentModel:
+    def _create_document(self, repo_sync: RepoSyncResult, file: MarkdownRepoFile) -> DocumentModel:
         return DocumentModel.create(
             id=uuid.uuid4(),
             user_id=repo_sync.user_id,
@@ -371,7 +365,7 @@ class RepoSyncExecutor:
                 repo_sync_repo=RepoSyncRepository.from_session(session),
                 github_client=GitHubRepositoryClient(),
                 task_dispatcher=CeleryTaskDispatcher(),
-            )(to_run_repo_sync_dto(body, user_id, repo_sync_id))
+            )(build_run_repo_sync_payload(body, user_id, repo_sync_id))
             return to_repo_sync_run_response(result)
 
 
@@ -381,8 +375,8 @@ class RepoSyncOutboxDrainer:
         session: AsyncSession,
         document_repo: DocumentRepository,
         repo_sync_repo: RepoSyncRepository,
-        status_cache: IDocumentStatusCache,
-        task_dispatcher: ITaskDispatcher,
+        status_cache: RedisDocumentStatusCache,
+        task_dispatcher: CeleryTaskDispatcher,
     ) -> None:
         self._session = session
         self._document_repo = document_repo
@@ -415,7 +409,7 @@ class RepoSyncOutboxDrainer:
             permanently_failed=permanently_failed,
         )
 
-    async def _claim_outbox(self, limit: int) -> list[RepoSyncOutboxDTO]:
+    async def _claim_outbox(self, limit: int) -> list[RepoSyncOutboxRecord]:
         now = datetime.now(UTC)
         outbox_items = await self._repo_sync_repo.claim_outbox_batch(
             limit=limit,
@@ -426,7 +420,7 @@ class RepoSyncOutboxDrainer:
         await self._session.commit()
         return outbox_items
 
-    async def _dispatch_outbox_item(self, outbox: RepoSyncOutboxDTO) -> None:
+    async def _dispatch_outbox_item(self, outbox: RepoSyncOutboxRecord) -> None:
         document = await self._load_document(outbox.document_id)
         if document is None:
             await self._mark_outbox_dispatched(outbox)
@@ -465,7 +459,7 @@ class RepoSyncOutboxDrainer:
     async def _load_document(self, document_id: UUID) -> DocumentModel | None:
         return await self._document_repo.get_by_id(document_id)
 
-    async def _mark_outbox_dispatched(self, outbox: RepoSyncOutboxDTO) -> None:
+    async def _mark_outbox_dispatched(self, outbox: RepoSyncOutboxRecord) -> None:
         await self._repo_sync_repo.mark_outbox_dispatched(outbox.id, datetime.now(UTC))
         active_outbox = await self._repo_sync_repo.has_active_outbox(outbox.repo_sync_id)
         if not active_outbox:
@@ -477,7 +471,7 @@ class RepoSyncOutboxDrainer:
             )
         await self._session.commit()
 
-    async def _mark_outbox_failed(self, outbox: RepoSyncOutboxDTO, exc: Exception, *, retryable: bool) -> None:
+    async def _mark_outbox_failed(self, outbox: RepoSyncOutboxRecord, exc: Exception, *, retryable: bool) -> None:
         await self._repo_sync_repo.mark_outbox_failed(
             outbox.id,
             last_error=sanitize_outbox_error(exc),
@@ -510,16 +504,8 @@ def build_repo_sync_service(session: AsyncSession) -> RepoSyncService:
     )
 
 
-def get_repo_sync_service(session: AsyncSession = Depends(get_db_session)) -> RepoSyncService:
-    return build_repo_sync_service(session)
-
-
-def get_repo_sync_executor() -> RepoSyncExecutor:
-    return RepoSyncExecutor(get_session_factory())
-
-
-def to_create_repo_sync_dto(body: CreateRepoSyncRequest, user_id: UUID) -> CreateRepoSyncDTO:
-    return CreateRepoSyncDTO(
+def build_create_repo_sync_payload(body: CreateRepoSyncRequest, user_id: UUID) -> CreateRepoSyncPayload:
+    return CreateRepoSyncPayload(
         user_id=user_id,
         collection_id=body.collection_id,
         repo_url=body.repo_url,
@@ -529,11 +515,11 @@ def to_create_repo_sync_dto(body: CreateRepoSyncRequest, user_id: UUID) -> Creat
     )
 
 
-def to_run_repo_sync_dto(body: RunRepoSyncRequest, user_id: UUID, repo_sync_id: UUID) -> RunRepoSyncDTO:
-    return RunRepoSyncDTO(user_id=user_id, repo_sync_id=repo_sync_id, max_files=body.max_files)
+def build_run_repo_sync_payload(body: RunRepoSyncRequest, user_id: UUID, repo_sync_id: UUID) -> RunRepoSyncPayload:
+    return RunRepoSyncPayload(user_id=user_id, repo_sync_id=repo_sync_id, max_files=body.max_files)
 
 
-def to_repo_sync_response(dto: RepoSyncDTO) -> RepoSyncResponse:
+def to_repo_sync_response(dto: RepoSyncResult) -> RepoSyncResponse:
     return RepoSyncResponse(
         id=dto.id,
         collection_id=dto.collection_id,
@@ -551,11 +537,11 @@ def to_repo_sync_response(dto: RepoSyncDTO) -> RepoSyncResponse:
     )
 
 
-def to_repo_sync_list_response(dto: RepoSyncListDTO) -> RepoSyncListResponse:
+def to_repo_sync_list_response(dto: RepoSyncListResult) -> RepoSyncListResponse:
     return RepoSyncListResponse(items=[to_repo_sync_response(item) for item in dto.items])
 
 
-def to_repo_sync_run_response(dto: RepoSyncRunResultDTO) -> RepoSyncRunResponse:
+def to_repo_sync_run_response(dto: RepoSyncRunResult) -> RepoSyncRunResponse:
     return RepoSyncRunResponse(
         repo_sync=to_repo_sync_response(dto.repo_sync),
         created=dto.created,
@@ -578,7 +564,7 @@ def document_title_from_path(path: str) -> str:
     return stem.replace("-", " ").replace("_", " ") or path
 
 
-def stale_repo_items[T: _RepoPathItem](items: list[T], current_paths: set[str]) -> list[T]:
+def stale_repo_items[T: RepoPathItem](items: list[T], current_paths: set[str]) -> list[T]:
     return [item for item in items if item.path not in current_paths]
 
 
@@ -588,7 +574,7 @@ def normalize_max_files(max_files: int) -> int:
     return min(max_files, _MAX_SYNC_FILES)
 
 
-def unique_repo_files[T: _RepoPathItem](files: list[T]) -> list[T]:
+def unique_repo_files[T: RepoPathItem](files: list[T]) -> list[T]:
     unique: dict[str, T] = {}
     for file in files:
         unique[file.path] = file
@@ -602,7 +588,7 @@ def normalize_repo_path_patterns(patterns: list[str] | None, default: tuple[str,
     return cleaned or list(default)
 
 
-def filter_repo_files[T: _RepoPathItem](
+def filter_repo_files[T: RepoPathItem](
     files: list[T],
     *,
     include_paths: list[str],
@@ -660,10 +646,10 @@ __all__ = [
     "RepoSyncOutboxDrainer",
     "RepoSyncRunner",
     "RepoSyncService",
+    "build_create_repo_sync_payload",
+    "build_run_repo_sync_payload",
     "document_title_from_path",
     "filter_repo_files",
-    "get_repo_sync_executor",
-    "get_repo_sync_service",
     "normalize_max_files",
     "normalize_repo_path_patterns",
     "parse_github_repo_url",
@@ -672,10 +658,8 @@ __all__ = [
     "sanitize_repo_sync_error",
     "sanitized_repo_sync_exception",
     "stale_repo_items",
-    "to_create_repo_sync_dto",
     "to_repo_sync_list_response",
     "to_repo_sync_response",
     "to_repo_sync_run_response",
-    "to_run_repo_sync_dto",
     "unique_repo_files",
 ]

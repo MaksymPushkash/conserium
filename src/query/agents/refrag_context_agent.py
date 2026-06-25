@@ -1,9 +1,9 @@
-from src.kit.ports.refrag.refrag_context_builder import IRefragContextBuilder
 from src.query.agents.state import ConseriumQueryState
+from src.query.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
 
 
 class RefragContextAgent:
-    def __init__(self, refrag_context_builder: IRefragContextBuilder) -> None:
+    def __init__(self, refrag_context_builder: HeuristicRefragContextBuilder) -> None:
         self._refrag_context_builder = refrag_context_builder
 
     def build_context(self, state: ConseriumQueryState) -> ConseriumQueryState:

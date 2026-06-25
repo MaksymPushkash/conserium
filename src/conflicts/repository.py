@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from src.conflicts.schemas import ConflictClaimRecordDTO, PersistedConflictRecordDTO
+    from src.conflicts.schemas import ConflictClaimRecord, PersistedConflictRecord
 
 
 class ConflictRepository:
@@ -23,7 +23,7 @@ class ConflictRepository:
         *,
         user_id: UUID,
         document_ids: list[UUID],
-        claims: list[ConflictClaimRecordDTO],
+        claims: list[ConflictClaimRecord],
     ) -> None:
         if document_ids:
             await self._session.execute(
@@ -48,7 +48,7 @@ class ConflictRepository:
         *,
         user_id: UUID,
         collection_id: UUID | None,
-        conflicts: list[PersistedConflictRecordDTO],
+        conflicts: list[PersistedConflictRecord],
     ) -> None:
         where_clause = [ClaimConflictModel.user_id == user_id]
         if collection_id is None:

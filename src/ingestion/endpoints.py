@@ -5,8 +5,8 @@ from fastapi import Depends, File, Form, HTTPException, Request, UploadFile, sta
 from src.auth.auth import CurrentUser
 from src.documents.ingestion import DocumentIngester
 from src.documents.schemas import (
-    DocumentDTO,
     DocumentResponse,
+    DocumentResult,
     DocumentStatusResponse,
     IngestDocumentRequest,
     IngestTextDocumentRequest,
@@ -17,15 +17,8 @@ from src.documents.service import (
     to_document_status_response,
 )
 from src.documents.types import DocumentType
-from src.ingestion.service import (
-    get_document_ingester,
-    get_document_status_service,
-    get_file_storage,
-    to_ingest_document_dto,
-    to_ingest_text_document_dto,
-    to_uploaded_ingest_document_dto,
-)
-from src.kit.ports.ingestion.file_storage import IFileStorage
+from src.ingestion.dependencies import get_document_ingester, get_document_status_service, get_file_storage
+from src.kit.storage.file_storage import FileStorage
 from src.observability.metrics import ingestion_latency_timer, record_http_request
 from src.observability.rate_limit import limiter
 from src.routing import APIRouter
@@ -50,7 +43,17 @@ async def ingest_document(
     handler: DocumentIngester = Depends(get_document_ingester),
 ) -> DocumentResponse:
     with ingestion_latency_timer("ingest_document"):
-        result = await handler(to_ingest_document_dto(body, current_user.id))
+        result = await handler(
+            user_id=current_user.id,
+            title=body.title,
+            type=body.type,
+            collection_id=body.collection_id,
+            source_url=body.source_url,
+            file_path=body.file_path,
+            file_size_bytes=body.file_size_bytes,
+            raw_content=body.raw_content,
+            language=body.language,
+        )
     record_http_request("ingest_document", status="202")
     return to_document_response(result)
 
@@ -67,7 +70,7 @@ async def ingest_pdf_document(
     request: Request,
     current_user: CurrentUser,
     handler: DocumentIngester = Depends(get_document_ingester),
-    file_storage: IFileStorage = Depends(get_file_storage),
+    file_storage: FileStorage = Depends(get_file_storage),
     file: UploadFile = File(...),
     title: str | None = Form(default=None),
     collection_id: UUID | None = Form(default=None),
@@ -101,7 +104,7 @@ async def ingest_image_document(
     request: Request,
     current_user: CurrentUser,
     handler: DocumentIngester = Depends(get_document_ingester),
-    file_storage: IFileStorage = Depends(get_file_storage),
+    file_storage: FileStorage = Depends(get_file_storage),
     file: UploadFile = File(...),
     title: str | None = Form(default=None),
     collection_id: UUID | None = Form(default=None),
@@ -135,7 +138,15 @@ async def ingest_text_document(
     handler: DocumentIngester = Depends(get_document_ingester),
 ) -> DocumentResponse:
     with ingestion_latency_timer("ingest_text_document"):
-        result = await handler(to_ingest_text_document_dto(body, current_user.id))
+        result = await handler(
+            user_id=current_user.id,
+            title=body.title,
+            type=body.type,
+            collection_id=body.collection_id,
+            source_url=body.source_url,
+            raw_content=body.raw_text,
+            language=body.language,
+        )
     record_http_request("ingest_text_document", status="202")
     return to_document_response(result)
 
@@ -154,7 +165,7 @@ async def _ingest_uploaded_file(
     *,
     current_user: CurrentUser,
     handler: DocumentIngester,
-    file_storage: IFileStorage,
+    file_storage: FileStorage,
     file: UploadFile,
     title: str | None,
     collection_id: UUID | None,
@@ -163,7 +174,7 @@ async def _ingest_uploaded_file(
     fallback_filename: str,
     default_title: str,
     endpoint: str,
-) -> DocumentDTO:
+) -> DocumentResult:
     content = await _read_bounded_upload(file)
     stored_file = await file_storage.save_document_file(
         user_id=current_user.id,
@@ -172,15 +183,13 @@ async def _ingest_uploaded_file(
     )
     with ingestion_latency_timer(endpoint):
         result = await handler(
-            to_uploaded_ingest_document_dto(
-                user_id=current_user.id,
-                title=title or file.filename or default_title,
-                document_type=document_type,
-                collection_id=collection_id,
-                file_path=stored_file.path,
-                file_size_bytes=stored_file.size_bytes,
-                language=language,
-            )
+            user_id=current_user.id,
+            title=title or file.filename or default_title,
+            type=document_type,
+            collection_id=collection_id,
+            file_path=stored_file.path,
+            file_size_bytes=stored_file.size_bytes,
+            language=language,
         )
     record_http_request(endpoint, status="202")
     return result

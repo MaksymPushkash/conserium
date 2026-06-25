@@ -5,14 +5,13 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from src.kit.ports.observability.query_trace import IQueryTracer
 from src.settings import settings
 
 if TYPE_CHECKING:
     from src.query.agents.state import ConseriumQueryState
 
 
-class LangfuseQueryTracer(IQueryTracer):
+class LangfuseQueryTracer:
     async def trace_query(self, state: ConseriumQueryState) -> str | None:
         trace_id = uuid.uuid4().hex
         if not settings.LANGFUSE_PUBLIC_KEY or not settings.LANGFUSE_SECRET_KEY:

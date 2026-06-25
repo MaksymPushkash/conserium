@@ -3,7 +3,6 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from src.kit.ports.ai.document_summary_service import IDocumentSummaryService
 from src.observability.metrics_registry import metrics_registry
 from src.settings import settings
 
@@ -12,7 +11,7 @@ _MAX_SUMMARY_INPUT_CHARS = 12_000
 _MAX_FALLBACK_SENTENCES = 5
 
 
-class OpenAIDocumentSummaryService(IDocumentSummaryService):
+class OpenAIDocumentSummaryService:
     def __init__(self) -> None:
         self._client: AsyncOpenAI | None = None
         self._model = settings.OPENAI_LLM_MODEL

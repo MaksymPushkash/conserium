@@ -5,11 +5,11 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from src.auth.jwt_service import JWTServiceProtocol
-from src.documents.notes import get_note_service
+from src.auth.jwt_service import JWTService
+from src.documents.note_dependencies import get_note_service
 from src.documents.schemas import NoteResponse
 from src.documents.status import DocumentStatus
-from src.knowledge_gaps.schemas import KnowledgeGapAreaDTO, KnowledgeGapDTO, KnowledgeGapListDTO
+from src.knowledge_gaps.schemas import KnowledgeGap, KnowledgeGapArea, KnowledgeGapListResult
 from src.knowledge_gaps.service import (
     get_knowledge_gap_service,
     to_knowledge_gap_list_response,
@@ -70,7 +70,7 @@ class _FakeRepositorySession:
 
 
 class _KnowledgeGapService:
-    def __init__(self, result: KnowledgeGapListDTO) -> None:
+    def __init__(self, result: KnowledgeGapListResult) -> None:
         self._result = result
         self.received: dict[str, object] = {}
 
@@ -80,7 +80,7 @@ class _KnowledgeGapService:
 
 
 class _KnowledgeGapDetailService:
-    def __init__(self, result: KnowledgeGapDTO) -> None:
+    def __init__(self, result: KnowledgeGap) -> None:
         self._result = result
         self.received: dict[str, object] = {}
 
@@ -113,7 +113,7 @@ def _dependency_override(dependency: object):
 def test_list_knowledge_gaps_route_forwards_collection_scope() -> None:
     user = _make_user()
     collection_id = uuid.uuid4()
-    service = _KnowledgeGapService(KnowledgeGapListDTO(items=[_gap(collection_id=collection_id)], total=1))
+    service = _KnowledgeGapService(KnowledgeGapListResult(items=[_gap(collection_id=collection_id)], total=1))
     client = _client(user, {})
     client.app.dependency_overrides[get_knowledge_gap_service] = _dependency_override(service)
     client.app.dependency_overrides[get_db_read_session] = _session_override
@@ -202,7 +202,7 @@ def _client(user: UserModel, dependencies: Mapping[type[object], object]) -> Tes
     app = create_app()
     apply_dependency_overrides(app, _FakeDependencyContainer(
         {
-            JWTServiceProtocol: jwt_service,
+            JWTService: jwt_service,
             UserRepository: _FakeRepositorySession(user),
             **dependencies,
         }
@@ -222,8 +222,8 @@ def _make_user() -> UserModel:
     )
 
 
-def _gap(collection_id: uuid.UUID | None = None) -> KnowledgeGapDTO:
-    return KnowledgeGapDTO(
+def _gap(collection_id: uuid.UUID | None = None) -> KnowledgeGap:
+    return KnowledgeGap(
         id="python--summary",
         topic="Python",
         collection_id=collection_id,
@@ -236,7 +236,7 @@ def _gap(collection_id: uuid.UUID | None = None) -> KnowledgeGapDTO:
         rationale="Testing coverage is weak.",
         suggested_actions=["Add a testing reference."],
         areas=[
-            KnowledgeGapAreaDTO(
+            KnowledgeGapArea(
                 id="python--testing",
                 name="Testing",
                 covered=False,

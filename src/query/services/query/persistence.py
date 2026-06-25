@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from src.query.schemas import QueryEvaluationRecordDTO
+from src.query.schemas import QueryEvaluationRecord
 from src.query.services.query.activity_recorder import record_document_activity
 from src.query.services.query.payloads import source_payload
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from src.postgres import AsyncSession
     from src.query.agents.state import ConseriumQueryState
     from src.query.repository import SearchQueryRepository
-    from src.query.schemas import QueryDTO, QuerySourceDTO
+    from src.query.schemas import QueryPayload, QuerySource
 
 
 class QueryPersistenceService:
@@ -31,7 +31,7 @@ class QueryPersistenceService:
         self._document_activity_repo = document_activity_repo
         self._search_query_repo = search_query_repo
 
-    async def record_query(self, dto: QueryDTO, query: str, state: ConseriumQueryState, latency_ms: int) -> None:
+    async def record_query(self, dto: QueryPayload, query: str, state: ConseriumQueryState, latency_ms: int) -> None:
         await self._record_query(dto, query, state, latency_ms)
         await self._session.flush()
 
@@ -41,7 +41,7 @@ class QueryPersistenceService:
         conversation_id: UUID,
         query: str,
         answer: str,
-        sources: list[QuerySourceDTO],
+        sources: list[QuerySource],
         refrag_context: dict[str, object],
         eval_scores: Mapping[str, object],
         trace_id: str | None,
@@ -60,7 +60,7 @@ class QueryPersistenceService:
 
     async def record_interaction(
         self,
-        dto: QueryDTO,
+        dto: QueryPayload,
         *,
         query: str,
         state: ConseriumQueryState,
@@ -82,9 +82,9 @@ class QueryPersistenceService:
         await record_document_activity(self._document_activity_repo, dto.user_id, state.sources)
         await self._session.flush()
 
-    async def _record_query(self, dto: QueryDTO, query: str, state: ConseriumQueryState, latency_ms: int) -> None:
+    async def _record_query(self, dto: QueryPayload, query: str, state: ConseriumQueryState, latency_ms: int) -> None:
         await self._search_query_repo.record_query(
-            QueryEvaluationRecordDTO(
+            QueryEvaluationRecord(
                 user_id=dto.user_id,
                 collection_id=dto.collection_id,
                 document_ids=_query_document_ids(dto, state),
@@ -101,7 +101,7 @@ class QueryPersistenceService:
         )
 
 
-def _query_document_ids(dto: QueryDTO, state: ConseriumQueryState) -> tuple[UUID, ...]:
+def _query_document_ids(dto: QueryPayload, state: ConseriumQueryState) -> tuple[UUID, ...]:
     if dto.document_ids:
         return dto.document_ids
     seen: set[UUID] = set()
