@@ -11,6 +11,7 @@ from src.integrations.dependencies import (
     get_telegram_ingestion_service,
     get_telegram_pairing_service,
 )
+from src.integrations.notion import NotionConnectionService, NotionWorkspaceService, notion_settings_redirect
 from src.integrations.schemas import (
     IntegrationConnectUrlResponse,
     NotionConnectionResponse,
@@ -24,14 +25,7 @@ from src.integrations.schemas import (
     TelegramPairingCodeResponse,
     TelegramStatusResponse,
 )
-from src.integrations.service import (
-    NotionConnectionService,
-    NotionWorkspaceService,
-    TelegramIngestionService,
-    TelegramPairingService,
-    notion_settings_redirect,
-    to_telegram_status_response,
-)
+from src.integrations.telegram import TelegramIngestionService, TelegramPairingService, to_telegram_status_response
 from src.kit.exceptions import DomainException
 from src.routing import APIRouter
 from src.settings import settings

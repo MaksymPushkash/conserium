@@ -9,8 +9,8 @@ from src.documents.ingestion import (
     ExternalItemIngester,
 )
 from src.documents.ingestion_dependencies import get_external_intake_service, get_external_item_ingester
+from src.integrations.api_keys import ApiKeyAuthenticator
 from src.integrations.dependencies import get_api_key_authenticator
-from src.integrations.service import ApiKeyAuthenticator
 from src.postgres import AsyncReadSession, get_db_read_session
 from src.public_api.schemas import PublicIngestRequest, PublicIngestResponse
 from src.query.dependencies import get_query_executor

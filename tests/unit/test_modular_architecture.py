@@ -152,6 +152,50 @@ def test_clean_architecture_ports_are_not_reintroduced() -> None:
             assert name not in source, f"{path}: {name}"
 
 
+def test_only_approved_external_strategy_abstractions_remain() -> None:
+    allowed_abstract_classes = {
+        "src/documents/extraction.py:ContentExtractor",
+        "src/kit/ai/embedding_provider.py:EmbeddingProvider",
+        "src/kit/ai/llm_service.py:LLMService",
+        "src/kit/ai/llm_service.py:StreamingLLMService",
+        "src/kit/storage/file_storage.py:FileStorage",
+        "src/query/services/evaluation/scorer.py:EvalScorer",
+        "src/query/services/retrieval/reranker.py:Reranker",
+    }
+
+    def is_abstract_base(base: ast.expr) -> bool:
+        return (
+            (isinstance(base, ast.Name) and base.id in {"ABC", "Protocol"})
+            or (isinstance(base, ast.Attribute) and base.attr in {"ABC", "Protocol"})
+        )
+
+    def is_abstract_decorator(decorator: ast.expr) -> bool:
+        if isinstance(decorator, ast.Name):
+            return decorator.id == "abstractmethod"
+        if isinstance(decorator, ast.Attribute):
+            return decorator.attr == "abstractmethod"
+        if isinstance(decorator, ast.Call):
+            return is_abstract_decorator(decorator.func)
+        return False
+
+    actual_abstract_classes: set[str] = set()
+    for path in Path("src").rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            has_abstract_base = any(is_abstract_base(base) for base in node.bases)
+            has_abstract_method = any(
+                isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and any(is_abstract_decorator(decorator) for decorator in child.decorator_list)
+                for child in node.body
+            )
+            if has_abstract_base or has_abstract_method:
+                actual_abstract_classes.add(f"{path}:{node.name}")
+
+    assert actual_abstract_classes == allowed_abstract_classes
+
+
 def test_dto_layer_is_not_reintroduced() -> None:
     for path in Path("src").rglob("*.py"):
         tree = ast.parse(path.read_text())
@@ -235,13 +279,13 @@ def test_request_services_do_not_commit_transactions() -> None:
         "src/public_shares/service.py:PublicAskLedger.reserve",
         "src/public_shares/service.py:PublicAskLedger.complete",
         "src/public_shares/service.py:PublicAskLedger.fail",
-        "src/repo_syncs/service.py:RepoSyncRunner._sync_files",
-        "src/repo_syncs/service.py:RepoSyncRunner._set_repo_sync_state",
-        "src/repo_syncs/service.py:RepoSyncOutboxDrainer._claim_outbox",
-        "src/repo_syncs/service.py:RepoSyncOutboxDrainer._dispatch_outbox_item",
-        "src/repo_syncs/service.py:RepoSyncOutboxDrainer._mark_outbox_dispatched",
-        "src/repo_syncs/service.py:RepoSyncOutboxDrainer._mark_outbox_failed",
-        "src/repo_syncs/service.py:RepoSyncOutboxDrainer._mark_repo_sync_failed",
+        "src/repo_syncs/runner.py:RepoSyncRunner._sync_files",
+        "src/repo_syncs/runner.py:RepoSyncRunner._set_repo_sync_state",
+        "src/repo_syncs/outbox.py:RepoSyncOutboxDrainer._claim_outbox",
+        "src/repo_syncs/outbox.py:RepoSyncOutboxDrainer._dispatch_outbox_item",
+        "src/repo_syncs/outbox.py:RepoSyncOutboxDrainer._mark_outbox_dispatched",
+        "src/repo_syncs/outbox.py:RepoSyncOutboxDrainer._mark_outbox_failed",
+        "src/repo_syncs/outbox.py:RepoSyncOutboxDrainer._mark_repo_sync_failed",
         "src/worker/document_failure.py:_mark_document_status",
     }
 

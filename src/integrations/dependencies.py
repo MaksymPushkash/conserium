@@ -6,19 +6,15 @@ from fastapi import Depends
 
 from src.api_keys.repository import ApiKeyRepository
 from src.documents.ingestion_dependencies import get_external_item_ingester
+from src.integrations.api_keys import ApiKeyAuthenticator
+from src.integrations.notion import NotionConnectionService, NotionWorkspaceService
 from src.integrations.notion_oauth_client import NotionOAuthClient
 from src.integrations.notion_workspace_client import NotionWorkspaceClient
 from src.integrations.repository import (
     ExternalConnectionRepository,
     TelegramRepository,
 )
-from src.integrations.service import (
-    ApiKeyAuthenticator,
-    NotionConnectionService,
-    NotionWorkspaceService,
-    TelegramIngestionService,
-    TelegramPairingService,
-)
+from src.integrations.telegram import TelegramIngestionService, TelegramPairingService
 from src.kit.security.fernet_token_cipher import FernetTokenCipher
 from src.kit.security.signed_state import SignedState
 from src.postgres import AsyncSession, get_db_session

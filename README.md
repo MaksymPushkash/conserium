@@ -52,11 +52,11 @@ User → Uploads content (text, PDF, URL, YouTube video URL, image)
 
 ## Architecture
 
-Conserium is a feature-first modular monolith modeled after Polar's backend structure.
+Conserium is a feature-first modular monolith.
 Each package under `src/` owns its HTTP endpoints, schemas, business services,
-repositories, authorization dependencies, and background tasks. Shared framework code
-lives in `src/kit`, SQLAlchemy models live in `src/models`, API composition lives in
-`src/api.py`, and Celery composition lives in `src/worker`.
+repositories, authorization dependencies, and background tasks when it needs them.
+Shared framework code lives in `src/kit`, SQLAlchemy models live in `src/models`, API
+composition lives in `src/api.py`, and Celery configuration lives in `src/worker`.
 
 ```text
 src/
@@ -70,13 +70,19 @@ src/
     ├── schemas.py         # API and feature data contracts
     ├── service.py         # Business orchestration
     ├── repository.py      # SQLAlchemy query ownership
-    ├── auth.py            # Feature authorization dependencies
+    ├── auth.py            # Feature authorization dependencies when needed
     └── tasks.py           # Feature-owned Celery tasks when needed
 ```
 
+Files such as `auth.py`, `sorting.py`, and `tasks.py` are optional. Do not create empty
+convention files.
+
+Removed architecture layers must stay removed: no `application`, `presentation`, `core`,
+`domain`, `infrastructure`, `use_cases`, `dtos`, feature-local `ports`, global UOW, or DI
+container.
+
 See [Architecture](docs/architecture.md) for module rules, request and worker flows,
-transaction ownership, frontend API contracts, deployment boundaries, and remaining
-structural debt.
+transaction ownership, frontend API contracts, and deployment boundaries.
 
 ### Workers
 
@@ -231,17 +237,14 @@ Latency metrics calculated on 5-minute sliding window for real-time monitoring.
 ## Testing
 
 ```bash
-# All tests
-uv run pytest tests/ -v
-
-# Unit only
-uv run pytest tests/unit -v
-
-# Eval regression
+uv run ruff check src tests scripts/run_eval_harness.py scripts/backfill_topics.py
+uv run mypy src
+uv run pytest tests -q
 uv run python scripts/run_eval_harness.py
 ```
 
-Status: unit tests, mypy, ruff, and frontend build are expected to pass before deploy.
+Backend CI also exports and checks `openapi.json`. Frontend CI regenerates its generated
+client from the backend schema and fails on drift.
 
 ---
 

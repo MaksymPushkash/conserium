@@ -60,6 +60,65 @@ Large features may split cohesive behavior into additional files such as
 recreate generic `application`, `domain`, `infrastructure`, `use_cases`, `dtos`, or
 feature-local `ports` layers.
 
+## Endpoint, Service, Repository Pattern
+
+The normal backend flow is:
+
+```python
+# endpoints.py
+@router.post("/", response_model=ResourceResponse, status_code=201)
+async def create_resource(
+    current_user: CurrentUser,
+    body: ResourceCreateRequest,
+    session: AsyncSession = Depends(get_db_session),
+    service: ResourceService = Depends(get_resource_service),
+) -> ResourceResponse:
+    return await service.create(session, user_id=current_user.id, body=body)
+```
+
+```python
+# service.py
+class ResourceService:
+    async def create(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: UUID,
+        body: ResourceCreateRequest,
+    ) -> ResourceResponse:
+        repository = ResourceRepository.from_session(session)
+        resource = await repository.create(user_id=user_id, body=body)
+        await session.flush()
+        return ResourceResponse.model_validate(resource)
+```
+
+```python
+# repository.py
+class ResourceRepository(RepositoryBase[ResourceModel]):
+    model = ResourceModel
+
+    async def get_for_user(self, *, user_id: UUID, resource_id: UUID) -> ResourceModel | None:
+        statement = select(ResourceModel).where(
+            ResourceModel.id == resource_id,
+            ResourceModel.user_id == user_id,
+        )
+        return await self.get_one_or_none(statement)
+```
+
+Rules:
+
+1. Endpoints describe HTTP behavior. They do not contain SQLAlchemy, Redis clients, token ciphers,
+   or external client construction.
+2. Services are framework-independent. They do not import FastAPI and they do not construct
+   `Depends`.
+3. Services pass request schemas or explicit arguments directly. Do not add command, DTO, or mapper
+   layers between endpoints and services.
+4. Repositories own SQLAlchemy statements. Repository methods use `self.session`, inherited from
+   `RepositoryBase.from_session(session)`.
+5. Use concrete repositories when there is one production implementation. Keep abstract classes only
+   for real external strategies such as storage, extraction, embeddings, LLMs, reranking, and eval
+   scoring.
+
 ## Request Flow
 
 ```text
@@ -102,7 +161,7 @@ transaction boundary, not ordinary request persistence.
 
 ## Database Models and Repositories
 
-SQLAlchemy models are shared in `src/models`, matching Polar's global model package.
+SQLAlchemy models are shared in `src/models`.
 Feature repositories import those models and expose concrete repository APIs.
 
 Prefer direct concrete repositories when there is one implementation. Keep interfaces for
@@ -151,6 +210,9 @@ close them at the task boundary.
 Feature-specific records, repository composition, and business rules stay in the owning
 feature package.
 
+Do not move feature code into `src/kit` to avoid imports. Shared code must have multiple concrete
+callers and no feature-specific policy.
+
 ## Frontend Contract
 
 The frontend is maintained in the separate `conserium_client` repository and deployed to
@@ -189,10 +251,8 @@ CORS is controlled by `FRONTEND_URL`.
 
 Conserium should remain in two repositories for now.
 
-Polar benefits from a monorepo because it contains multiple web and mobile applications,
-shared UI and SDK packages, generated clients, documentation, infrastructure, and release
-tooling. Conserium currently has one backend and one web application with independent
-deployments. Moving files would add workspace and deployment complexity without removing
+Conserium currently has one backend and one web application with independent deployments.
+Moving files into a monorepo would add workspace and deployment complexity without removing
 the main contract risk.
 
 Reconsider a monorepo when at least one of these becomes true:
@@ -204,11 +264,43 @@ Reconsider a monorepo when at least one of these becomes true:
 
 The separate CI checks enforce the OpenAPI contract without requiring a monorepo.
 
+## Architecture Decisions
+
+Celery and two repositories are deliberate choices. They should not change unless product needs
+change. The architecture risk is contract drift, not repository location.
+
+## Current State
+
+The removed layers are gone:
+
+- no `src/application`;
+- no `src/presentation`;
+- no `src/core`;
+- no `src/domain`;
+- no `src/infrastructure`;
+- no `src/dependencies.py`;
+- no `src/kit/ports`;
+- no global UOW;
+- no feature-local `dtos`, `ports`, or `use_cases`.
+
+The remaining abstract classes are external strategy boundaries with real provider substitution:
+
+- `src/documents/extraction.py:ContentExtractor`
+- `src/kit/storage/file_storage.py:FileStorage`
+- `src/kit/ai/embedding_provider.py:EmbeddingProvider`
+- `src/kit/ai/llm_service.py:LLMService`
+- `src/kit/ai/llm_service.py:StreamingLLMService`
+- `src/query/services/retrieval/reranker.py:Reranker`
+- `src/query/services/evaluation/scorer.py:EvalScorer`
+
+Do not add abstract repositories, feature-local ports, command interfaces, or test-only protocols.
+
 ## Architecture Checks
 
 The architecture test suite prevents removed layers, Dishka, global UOW names, document
 repository sessions, request-path commits, SQLAlchemy inside endpoints, empty convention
 placeholders, and feature-local `dtos`, `ports`, or `use_cases` folders from returning.
+It also enforces the exact approved abstract strategy set listed above.
 
 Run:
 

@@ -8,11 +8,9 @@ from src.documents.activity_repository import DocumentActivityRepository
 from src.documents.document_repository import DocumentRepository
 from src.documents.status_cache import RedisDocumentStatusCache
 from src.repo_syncs.github_repository_client import GitHubRepositoryClient
+from src.repo_syncs.outbox import RepoSyncOutboxDrainer
 from src.repo_syncs.repository import RepoSyncRepository
-from src.repo_syncs.service import (
-    RepoSyncOutboxDrainer,
-    RepoSyncRunner,
-)
+from src.repo_syncs.runner import RepoSyncRunner
 from src.settings import settings
 from src.worker.dependencies import get_worker_redis, get_worker_session_factory
 from src.worker.dispatcher import CeleryTaskDispatcher

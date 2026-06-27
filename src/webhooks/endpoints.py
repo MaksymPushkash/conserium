@@ -7,8 +7,8 @@ from src.documents.schemas import (
     ExternalIntakeItem,
 )
 from src.documents.service import to_document_response
+from src.integrations.api_keys import ApiKeyAuthenticator
 from src.integrations.dependencies import get_api_key_authenticator
-from src.integrations.service import ApiKeyAuthenticator
 from src.routing import APIRouter
 from src.webhooks.schemas import ExternalIngestRequest, ExternalIngestResponse, ExternalIntakeItemResponse
 
