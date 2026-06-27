@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 from src.collections.repository import CollectionRepository
 from src.kit.exceptions import ResourceNotFoundException, ValidationException
@@ -83,9 +83,9 @@ async def ensure_collection_visible(session: AsyncSession, *, collection_id: UUI
     return member.role
 
 
-def normalize_member_role(role: str) -> str:
+def normalize_member_role(role: str) -> Literal["viewer", "editor"]:
     normalized = role.strip().lower()
     
     if normalized not in MEMBER_ROLES:
         raise ValidationException("collection member role must be viewer or editor")
-    return normalized
+    return cast("Literal['viewer', 'editor']", normalized)

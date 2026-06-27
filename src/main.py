@@ -53,8 +53,10 @@ def create_app() -> FastAPI:
 
 def _cors_origins() -> list[str]:
     origins = {settings.FRONTEND_URL}
+    
     if settings.DEBUG:
         origins.update({"http://localhost:3000", "http://127.0.0.1:3000"})
+        
     return sorted(origin for origin in origins if origin)
 
 

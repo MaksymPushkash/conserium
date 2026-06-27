@@ -50,7 +50,7 @@ class RefragContextPackage:
 
 @final
 @dataclass(frozen=True, slots=True)
-class QueryPayload:
+class QueryInput:
     user_id: UUID
     query: str
     retrieval_query: str | None = None
@@ -229,8 +229,8 @@ class QueryResponse(BaseModel):
     answer: str
     sources: list[QuerySourceResponse]
     refrag_context: RefragContextResponse
-    debug: QueryDebugResponse | None = None
-    suggested_follow_up_questions: list[str] = Field(default_factory=list)
+    debug: QueryDebugResponse | None
+    suggested_follow_up_questions: list[str]
 
 
 class PublicQuerySourceResponse(BaseModel):
@@ -246,5 +246,5 @@ class PublicCollectionQueryResponse(BaseModel):
     query: str
     answer: str
     sources: list[PublicQuerySourceResponse]
-    suggested_follow_up_questions: list[str] = Field(default_factory=list)
+    suggested_follow_up_questions: list[str]
     share: PublicAnswerShareResponse

@@ -18,7 +18,7 @@ class DraftTemplate:
 
 
 @dataclass(frozen=True, slots=True)
-class DraftGenerationPayload:
+class DraftGenerationInput:
     user_id: UUID
     prompt: str
     draft_id: UUID | None = None

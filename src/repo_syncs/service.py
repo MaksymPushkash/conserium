@@ -11,8 +11,6 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from src.collections.repository import CollectionRepository
-from src.documents.activity_repository import DocumentActivityRepository
-from src.documents.document_repository import DocumentRepository
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
 from src.kit.exceptions import (
@@ -22,10 +20,8 @@ from src.kit.exceptions import (
     ValidationException,
 )
 from src.models.document import DocumentModel
-from src.repo_syncs.github_repository_client import GitHubRepositoryClient
 from src.repo_syncs.repository import RepoSyncRepository
 from src.repo_syncs.schemas import (
-    CreateRepoSyncPayload,
     CreateRepoSyncRequest,
     MarkdownRepoFile,
     RepoSyncItem,
@@ -36,16 +32,15 @@ from src.repo_syncs.schemas import (
     RepoSyncResult,
     RepoSyncRunResponse,
     RepoSyncRunResult,
-    RunRepoSyncPayload,
-    RunRepoSyncRequest,
 )
-from src.worker.dispatcher import CeleryTaskDispatcher
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
+    from src.documents.activity_repository import DocumentActivityRepository
+    from src.documents.document_repository import DocumentRepository
     from src.documents.status_cache import RedisDocumentStatusCache
     from src.postgres import AsyncSession
+    from src.repo_syncs.github_repository_client import GitHubRepositoryClient
+    from src.worker.dispatcher import CeleryTaskDispatcher
 
 
 logger = logging.getLogger(__name__)
@@ -84,51 +79,38 @@ class _SyncFileResult:
 
 
 class RepoSyncService:
-    def __init__(
-        self,
-        session: AsyncSession,
-        collection_repo: CollectionRepository,
-        document_repo: DocumentRepository,
-        document_activity_repo: DocumentActivityRepository,
-        repo_sync_repo: RepoSyncRepository,
-    ) -> None:
-        self.session = session
-        self.collection_repo = collection_repo
-        self.document_repo = document_repo
-        self.document_activity_repo = document_activity_repo
-        self.repo_sync_repo = repo_sync_repo
-
-    async def list(self, *, user_id: UUID) -> RepoSyncListResponse:
-        items = await self.repo_sync_repo.list_by_user_id(user_id)
+    async def list(self, session: AsyncSession, *, user_id: UUID) -> RepoSyncListResponse:
+        items = await RepoSyncRepository.from_session(session).list_by_user_id(user_id)
         return to_repo_sync_list_response(RepoSyncListResult(items=items))
 
-    async def create(self, *, user_id: UUID, body: CreateRepoSyncRequest) -> RepoSyncResponse:
-        dto = build_create_repo_sync_payload(body, user_id)
-        repo_ref = parse_github_repo_url(dto.repo_url)
-        branch = dto.branch.strip() or "main"
-        include_paths = normalize_repo_path_patterns(dto.include_paths, _DEFAULT_INCLUDE_PATHS)
-        exclude_paths = normalize_repo_path_patterns(dto.exclude_paths, _DEFAULT_EXCLUDE_PATHS)
-        collection = await self.collection_repo.get_by_id(dto.collection_id)
-        if collection is None or collection.user_id != dto.user_id:
+    async def create(self, session: AsyncSession, *, user_id: UUID, body: CreateRepoSyncRequest) -> RepoSyncResponse:
+        collection_repo = CollectionRepository.from_session(session)
+        repo_sync_repo = RepoSyncRepository.from_session(session)
+        repo_ref = parse_github_repo_url(body.repo_url)
+        branch = body.branch.strip() or "main"
+        include_paths = normalize_repo_path_patterns(body.include_paths, _DEFAULT_INCLUDE_PATHS)
+        exclude_paths = normalize_repo_path_patterns(body.exclude_paths, _DEFAULT_EXCLUDE_PATHS)
+        collection = await collection_repo.get_by_id(body.collection_id)
+        if collection is None or collection.user_id != user_id:
             raise ResourceNotFoundException("collection not found")
-        existing = await self.repo_sync_repo.get_by_repo(
-            user_id=dto.user_id,
+        existing = await repo_sync_repo.get_by_repo(
+            user_id=user_id,
             owner=repo_ref.owner,
             repo=repo_ref.repo,
             branch=branch,
         )
         if existing is not None:
-            existing = await self.repo_sync_repo.update_filters(
+            existing = await repo_sync_repo.update_filters(
                 repo_sync_id=existing.id,
                 include_paths=include_paths,
                 exclude_paths=exclude_paths,
             )
-            await self.session.flush()
+            await session.flush()
             return to_repo_sync_response(existing)
-        repo_sync = await self.repo_sync_repo.create(
+        repo_sync = await repo_sync_repo.create(
             id=uuid.uuid4(),
-            user_id=dto.user_id,
-            collection_id=dto.collection_id,
+            user_id=user_id,
+            collection_id=body.collection_id,
             provider="github",
             owner=repo_ref.owner,
             repo=repo_ref.repo,
@@ -136,8 +118,44 @@ class RepoSyncService:
             include_paths=include_paths,
             exclude_paths=exclude_paths,
         )
-        await self.session.flush()
+        await session.flush()
         return to_repo_sync_response(repo_sync)
+
+    async def queue_run(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: UUID,
+        repo_sync_id: UUID,
+        max_files: int,
+        task_dispatcher: CeleryTaskDispatcher,
+    ) -> RepoSyncRunResponse:
+        repo_sync_repo = RepoSyncRepository.from_session(session)
+        repo_sync = await repo_sync_repo.get_by_id(repo_sync_id)
+        if repo_sync is None or repo_sync.user_id != user_id:
+            raise ResourceNotFoundException("repo sync not found")
+        normalize_max_files(max_files)
+        repo_sync = await repo_sync_repo.update_state(
+            repo_sync_id=repo_sync.id,
+            status="queued",
+            last_error=None,
+        )
+        await task_dispatcher.dispatch_repo_sync(
+            user_id=str(user_id),
+            repo_sync_id=str(repo_sync_id),
+            max_files=max_files,
+        )
+        await session.flush()
+        return to_repo_sync_run_response(
+            RepoSyncRunResult(
+                repo_sync=repo_sync,
+                created=0,
+                updated=0,
+                skipped=0,
+                deleted=0,
+                warnings=["Repo sync queued."],
+            )
+        )
 
 class RepoSyncRunner:
     def __init__(
@@ -156,9 +174,9 @@ class RepoSyncRunner:
         self._github_client = github_client
         self._task_dispatcher = task_dispatcher
 
-    async def __call__(self, dto: RunRepoSyncPayload) -> RepoSyncRunResult:
-        max_files = normalize_max_files(dto.max_files)
-        repo_sync = await self._load_user_repo_sync(dto.user_id, dto.repo_sync_id)
+    async def __call__(self, *, user_id: UUID, repo_sync_id: UUID, max_files: int) -> RepoSyncRunResult:
+        max_files = normalize_max_files(max_files)
+        repo_sync = await self._load_user_repo_sync(user_id, repo_sync_id)
         await self._set_repo_sync_state(repo_sync.id, status="running")
         try:
             fetch_result = await self._github_client.fetch_markdown_files(
@@ -352,23 +370,6 @@ class RepoSyncRunner:
         )
 
 
-class RepoSyncExecutor:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
-        self._session_factory = session_factory
-
-    async def run(self, *, user_id: UUID, repo_sync_id: UUID, body: RunRepoSyncRequest) -> RepoSyncRunResponse:
-        async with self._session_factory() as session:
-            result = await RepoSyncRunner(
-                session=session,
-                document_repo=DocumentRepository.from_session(session),
-                document_activity_repo=DocumentActivityRepository.from_session(session),
-                repo_sync_repo=RepoSyncRepository.from_session(session),
-                github_client=GitHubRepositoryClient(),
-                task_dispatcher=CeleryTaskDispatcher(),
-            )(build_run_repo_sync_payload(body, user_id, repo_sync_id))
-            return to_repo_sync_run_response(result)
-
-
 class RepoSyncOutboxDrainer:
     def __init__(
         self,
@@ -493,32 +494,6 @@ class RepoSyncOutboxDrainer:
                 },
             )
 
-
-def build_repo_sync_service(session: AsyncSession) -> RepoSyncService:
-    return RepoSyncService(
-        session=session,
-        collection_repo=CollectionRepository.from_session(session),
-        document_repo=DocumentRepository.from_session(session),
-        document_activity_repo=DocumentActivityRepository.from_session(session),
-        repo_sync_repo=RepoSyncRepository.from_session(session),
-    )
-
-
-def build_create_repo_sync_payload(body: CreateRepoSyncRequest, user_id: UUID) -> CreateRepoSyncPayload:
-    return CreateRepoSyncPayload(
-        user_id=user_id,
-        collection_id=body.collection_id,
-        repo_url=body.repo_url,
-        branch=body.branch,
-        include_paths=body.include_paths,
-        exclude_paths=body.exclude_paths,
-    )
-
-
-def build_run_repo_sync_payload(body: RunRepoSyncRequest, user_id: UUID, repo_sync_id: UUID) -> RunRepoSyncPayload:
-    return RunRepoSyncPayload(user_id=user_id, repo_sync_id=repo_sync_id, max_files=body.max_files)
-
-
 def to_repo_sync_response(dto: RepoSyncResult) -> RepoSyncResponse:
     return RepoSyncResponse(
         id=dto.id,
@@ -641,14 +616,10 @@ def _path_matches_any(path: str, patterns: list[str]) -> bool:
 
 __all__ = [
     "GitHubRepoRef",
-    "RepoSyncExecutor",
     "RepoSyncOutboxDrainResult",
     "RepoSyncOutboxDrainer",
     "RepoSyncRunner",
     "RepoSyncService",
-    "build_create_repo_sync_payload",
-    "build_run_repo_sync_payload",
-    "document_title_from_path",
     "filter_repo_files",
     "normalize_max_files",
     "normalize_repo_path_patterns",

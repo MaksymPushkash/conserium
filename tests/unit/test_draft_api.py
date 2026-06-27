@@ -27,7 +27,7 @@ from src.drafts.schemas import (
     DraftVersion,
 )
 from src.drafts.service import (
-    build_draft_generation_payload,
+    build_draft_generation_input,
     to_draft_detail_response,
     to_draft_list_response,
     to_draft_outline_response,
@@ -180,11 +180,11 @@ class _DraftServiceFromServices:
 
     async def generate_outline(self, *, user_id: uuid.UUID, body: object):
         handler = self._dependencies[generate_draft_outline]
-        return to_draft_outline_response(await handler(build_draft_generation_payload(body, user_id)))
+        return to_draft_outline_response(await handler(build_draft_generation_input(body, user_id)))
 
     async def generate(self, *, user_id: uuid.UUID, body: object):
         handler = self._dependencies[DraftGenerator]
-        return to_draft_response(await handler(build_draft_generation_payload(body, user_id)))
+        return to_draft_response(await handler(build_draft_generation_input(body, user_id)))
 
     async def get(self, *, user_id: uuid.UUID, draft_id: uuid.UUID):
         handler = self._dependencies[get_draft]

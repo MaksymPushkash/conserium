@@ -32,7 +32,7 @@ from src.kit.exceptions import (
     ResourceNotFoundException,
 )
 from src.models.document import DocumentModel
-from src.query.schemas import QueryPayload, QuerySource, QuerySourceResponse
+from src.query.schemas import QueryInput, QuerySource, QuerySourceResponse
 from src.query.service import QueryExecutor
 
 
@@ -61,7 +61,7 @@ class CompareService:
         await session.flush()
 
         result = await query_executor(
-            QueryPayload(
+            QueryInput(
                 user_id=user_id,
                 query=prompt,
                 retrieval_query=retrieval_query,

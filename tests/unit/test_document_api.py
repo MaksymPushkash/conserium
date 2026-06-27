@@ -27,12 +27,10 @@ from src.documents.schemas import (
     NoteListResponse,
     NoteResponse,
 )
-from src.documents.service import (
-    DocumentService,
-    DocumentStatusService,
-)
+from src.documents.service import DocumentService
 from src.documents.status import DocumentStatus
 from src.documents.status_cache import DocumentStatusSnapshot
+from src.documents.status_service import DocumentStatusService
 from src.documents.types import DocumentType
 from src.ingestion.dependencies import get_document_status_service
 from src.kit.exceptions import DocumentNotFoundException, ValidationException
@@ -42,7 +40,7 @@ from src.models.user import UserModel
 from src.observability.metrics_registry import metrics_registry
 from src.postgres import get_db_read_session, get_db_session
 from src.query.dependencies import get_query_executor, get_stream_query_executor
-from src.query.schemas import QueryPayload, QueryResult, QuerySource, QueryStreamEvent, QueryStreamEventType
+from src.query.schemas import QueryInput, QueryResult, QuerySource, QueryStreamEvent, QueryStreamEventType
 from src.query.services.refrag.heuristic_context_builder import HeuristicRefragContextBuilder
 from src.users.repository import UserRepository
 from tests.dependency_overrides import apply_dependency_overrides
@@ -1089,7 +1087,7 @@ def test_query_route_returns_sources() -> None:
     assert response.json()["sources"][0]["content"] == source.content
     assert response.json()["refrag_context"]["full_text_chunks"][0]["representation"] == "FULL_TEXT"
     assert handler.received_dto is not None
-    assert cast("QueryPayload", handler.received_dto).conversation_id == conversation_id
+    assert cast("QueryInput", handler.received_dto).conversation_id == conversation_id
 
 
 def test_query_stream_route_returns_sse_events() -> None:
@@ -1123,7 +1121,7 @@ def test_query_stream_route_returns_sse_events() -> None:
     assert 'event: token\ndata: {"text":"Hello"}' in response.text
     assert 'event: done\ndata: {"query_id":"query-1"}' in response.text
     assert handler.received_dto is not None
-    assert cast("QueryPayload", handler.received_dto).conversation_id == conversation_id
+    assert cast("QueryInput", handler.received_dto).conversation_id == conversation_id
 
 
 def test_create_chat_route_returns_chat_session() -> None:

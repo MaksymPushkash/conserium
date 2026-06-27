@@ -25,8 +25,8 @@ def workspace_document(
     return CollectionWorkspaceDocumentResponse(
         id=document.id,
         title=document.title,
-        type=document.type.value,
-        status=document.status.value,
+        type=document.type,
+        status=document.status,
         summary=document.summary,
         tags=document.tags or [],
         activity_temperature=activity_temperature(last_used_at),
@@ -68,6 +68,11 @@ def workspace_gaps(
                 title="No sources",
                 reason="Add documents before using collection-scoped retrieval.",
                 severity="high",
+                id=None,
+                topic=None,
+                coverage_ratio=None,
+                missing_source_types=[],
+                suggested_actions=[],
             )
         )
     if total_documents > 0 and ready_documents == 0:
@@ -76,6 +81,11 @@ def workspace_gaps(
                 title="No ready documents",
                 reason="Sources exist, but none are searchable yet.",
                 severity="high",
+                id=None,
+                topic=None,
+                coverage_ratio=None,
+                missing_source_types=[],
+                suggested_actions=[],
             )
         )
     if failed_documents:
@@ -84,6 +94,11 @@ def workspace_gaps(
                 title="Failed processing",
                 reason=f"{failed_documents} document(s) need retry or replacement.",
                 severity="medium",
+                id=None,
+                topic=None,
+                coverage_ratio=None,
+                missing_source_types=[],
+                suggested_actions=[],
             )
         )
     if ready_documents > 0 and topic_count == 0:
@@ -92,6 +107,11 @@ def workspace_gaps(
                 title="No topic coverage",
                 reason="Ready documents do not have tags or extracted topics yet.",
                 severity="medium",
+                id=None,
+                topic=None,
+                coverage_ratio=None,
+                missing_source_types=[],
+                suggested_actions=[],
             )
         )
     if ready_documents < 3 and total_documents > 0:
@@ -100,6 +120,11 @@ def workspace_gaps(
                 title="Thin evidence base",
                 reason="Add at least three ready sources for stronger synthesis.",
                 severity="low",
+                id=None,
+                topic=None,
+                coverage_ratio=None,
+                missing_source_types=[],
+                suggested_actions=[],
             )
         )
     return gaps

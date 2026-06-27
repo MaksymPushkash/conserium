@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from src.kit.exceptions import ResourceNotFoundException, ValidationException
@@ -360,11 +360,15 @@ def _collection_repo(accessor: Any) -> Any:
     return accessor.collection_repo
 
 
-def normalize_member_role(role: str) -> str:
+def normalize_member_role(role: str) -> Literal["viewer", "editor"]:
     normalized = role.strip().lower()
     if normalized not in MEMBER_ROLES:
         raise ValidationException("collection member role must be viewer or editor")
-    return normalized
+    return cast("Literal['viewer', 'editor']", normalized)
+
+
+def normalize_invite_status(status: str) -> Literal["active", "pending"]:
+    return "pending" if status == "pending" else "active"
 
 
 def to_workspace_response(dto: WorkspaceRecord) -> WorkspaceResponse:
@@ -386,8 +390,8 @@ def to_workspace_member_response(dto: WorkspaceMemberRecord) -> WorkspaceMemberR
         workspace_id=dto.workspace_id,
         user_id=dto.user_id,
         email=dto.email,
-        role=dto.role,
-        invite_status=dto.invite_status,
+        role=normalize_member_role(dto.role),
+        invite_status=normalize_invite_status(dto.invite_status),
         invited_by_user_id=dto.invited_by_user_id,
         created_at=dto.created_at,
         updated_at=dto.updated_at,

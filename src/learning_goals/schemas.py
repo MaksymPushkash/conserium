@@ -56,26 +56,6 @@ class LearningGoalResult:
     updated_at: datetime | None
 
 
-@final
-@dataclass(frozen=True, slots=True)
-class CreateLearningGoalPayload:
-    user_id: UUID
-    topic: str
-    description: str | None = None
-    target_date: date | None = None
-
-
-@final
-@dataclass(frozen=True, slots=True)
-class UpdateLearningGoalPayload:
-    user_id: UUID
-    goal_id: UUID
-    topic: str | None = None
-    description: str | None = None
-    target_date: date | None = None
-    status: str | None = None
-
-
 class LearningGoalRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=2000)

@@ -11,7 +11,6 @@ from src.kit.exceptions import ResourceNotFoundException, ValidationException
 from src.knowledge_gaps.service import area_coverage, rubric_for_topic, to_knowledge_gap_area_response
 from src.learning_goals.repository import LearningGoalRecord, LearningGoalRepository, LearningGoalResourceRecord
 from src.learning_goals.schemas import (
-    CreateLearningGoalPayload,
     LearningGoalRequest,
     LearningGoalResponse,
     LearningGoalResult,
@@ -20,7 +19,6 @@ from src.learning_goals.schemas import (
     RankedLearningResourceResponse,
     SuggestedLearningResource,
     SuggestedLearningResourceResponse,
-    UpdateLearningGoalPayload,
 )
 from src.postgres import AsyncSession  # noqa: TC001
 from src.topics.repository import TopicRepository
@@ -47,21 +45,15 @@ class LearningGoalService:
         ]
 
     async def create(self, session: AsyncSession, *, user_id: UUID, body: LearningGoalRequest) -> LearningGoalResponse:
-        dto = CreateLearningGoalPayload(
-            user_id=user_id,
-            topic=body.topic,
-            description=body.description,
-            target_date=body.target_date,
-        )
-        topic = normalize_goal_topic(dto.topic)
+        topic = normalize_goal_topic(body.topic)
         record = await LearningGoalRepository.from_session(session).create(
             goal_id=uuid4(),
-            user_id=dto.user_id,
+            user_id=user_id,
             topic=topic,
-            description=normalize_optional_text(dto.description),
-            target_date=dto.target_date,
+            description=normalize_optional_text(body.description),
+            target_date=body.target_date,
         )
-        detail = await TopicRepository.from_session(session).get_detail_by_name(dto.user_id, name=topic, document_limit=200)
+        detail = await TopicRepository.from_session(session).get_detail_by_name(user_id, name=topic, document_limit=200)
         await session.flush()
         return to_learning_goal_response(learning_goal_result(record, detail.documents if detail else []))
 
@@ -73,28 +65,20 @@ class LearningGoalService:
         goal_id: UUID,
         body: LearningGoalUpdateRequest,
     ) -> LearningGoalResponse:
-        dto = UpdateLearningGoalPayload(
-            user_id=user_id,
-            goal_id=goal_id,
-            topic=body.topic,
-            description=body.description,
-            target_date=body.target_date,
-            status=body.status,
-        )
         repository = LearningGoalRepository.from_session(session)
-        existing = await repository.get_by_id(dto.goal_id)
-        if existing is None or existing.user_id != dto.user_id:
+        existing = await repository.get_by_id(goal_id)
+        if existing is None or existing.user_id != user_id:
             raise ResourceNotFoundException("learning goal not found")
-        topic = normalize_goal_topic(dto.topic) if dto.topic is not None else existing.topic
-        status = normalize_goal_status(dto.status) if dto.status is not None else existing.status
+        topic = normalize_goal_topic(body.topic) if body.topic is not None else existing.topic
+        status = normalize_goal_status(body.status) if body.status is not None else existing.status
         record = await repository.update(
-            goal_id=dto.goal_id,
+            goal_id=goal_id,
             topic=topic,
-            description=normalize_optional_text(dto.description) if dto.description is not None else existing.description,
-            target_date=dto.target_date if dto.target_date is not None else existing.target_date,
+            description=normalize_optional_text(body.description) if body.description is not None else existing.description,
+            target_date=body.target_date if body.target_date is not None else existing.target_date,
             status=status,
         )
-        detail = await TopicRepository.from_session(session).get_detail_by_name(dto.user_id, name=topic, document_limit=200)
+        detail = await TopicRepository.from_session(session).get_detail_by_name(user_id, name=topic, document_limit=200)
         await session.flush()
         return to_learning_goal_response(learning_goal_result(record, detail.documents if detail else []))
 

@@ -1,7 +1,6 @@
 import uuid
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import cast
 
 import pytest
 
@@ -10,16 +9,14 @@ from src.documents.types import DocumentType
 from src.kit.exceptions import ResourceNotFoundException
 from src.models.chunk import ChunkModel
 from src.models.document import DocumentModel
+from src.review.flashcards import (
+    FlashcardGenerator,
+    FlashcardReviewer,
+    list_due_flashcards,
+)
 from src.review.grade import ReviewGrade
 from src.review.repository import FlashcardRecord, FlashcardReviewRecord
 from src.review.schedule import next_review_schedule
-from src.review.schemas import GenerateFlashcardsPayload, ReviewFlashcard
-from src.review.service import (
-    FlashcardGenerator,
-    FlashcardReviewer,
-    ReviewService,
-    list_due_flashcards,
-)
 from src.topics.repository import TopicDetailRecord, TopicDocumentRecord, TopicRecord
 
 
@@ -29,7 +26,7 @@ async def test_generate_flashcards_uses_document_summary_and_suggested_questions
     persistence = _ReviewPersistence([document], [_chunk(document.id, "Asyncio uses one event loop.")])
     handler = _flashcard_generator(persistence)
 
-    result = await handler(GenerateFlashcardsPayload(user_id=user_id, document_id=document.id, limit=3))
+    result = await handler(user_id=user_id, document_id=document.id, limit=3)
 
     assert result.created_count == 3
     assert result.items[0].question == "What is asyncio?"
@@ -49,7 +46,7 @@ async def test_generate_flashcards_preserves_collection_scope() -> None:
     persistence = _ReviewPersistence([document], [])
     handler = _flashcard_generator(persistence)
 
-    result = await handler(GenerateFlashcardsPayload(user_id=user_id, collection_id=collection_id, limit=1))
+    result = await handler(user_id=user_id, collection_id=collection_id, limit=1)
 
     assert result.items[0].scope_type == "collection"
     assert result.items[0].collection_id == collection_id
@@ -79,7 +76,7 @@ async def test_generate_flashcards_preserves_topic_scope() -> None:
     )
     handler = _flashcard_generator(persistence)
 
-    result = await handler(GenerateFlashcardsPayload(user_id=user_id, topic="python", limit=1))
+    result = await handler(user_id=user_id, topic="python", limit=1)
 
     assert result.items[0].scope_type == "topic"
     assert result.items[0].collection_id is None
@@ -104,7 +101,7 @@ async def test_review_flashcard_updates_schedule_and_records_review() -> None:
     persistence.flashcard_repo.cards[card.id] = card
     handler = FlashcardReviewer(persistence, persistence.flashcard_repo)
 
-    result = await handler(ReviewFlashcard(user_id=user_id, flashcard_id=card.id, grade="good"))
+    result = await handler(user_id=user_id, flashcard_id=card.id, grade="good")
 
     assert result.interval_days == 3
     assert result.review_count == 1
@@ -119,7 +116,7 @@ async def test_review_flashcard_hides_foreign_cards() -> None:
     handler = FlashcardReviewer(persistence, persistence.flashcard_repo)
 
     with pytest.raises(ResourceNotFoundException):
-        await handler(ReviewFlashcard(user_id=uuid.uuid4(), flashcard_id=card.id, grade="good"))
+        await handler(user_id=uuid.uuid4(), flashcard_id=card.id, grade="good")
 
 
 def test_schedule_next_review_handles_grades() -> None:
@@ -136,15 +133,6 @@ class _ReviewPersistence:
         self.flashcard_repo = _FlashcardRepository()
         self.topic_repo = _TopicRepository()
         self.committed = False
-        self.service = ReviewService(
-            session=self,
-            document_repo=self.document_repo,
-            chunk_repo=self.chunk_repo,
-            topic_repo=self.topic_repo,
-            flashcard_repo=self.flashcard_repo,
-            quiz_repo=cast("object", _UnusedRepository()),
-            learning_path_repo=cast("object", _UnusedRepository()),
-        )
 
     async def flush(self) -> None:
         self.committed = True
@@ -158,10 +146,6 @@ def _flashcard_generator(persistence: _ReviewPersistence) -> FlashcardGenerator:
         persistence.topic_repo,
         persistence.flashcard_repo,
     )
-
-
-class _UnusedRepository:
-    pass
 
 
 class _DocumentRepository:

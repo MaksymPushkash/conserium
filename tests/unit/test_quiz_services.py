@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
 from src.models.document import DocumentModel
-from src.review.service import build_quiz_questions_for_document, score_quiz_answers
+from src.review.helpers import build_quiz_questions_for_document, score_quiz_answers
 
 
 def test_build_quiz_questions_uses_summary_and_suggested_question() -> None:

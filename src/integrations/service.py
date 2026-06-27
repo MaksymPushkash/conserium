@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -55,14 +54,6 @@ def notion_connection_response(connection: ExternalConnectionRecord) -> NotionCo
         default_parent_page_id=connection.default_parent_page_id,
         default_parent_page_title=connection.default_parent_page_title,
     )
-
-
-@dataclass(frozen=True, slots=True)
-class ConsumeTelegramPairingCodePayload:
-    code: str
-    chat_id: str
-    chat_username: str | None = None
-    chat_title: str | None = None
 
 
 class ApiKeyAuthenticator:
@@ -274,18 +265,25 @@ class TelegramPairingService:
             await self._api_key_repository.revoke(api_key_id=binding.api_key_id, user_id=user_id, revoked_at=now)
         await self._session.flush()
 
-    async def consume_pairing_code(self, dto: ConsumeTelegramPairingCodePayload) -> TelegramChatBindingResult:
+    async def consume_pairing_code(
+        self,
+        *,
+        code: str,
+        chat_id: str,
+        chat_username: str | None,
+        chat_title: str | None,
+    ) -> TelegramChatBindingResult:
         now = datetime.now(UTC)
-        pairing = await self._telegram_repository.get_pairing_code_by_hash(hash_pairing_code(dto.code))
+        pairing = await self._telegram_repository.get_pairing_code_by_hash(hash_pairing_code(code))
         if pairing is None or pairing.consumed_at is not None or pairing.expires_at < now:
             raise ValidationException("invalid telegram pairing code")
         await self._telegram_repository.consume_pairing_code(pairing.id, now)
         binding = await self._telegram_repository.upsert_binding(
             user_id=pairing.user_id,
             api_key_id=pairing.api_key_id,
-            chat_id=normalize_chat_id(dto.chat_id),
-            chat_username=normalize_optional(dto.chat_username),
-            chat_title=normalize_optional(dto.chat_title),
+            chat_id=normalize_chat_id(chat_id),
+            chat_username=normalize_optional(chat_username),
+            chat_title=normalize_optional(chat_title),
             paired_at=now,
         )
         await self._session.flush()

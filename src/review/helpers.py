@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from src.kit.exceptions import ResourceNotFoundException, ValidationException
-from src.review.repository import FlashcardRecord, LearningPathRecord, QuizRecord
+from src.review.repository import FlashcardRecord, LearningPathRecord, QuizAttemptRecord, QuizRecord
 from src.review.schemas import (
     FlashcardResponse,
-    GenerateFlashcardsPayload,
-    GenerateLearningPathPayload,
-    GenerateQuizPayload,
     LearningPathResponse,
+    LearningPathStepResponse,
+    QuizAttemptAnswerResponse,
+    QuizAttemptResponse,
+    QuizOptionResponse,
+    QuizQuestionResponse,
     QuizResponse,
 )
 
@@ -102,20 +104,25 @@ def build_flashcards_for_document(
     return records
 
 
-def flashcard_scope_type(dto: GenerateFlashcardsPayload) -> str:
-    if dto.document_id is not None:
+def review_scope_type(*, document_id: uuid.UUID | None, collection_id: uuid.UUID | None, topic: str | None) -> str:
+    if document_id is not None:
         return "document"
-    if dto.topic and dto.topic.strip():
+    if topic and topic.strip():
         return "topic"
-    if dto.collection_id is not None:
+    if collection_id is not None:
         return "collection"
     return "workspace"
 
 
-def flashcard_scope_collection_id(dto: GenerateFlashcardsPayload, document: DocumentModel) -> uuid.UUID | None:
-    if dto.collection_id is not None:
-        return dto.collection_id
-    if dto.document_id is not None:
+def review_scope_collection_id(
+    *,
+    document_id: uuid.UUID | None,
+    collection_id: uuid.UUID | None,
+    document: DocumentModel,
+) -> uuid.UUID | None:
+    if collection_id is not None:
+        return collection_id
+    if document_id is not None:
         return document.collection_id
     return None
 
@@ -152,28 +159,10 @@ def build_quiz_questions_for_document(document: DocumentModel, chunks: Sequence[
     return questions
 
 
-def quiz_scope_type(dto: GenerateQuizPayload) -> str:
-    if dto.document_id is not None:
-        return "document"
-    if dto.topic and dto.topic.strip():
-        return "topic"
-    if dto.collection_id is not None:
-        return "collection"
-    return "workspace"
-
-
-def quiz_scope_collection_id(dto: GenerateQuizPayload, document: DocumentModel) -> uuid.UUID | None:
-    if dto.collection_id is not None:
-        return dto.collection_id
-    if dto.document_id is not None:
-        return document.collection_id
-    return None
-
-
-def quiz_title(dto: GenerateQuizPayload, source_document: DocumentModel) -> str:
-    if dto.topic and dto.topic.strip():
-        return f"Quiz: {dto.topic.strip()}"
-    if dto.collection_id is not None:
+def quiz_title(*, topic: str | None, collection_id: uuid.UUID | None, source_document: DocumentModel) -> str:
+    if topic and topic.strip():
+        return f"Quiz: {topic.strip()}"
+    if collection_id is not None:
         return "Collection quiz"
     return f"Quiz: {source_document.title}"
 
@@ -187,7 +176,7 @@ def quiz_response(record: QuizRecord) -> QuizResponse:
         topic=record.topic,
         source_document_id=record.source_document_id,
         title=record.title,
-        questions=record.questions,
+        questions=[_quiz_question(question) for question in record.questions],
         source_title=record.source_title,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -216,13 +205,27 @@ def score_quiz_answers(
         scored_answers.append(
             {
                 "question_id": question_id,
-                "selected_option_id": selected,
+                "option_id": selected,
                 "correct_option_id": correct,
                 "correct": is_correct,
                 "weak_area": question.get("weak_area"),
             }
         )
     return score, len(questions), scored_answers, weak_areas
+
+
+def quiz_attempt_response(record: QuizAttemptRecord) -> QuizAttemptResponse:
+    return QuizAttemptResponse(
+        id=record.id,
+        quiz_id=record.quiz_id,
+        user_id=record.user_id,
+        answers=[_quiz_attempt_answer(answer) for answer in record.answers],
+        score=record.score,
+        total=record.total,
+        weak_areas=record.weak_areas,
+        created_at=record.created_at,
+        quiz_title=record.quiz_title,
+    )
 
 
 def build_learning_steps(documents: list[DocumentModel], *, limit: int) -> list[dict[str, object]]:
@@ -242,28 +245,10 @@ def build_learning_steps(documents: list[DocumentModel], *, limit: int) -> list[
     return steps
 
 
-def learning_path_scope_type(dto: GenerateLearningPathPayload) -> str:
-    if dto.document_id is not None:
-        return "document"
-    if dto.topic and dto.topic.strip():
-        return "topic"
-    if dto.collection_id is not None:
-        return "collection"
-    return "workspace"
-
-
-def learning_path_scope_collection_id(dto: GenerateLearningPathPayload, document: DocumentModel) -> uuid.UUID | None:
-    if dto.collection_id is not None:
-        return dto.collection_id
-    if dto.document_id is not None:
-        return document.collection_id
-    return None
-
-
-def learning_path_title(dto: GenerateLearningPathPayload, source_document: DocumentModel) -> str:
-    if dto.topic and dto.topic.strip():
-        return f"Learning path: {dto.topic.strip()}"
-    if dto.collection_id is not None:
+def learning_path_title(*, topic: str | None, collection_id: uuid.UUID | None, source_document: DocumentModel) -> str:
+    if topic and topic.strip():
+        return f"Learning path: {topic.strip()}"
+    if collection_id is not None:
         return "Collection learning path"
     return f"Learning path: {source_document.title}"
 
@@ -277,7 +262,7 @@ def learning_path_response(record: LearningPathRecord) -> LearningPathResponse:
         topic=record.topic,
         source_document_id=record.source_document_id,
         title=record.title,
-        steps=record.steps,
+        steps=[_learning_step(step) for step in record.steps],
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -313,3 +298,66 @@ def _chunk_answer(chunks: Sequence[object]) -> str | None:
 
 def _trim(value: str, limit: int) -> str:
     return value if len(value) <= limit else f"{value[: limit - 3].rstrip()}..."
+
+
+def _quiz_question(question: dict[str, object]) -> QuizQuestionResponse:
+    return QuizQuestionResponse(
+        id=_string(question.get("id")),
+        question=_string(question.get("question")),
+        options=[_quiz_option(option) for option in _list(question.get("options"))],
+        correct_option_id=_string(question.get("correct_option_id")),
+        explanation=_string(question.get("explanation")),
+        weak_area=_string(question.get("weak_area")) or _string(question.get("source_title")) or "Review",
+        source_document_id=_uuid_value(question.get("source_document_id")),
+        source_title=_optional_string(question.get("source_title")),
+    )
+
+
+def _quiz_option(option: object) -> QuizOptionResponse:
+    if not isinstance(option, dict):
+        return QuizOptionResponse(id="", text="")
+    return QuizOptionResponse(id=_string(option.get("id")), text=_string(option.get("text")))
+
+
+def _quiz_attempt_answer(answer: dict[str, object]) -> QuizAttemptAnswerResponse:
+    return QuizAttemptAnswerResponse(
+        question_id=_string(answer.get("question_id")),
+        option_id=_string(answer.get("option_id")) or _string(answer.get("selected_option_id")),
+        correct=bool(answer.get("correct")),
+        correct_option_id=_string(answer.get("correct_option_id")),
+        weak_area=_optional_string(answer.get("weak_area")),
+    )
+
+
+def _learning_step(step: dict[str, object]) -> LearningPathStepResponse:
+    status = _string(step.get("status"))
+    status_value: Literal["todo", "done"] = "done" if status == "done" else "todo"
+    return LearningPathStepResponse(
+        id=_string(step.get("id")),
+        title=_string(step.get("title")),
+        focus=_string(step.get("focus")),
+        summary=_string(step.get("summary")),
+        source_document_id=_uuid_value(step.get("source_document_id")),
+        status=status_value,
+    )
+
+
+def _list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
+def _string(value: object) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _uuid_value(value: object) -> uuid.UUID | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None

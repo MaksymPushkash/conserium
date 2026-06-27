@@ -29,13 +29,6 @@ class CreatedApiKey:
 
 
 @dataclass(frozen=True, slots=True)
-class CreateApiKeyPayload:
-    user_id: UUID
-    name: str
-    scopes: list[str]
-
-
-@dataclass(frozen=True, slots=True)
 class ApiKeyPrincipal:
     user_id: UUID
     api_key_id: UUID

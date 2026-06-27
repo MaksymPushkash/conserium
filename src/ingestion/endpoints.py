@@ -11,11 +11,8 @@ from src.documents.schemas import (
     IngestDocumentRequest,
     IngestTextDocumentRequest,
 )
-from src.documents.service import (
-    DocumentStatusService,
-    to_document_response,
-    to_document_status_response,
-)
+from src.documents.service import to_document_response
+from src.documents.status_service import DocumentStatusService, to_document_status_response
 from src.documents.types import DocumentType
 from src.ingestion.dependencies import get_document_ingester, get_document_status_service, get_file_storage
 from src.kit.storage.file_storage import FileStorage

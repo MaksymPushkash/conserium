@@ -4,8 +4,12 @@ from typing import Any
 
 from celery import shared_task
 
-from src.repo_syncs.task_outbox import run_drain_repo_sync_outbox_task, run_due_repo_syncs_task_impl
-from src.worker.task_names import REPO_SYNC_OUTBOX_DRAIN_TASK, REPO_SYNC_RUN_DUE_TASK
+from src.repo_syncs.task_outbox import (
+    run_drain_repo_sync_outbox_task,
+    run_due_repo_syncs_task_impl,
+    run_repo_sync_task_impl,
+)
+from src.worker.task_names import REPO_SYNC_OUTBOX_DRAIN_TASK, REPO_SYNC_RUN_DUE_TASK, REPO_SYNC_RUN_TASK
 
 
 @shared_task(  # type: ignore[untyped-decorator]
@@ -20,6 +24,17 @@ def run_due_repo_syncs_task(self: Any) -> dict[str, int]:
 
 
 @shared_task(  # type: ignore[untyped-decorator]
+    name=REPO_SYNC_RUN_TASK,
+    queue="cleanup",
+    bind=True,
+    soft_time_limit=600,
+    time_limit=720,
+)
+def run_repo_sync_task(self: Any, user_id: str, repo_sync_id: str, max_files: int = 50) -> dict[str, object]:
+    return run_repo_sync_task_impl(user_id=user_id, repo_sync_id=repo_sync_id, max_files=max_files)
+
+
+@shared_task(  # type: ignore[untyped-decorator]
     name=REPO_SYNC_OUTBOX_DRAIN_TASK,
     queue="cleanup",
     bind=True,
@@ -30,4 +45,4 @@ def drain_repo_sync_outbox_task(self: Any, limit: int = 100) -> dict[str, int]:
     return run_drain_repo_sync_outbox_task(limit=limit)
 
 
-__all__ = ["drain_repo_sync_outbox_task", "run_due_repo_syncs_task"]
+__all__ = ["drain_repo_sync_outbox_task", "run_due_repo_syncs_task", "run_repo_sync_task"]

@@ -40,7 +40,7 @@ from src.documents.ingestion_dependencies import (
 )
 from src.documents.note_dependencies import get_note_service
 from src.documents.notes import NoteService
-from src.documents.service import DocumentStatusService
+from src.documents.status_service import DocumentStatusService
 from src.exports.dependencies import get_notion_markdown_exporter
 from src.ingestion.dependencies import (
     get_document_ingester as get_ingestion_document_ingester,

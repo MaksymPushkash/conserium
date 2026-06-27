@@ -168,6 +168,7 @@ def test_command_mapping_layer_is_not_reintroduced() -> None:
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
                 assert not node.name.endswith("Command"), f"command payload reintroduced: {path}:{node.lineno}"
+                assert not node.name.endswith("Payload"), f"payload boundary reintroduced: {path}:{node.lineno}"
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 assert not node.name.startswith("to_") or not node.name.endswith("_command"), (
                     f"command mapper reintroduced: {path}:{node.lineno}"

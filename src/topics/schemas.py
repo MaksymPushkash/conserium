@@ -1,7 +1,5 @@
 from datetime import datetime
 
-from pydantic import Field
-
 from src.kit.schemas import Schema
 
 
@@ -9,7 +7,7 @@ class TopicResponse(Schema):
     name: str
     document_count: int
     last_document_at: datetime | None
-    source_names: list[str] = Field(default_factory=list)
+    source_names: list[str]
     pinned: bool = False
     ignored: bool = False
 
@@ -34,14 +32,14 @@ class TopicEventResponse(Schema):
     action: str
     topic_name: str
     display_name: str | None
-    source_names: list[str] = Field(default_factory=list)
+    source_names: list[str]
     created_at: datetime
 
 
 class TopicDetailResponse(Schema):
     topic: TopicResponse
     documents: list[TopicDocumentResponse]
-    events: list[TopicEventResponse] = Field(default_factory=list)
+    events: list[TopicEventResponse]
 
 
 class TopicRenameRequest(Schema):

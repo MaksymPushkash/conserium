@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -45,8 +46,8 @@ class CollectionWorkspaceStatsResponse(BaseModel):
 class CollectionWorkspaceDocumentResponse(BaseModel):
     id: UUID
     title: str
-    type: str
-    status: str
+    type: DocumentType
+    status: DocumentStatus
     summary: str | None
     tags: list[str]
     activity_temperature: str
@@ -64,11 +65,11 @@ class CollectionWorkspaceGapResponse(BaseModel):
     title: str
     reason: str
     severity: str
-    id: str | None = None
-    topic: str | None = None
-    coverage_ratio: float | None = None
-    missing_source_types: list[str] = Field(default_factory=list)
-    suggested_actions: list[str] = Field(default_factory=list)
+    id: str | None
+    topic: str | None
+    coverage_ratio: float | None
+    missing_source_types: list[str]
+    suggested_actions: list[str]
 
 
 class CollectionWorkspaceQuestionResponse(BaseModel):
@@ -107,8 +108,8 @@ class CollectionWorkspaceResponse(BaseModel):
     topics: list[CollectionWorkspaceTopicResponse]
     gaps: list[CollectionWorkspaceGapResponse]
     recent_questions: list[CollectionWorkspaceQuestionResponse]
-    recent_drafts: list[CollectionWorkspaceDraftResponse] = Field(default_factory=list)
-    recent_comparisons: list[CollectionWorkspaceComparisonResponse] = Field(default_factory=list)
+    recent_drafts: list[CollectionWorkspaceDraftResponse]
+    recent_comparisons: list[CollectionWorkspaceComparisonResponse]
 
 
 class CollectionMemberRequest(BaseModel):
@@ -125,7 +126,8 @@ class CollectionMemberResponse(BaseModel):
     collection_id: UUID
     user_id: UUID | None
     email: str
-    role: str
+    role: Literal["viewer", "editor"]
+    invite_status: Literal["active", "pending"]
     invited_by_user_id: UUID
     created_at: datetime
     updated_at: datetime | None
@@ -173,7 +175,7 @@ class PublicCollectionDocumentResponse(BaseModel):
     summary: str | None
     word_count: int | None
     language: str | None
-    tags: list[str] = Field(default_factory=list)
+    tags: list[str]
     created_at: datetime
     updated_at: datetime | None
 
@@ -183,7 +185,7 @@ class PublicCollectionResponse(BaseModel):
     name: str
     description: str | None
     color: str | None
-    documents: list[PublicCollectionDocumentResponse] = Field(default_factory=list)
+    documents: list[PublicCollectionDocumentResponse]
     created_at: datetime
     updated_at: datetime | None
 
@@ -204,4 +206,4 @@ class PublicAskEventResponse(BaseModel):
 
 
 class PublicAskEventListResponse(BaseModel):
-    items: list[PublicAskEventResponse] = Field(default_factory=list)
+    items: list[PublicAskEventResponse]

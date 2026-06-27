@@ -1,13 +1,13 @@
 from src.drafts.repository import DraftRecord, DraftVersionRecord
 from src.drafts.schemas import (
     DraftDetail,
-    DraftGenerationPayload,
+    DraftGenerationInput,
     DraftListItem,
     DraftTemplate,
     DraftVersion,
 )
 from src.kit.exceptions import QueryValidationException
-from src.query.schemas import QueryPayload, QuerySource
+from src.query.schemas import QueryInput, QuerySource
 
 TEMPLATES = {
     "brief": DraftTemplate(
@@ -50,16 +50,16 @@ TEMPLATES = {
 SCOPE_TYPES = {"all", "documents", "collection", "topic", "knowledge_gap"}
 
 
-def draft_query_payload(
-    dto: DraftGenerationPayload,
+def draft_query_input(
+    dto: DraftGenerationInput,
     prompt: str,
     *,
     template: DraftTemplate,
     outline: list[str],
     relevance_query: str,
     limit: int,
-) -> QueryPayload:
-    return QueryPayload(
+) -> QueryInput:
+    return QueryInput(
         user_id=dto.user_id,
         query=draft_query(prompt, template=template, outline=outline, scope=dto),
         retrieval_query=prompt,
@@ -135,7 +135,7 @@ def draft_version(record: DraftVersionRecord) -> DraftVersion:
     )
 
 
-def draft_query(prompt: str, *, template: DraftTemplate, outline: list[str], scope: DraftGenerationPayload) -> str:
+def draft_query(prompt: str, *, template: DraftTemplate, outline: list[str], scope: DraftGenerationInput) -> str:
     outline_text = "\n".join(f"- {section}" for section in outline)
     return (
         "Write a Markdown draft using only my saved Conserium materials.\n"
@@ -157,7 +157,7 @@ def has_sufficient_draft_context(sources: list[QuerySource]) -> bool:
     return any(source.used_in_answer for source in sources)
 
 
-def normalize_scope(dto: DraftGenerationPayload) -> DraftGenerationPayload:
+def normalize_scope(dto: DraftGenerationInput) -> DraftGenerationInput:
     scope_type = dto.scope_type.strip().lower() if dto.scope_type else "all"
     if scope_type not in SCOPE_TYPES:
         raise QueryValidationException("unsupported draft scope")
@@ -187,7 +187,7 @@ def normalize_scope(dto: DraftGenerationPayload) -> DraftGenerationPayload:
         if not topic:
             raise QueryValidationException("knowledge gap scope requires topic")
 
-    return DraftGenerationPayload(
+    return DraftGenerationInput(
         user_id=dto.user_id,
         prompt=dto.prompt,
         draft_id=dto.draft_id,
@@ -220,7 +220,7 @@ def draft_title(prompt: str, template: DraftTemplate) -> str:
     return f"{template.name}: {normalized[:80]}"
 
 
-def scope_description(dto: DraftGenerationPayload) -> str:
+def scope_description(dto: DraftGenerationInput) -> str:
     if dto.scope_type == "documents":
         return f"selected documents only ({len(dto.document_ids or ())} document(s))"
     if dto.scope_type == "collection":
@@ -232,7 +232,7 @@ def scope_description(dto: DraftGenerationPayload) -> str:
     return "all saved workspace sources"
 
 
-def scope_metadata(dto: DraftGenerationPayload) -> dict[str, object]:
+def scope_metadata(dto: DraftGenerationInput) -> dict[str, object]:
     return {
         "scope_type": dto.scope_type,
         "collection_id": str(dto.collection_id) if dto.collection_id else None,

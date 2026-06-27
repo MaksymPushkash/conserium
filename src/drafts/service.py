@@ -16,7 +16,7 @@ from src.drafts.operations import (
 from src.drafts.schemas import (
     DraftDetailResponse,
     DraftGenerateRequest,
-    DraftGenerationPayload,
+    DraftGenerationInput,
     DraftListItemResponse,
     DraftListResponse,
     DraftOutlineResponse,
@@ -84,7 +84,7 @@ class DraftService:
         return to_draft_template_list_response(result)
 
     async def generate_outline(self, *, user_id: UUID, body: DraftGenerateRequest) -> DraftOutlineResponse:
-        result = generate_draft_outline(build_draft_generation_payload(body, user_id))
+        result = generate_draft_outline(build_draft_generation_input(body, user_id))
         return to_draft_outline_response(result)
 
     async def generate(self, *, user_id: UUID, body: DraftGenerateRequest) -> DraftResponse:
@@ -94,7 +94,7 @@ class DraftService:
             self._draft_repo,
             self._document_repo,
             self._llm_service,
-        )(build_draft_generation_payload(body, user_id))
+        )(build_draft_generation_input(body, user_id))
         return to_draft_response(result)
 
     async def get(self, *, user_id: UUID, draft_id: UUID) -> DraftDetailResponse:
@@ -119,9 +119,9 @@ class DraftService:
         await delete_draft(self._session, self._draft_repo, user_id=user_id, draft_id=draft_id)
 
 
-def build_draft_generation_payload(body: DraftGenerateRequest, user_id: UUID) -> DraftGenerationPayload:
+def build_draft_generation_input(body: DraftGenerateRequest, user_id: UUID) -> DraftGenerationInput:
     tag_names = tuple(tag.strip().lower() for tag in body.tag_names or [] if tag.strip())
-    return DraftGenerationPayload(
+    return DraftGenerationInput(
         user_id=user_id,
         prompt=body.prompt,
         draft_id=body.draft_id,
@@ -256,7 +256,7 @@ def to_draft_outline_response(dto: DraftOutline) -> DraftOutlineResponse:
 
 __all__ = [
     "DraftService",
-    "build_draft_generation_payload",
+    "build_draft_generation_input",
     "to_draft_detail_response",
     "to_draft_list_response",
     "to_draft_outline_response",

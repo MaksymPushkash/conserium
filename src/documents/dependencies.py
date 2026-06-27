@@ -106,25 +106,15 @@ def get_search_query_repository(
 
 def get_document_service(
     session: AsyncSession = Depends(get_db_session),
-    document_repo: DocumentRepository = Depends(get_document_repository),
-    collection_access: DocumentCollectionAccess = Depends(get_document_collection_access),
-    activity_repo: DocumentActivityRepository = Depends(get_document_activity_repository),
     embedding_provider: EmbeddingProvider = Depends(get_embedding_provider),
-    chunk_repo: ChunkRepository = Depends(get_chunk_repository),
-    search_query_repo: SearchQueryRepository = Depends(get_search_query_repository),
     file_storage: FileStorage = Depends(build_file_storage),
     processing_service: DocumentProcessingService = Depends(get_document_processing_service),
 ) -> DocumentService:
-    return DocumentService(
+    return DocumentService.from_session(
         session,
-        document_repo,
-        collection_access,
-        activity_repo,
-        embedding_provider,
-        chunk_repo,
-        search_query_repo,
-        file_storage,
-        processing_service,
+        embedding_provider=embedding_provider,
+        file_storage=file_storage,
+        processing_service=processing_service,
     )
 
 

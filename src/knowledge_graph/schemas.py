@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime  # noqa: TC003
+from typing import Literal
 from uuid import UUID  # noqa: TC003
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 @dataclass(frozen=True, slots=True)
 class KnowledgeGraphNode:
     id: str
-    kind: str
+    kind: Literal["topic", "document"]
     label: str
     detail: str | None = None
     collection_id: UUID | None = None
@@ -68,15 +69,15 @@ class KnowledgeGraphConcern:
 
 class KnowledgeGraphNodeResponse(BaseModel):
     id: str
-    kind: str
+    kind: Literal["topic", "document"]
     label: str
-    detail: str | None = None
+    detail: str | None
     collection_id: UUID | None = None
     summary: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     suggested_questions: list[str] | None = None
-    source_names: list[str] = Field(default_factory=list)
+    source_names: list[str]
     is_pinned: bool = False
     is_ignored: bool = False
 
@@ -101,7 +102,7 @@ class KnowledgeGraphInsightResponse(BaseModel):
     description: str
     severity: str
     count: int
-    nodes: list[KnowledgeGraphNodeResponse] = Field(default_factory=list)
+    nodes: list[KnowledgeGraphNodeResponse]
 
 
 class KnowledgeGraphInsightsResponse(BaseModel):

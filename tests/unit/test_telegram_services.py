@@ -14,7 +14,6 @@ from src.documents.schemas import (
 from src.documents.types import DocumentType
 from src.integrations.repository import TelegramChatBindingRecord, TelegramPairingCodeRecord
 from src.integrations.service import (
-    ConsumeTelegramPairingCodePayload,
     TelegramIngestionService,
     TelegramPairingService,
 )
@@ -32,12 +31,10 @@ async def test_telegram_pairing_code_consumes_and_creates_binding() -> None:
 
     created_code = await service.create_pairing_code(user_id=user_id)
     binding = await service.consume_pairing_code(
-        ConsumeTelegramPairingCodePayload(
-            code=created_code.code,
-            chat_id="123",
-            chat_username="max",
-            chat_title="Max",
-        )
+        code=created_code.code,
+        chat_id="123",
+        chat_username="max",
+        chat_title="Max",
     )
     status = await service.get_status(user_id=user_id)
 

@@ -17,6 +17,7 @@ from src.worker.task_names import (
     NOTIFICATION_WEEKLY_REPORT_TASK,
     REPO_SYNC_OUTBOX_DRAIN_TASK,
     REPO_SYNC_RUN_DUE_TASK,
+    REPO_SYNC_RUN_TASK,
 )
 
 _conserium_exchange = Exchange("conserium", type="direct", durable=True)
@@ -84,6 +85,7 @@ celery_app.conf.update(
         DOCUMENT_PROCESS_IMAGE_TASK: {"queue": "media_processing"},
         DOCUMENT_ENRICH_TASK: {"queue": "media_processing"},
         REPO_SYNC_RUN_DUE_TASK: {"queue": "cleanup"},
+        REPO_SYNC_RUN_TASK: {"queue": "cleanup"},
         REPO_SYNC_OUTBOX_DRAIN_TASK: {"queue": "cleanup"},
         DOCUMENT_PROCESSING_OUTBOX_DRAIN_TASK: {"queue": "cleanup"},
         NOTIFICATION_DAILY_DIGEST_TASK: {"queue": "notifications"},

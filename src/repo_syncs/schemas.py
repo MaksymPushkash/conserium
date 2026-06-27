@@ -31,23 +31,6 @@ class RepoSyncListResult:
 
 
 @dataclass(frozen=True, slots=True)
-class CreateRepoSyncPayload:
-    user_id: UUID
-    collection_id: UUID
-    repo_url: str
-    branch: str = "main"
-    include_paths: list[str] | None = None
-    exclude_paths: list[str] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class RunRepoSyncPayload:
-    user_id: UUID
-    repo_sync_id: UUID
-    max_files: int = 50
-
-
-@dataclass(frozen=True, slots=True)
 class RepoSyncRunResult:
     repo_sync: RepoSyncResult
     created: int

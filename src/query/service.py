@@ -12,7 +12,7 @@ from src.query.agents.state import ConseriumQueryState
 from src.query.schemas import (
     QueryDebug,
     QueryDebugResponse,
-    QueryPayload,
+    QueryInput,
     QueryRequest,
     QueryResponse,
     QueryResult,
@@ -58,7 +58,7 @@ class QueryExecutor:
         self._graph_runner = graph_runner
         self._orchestration = orchestration
 
-    async def __call__(self, dto: QueryPayload) -> QueryResult:
+    async def __call__(self, dto: QueryInput) -> QueryResult:
         query = dto.query.strip()
         if not query:
             raise QueryValidationException("query cannot be empty")
@@ -136,7 +136,7 @@ class StreamQueryExecutor:
         self._graph_runner = graph_runner
         self._orchestration = orchestration
 
-    async def __call__(self, dto: QueryPayload) -> AsyncIterator[QueryStreamEvent]:
+    async def __call__(self, dto: QueryInput) -> AsyncIterator[QueryStreamEvent]:
         query = dto.query.strip()
         if not query:
             yield QueryStreamEvent(
@@ -245,11 +245,11 @@ class StreamQueryExecutor:
             )
 
 
-def build_query_payload(body: QueryRequest, current_user: UserModel) -> QueryPayload:
+def build_query_input(body: QueryRequest, current_user: UserModel) -> QueryInput:
     tag_names = tuple(tag.strip().lower() for tag in body.tag_names or [] if tag.strip())
     ai_preferences = _ai_preferences(current_user.preferences)
     retrieval_depth = _retrieval_depth(ai_preferences)
-    return QueryPayload(
+    return QueryInput(
         user_id=current_user.id,
         query=body.query,
         conversation_id=body.conversation_id,
@@ -376,7 +376,7 @@ def _query_limit(request_limit: int, retrieval_depth: str) -> int:
 __all__ = [
     "QueryExecutor",
     "StreamQueryExecutor",
-    "build_query_payload",
+    "build_query_input",
     "format_sse_event",
     "to_query_response",
 ]

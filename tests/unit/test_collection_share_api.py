@@ -302,6 +302,7 @@ def test_public_collection_query_returns_share_slug() -> None:
             "query": "What matters?",
             "answer": "Policy stays independent [1].",
             "sources": [to_public_query_source_response(source, 1).model_dump()],
+            "suggested_follow_up_questions": [],
             "share": to_public_answer_share_response(answer_share).model_dump(),
         }
     )

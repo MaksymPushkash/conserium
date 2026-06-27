@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class QueryLatencySummary(BaseModel):
@@ -25,4 +25,4 @@ class ObservabilitySummaryResponse(BaseModel):
     retrieval: RetrievalSummary
     documents: DocumentProcessingSummary
     openai: OpenAISummary
-    queues: dict[str, float] = Field(default_factory=dict)
+    queues: dict[str, float]

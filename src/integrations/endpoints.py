@@ -25,7 +25,6 @@ from src.integrations.schemas import (
     TelegramStatusResponse,
 )
 from src.integrations.service import (
-    ConsumeTelegramPairingCodePayload,
     NotionConnectionService,
     NotionWorkspaceService,
     TelegramIngestionService,
@@ -167,12 +166,10 @@ async def telegram_bot_consume_pairing(
 ) -> dict[str, object]:
     _ensure_telegram_secret(x_conserium_telegram_secret)
     binding = await service.consume_pairing_code(
-        ConsumeTelegramPairingCodePayload(
-            code=body.code,
-            chat_id=body.chat_id,
-            chat_username=body.chat_username,
-            chat_title=body.chat_title,
-        )
+        code=body.code,
+        chat_id=body.chat_id,
+        chat_username=body.chat_username,
+        chat_title=body.chat_title,
     )
     return {"status": "paired", "binding_id": str(binding.id)}
 

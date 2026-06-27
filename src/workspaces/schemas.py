@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -103,8 +104,8 @@ class WorkspaceMemberResponse(BaseModel):
     workspace_id: UUID
     user_id: UUID | None
     email: str
-    role: str
-    invite_status: str
+    role: Literal["viewer", "editor"]
+    invite_status: Literal["active", "pending"]
     invited_by_user_id: UUID
     created_at: datetime
     updated_at: datetime | None

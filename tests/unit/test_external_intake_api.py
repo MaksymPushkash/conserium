@@ -16,7 +16,7 @@ from src.documents.types import DocumentType
 from src.integrations.schemas import ApiKeyPrincipal
 from src.integrations.service import ApiKeyAuthenticator
 from src.main import create_app
-from src.query.schemas import QueryPayload, QueryResult, RefragContextPackage
+from src.query.schemas import QueryInput, QueryResult, RefragContextPackage
 from src.query.service import QueryExecutor
 from tests.dependency_overrides import apply_dependency_overrides
 
@@ -105,9 +105,9 @@ class _ListCollections:
 
 class _QueryExecutor:
     def __init__(self) -> None:
-        self.received: QueryPayload | None = None
+        self.received: QueryInput | None = None
 
-    async def __call__(self, dto: QueryPayload) -> QueryResult:
+    async def __call__(self, dto: QueryInput) -> QueryResult:
         self.received = dto
         return QueryResult(
             conversation_id=uuid.uuid4(),

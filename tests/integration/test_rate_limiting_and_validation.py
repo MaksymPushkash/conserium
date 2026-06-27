@@ -15,7 +15,7 @@ from src.documents.types import DocumentType
 from src.kit.exceptions import InvalidPasswordException
 from src.main import create_app
 from src.models.user import UserModel
-from src.query.schemas import QueryPayload, QueryResult, RefragContextPackage
+from src.query.schemas import QueryInput, QueryResult, RefragContextPackage
 from src.query.service import QueryExecutor
 
 
@@ -27,7 +27,7 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     async def override_current_user() -> UserModel:
         return UserModel.create(id=uuid4(), email="tester@example.com", password="hashed-password")
 
-    async def fake_query_call(self: QueryExecutor, dto: QueryPayload) -> QueryResult:
+    async def fake_query_call(self: QueryExecutor, dto: QueryInput) -> QueryResult:
         conversation_id = dto.conversation_id or uuid4()
         return QueryResult(
             conversation_id=conversation_id,

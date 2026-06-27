@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from src.documents.access import record_shared_document_event
 from src.documents.repository import ExternalIntakeItemRecord
+from src.documents.results import document_result
 from src.documents.schemas import (
     DocumentResult,
     ExternalIngestResult,
@@ -17,7 +18,6 @@ from src.documents.schemas import (
 from src.documents.service import (
     DocumentCollectionAccess,
     collection_document_owner_id,
-    document_result,
     ensure_document_owner,
 )
 from src.documents.status import DocumentStatus

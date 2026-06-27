@@ -12,7 +12,7 @@ from src.query.schemas import QueryRequest, QueryResponse
 from src.query.service import (
     QueryExecutor,
     StreamQueryExecutor,
-    build_query_payload,
+    build_query_input,
     format_sse_event,
     to_query_response,
 )
@@ -30,7 +30,7 @@ async def query_documents(
     handler: QueryExecutor = Depends(get_query_executor),
 ) -> QueryResponse:
     with query_latency_timer("sync"):
-        result = await handler(build_query_payload(body, current_user))
+        result = await handler(build_query_input(body, current_user))
     record_http_request("query_documents", status="200")
     return to_query_response(result)
 
@@ -46,7 +46,7 @@ async def stream_query_documents(
     async def event_stream() -> AsyncIterator[str]:
         started_at = perf_counter()
         try:
-            async for event in handler(build_query_payload(body, current_user)):
+            async for event in handler(build_query_input(body, current_user)):
                 yield format_sse_event(event)
         finally:
             observe_query_latency("stream", perf_counter() - started_at)

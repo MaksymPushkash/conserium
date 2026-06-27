@@ -14,7 +14,7 @@ from src.integrations.service import ApiKeyAuthenticator
 from src.postgres import AsyncReadSession, get_db_read_session
 from src.public_api.schemas import PublicIngestRequest, PublicIngestResponse
 from src.query.dependencies import get_query_executor
-from src.query.schemas import QueryPayload, QueryRequest, QueryResponse
+from src.query.schemas import QueryInput, QueryRequest, QueryResponse
 from src.query.service import QueryExecutor, to_query_response
 from src.routing import APIRouter
 from src.webhooks.endpoints import to_external_ingest_response, to_external_intake_item_response
@@ -123,7 +123,7 @@ async def public_query(
 ) -> QueryResponse:
     principal = await authenticate_api_key(authorization, required_scope="query:write")
     result = await query_executor(
-        QueryPayload(
+        QueryInput(
             user_id=principal.user_id,
             query=body.query,
             conversation_id=body.conversation_id,

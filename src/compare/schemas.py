@@ -58,12 +58,12 @@ class CompareEvidenceRowResponse(BaseModel):
     left_evidence: str | None
     right_evidence: str | None
     assessment: str
-    left_source_id: UUID | None = None
-    right_source_id: UUID | None = None
-    left_citation: str | None = None
-    right_citation: str | None = None
-    confidence: float | None = None
-    rationale: str | None = None
+    left_source_id: UUID | None
+    right_source_id: UUID | None
+    left_citation: str | None
+    right_citation: str | None
+    confidence: float | None
+    rationale: str | None
     grounding_type: str = "structured"
 
 
@@ -79,7 +79,7 @@ class CompareDocumentsResponse(BaseModel):
     summary: str
     evidence_rows: list[CompareEvidenceRowResponse]
     sources: list[QuerySourceResponse]
-    created_at: datetime | None = None
+    created_at: datetime | None
 
 
 class CompareListResponse(BaseModel):

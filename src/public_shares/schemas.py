@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
@@ -98,7 +98,7 @@ class PublicCollectionDocumentResponse(BaseModel):
     summary: str | None
     word_count: int | None
     language: str | None
-    tags: list[str] = Field(default_factory=list)
+    tags: list[str]
     created_at: datetime
     updated_at: datetime | None
 
@@ -108,7 +108,7 @@ class PublicCollectionResponse(BaseModel):
     name: str
     description: str | None
     color: str | None
-    documents: list[PublicCollectionDocumentResponse] = Field(default_factory=list)
+    documents: list[PublicCollectionDocumentResponse]
     created_at: datetime
     updated_at: datetime | None
 

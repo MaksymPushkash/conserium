@@ -241,12 +241,12 @@ class DocumentResponse(BaseModel):
     summary: str | None
     word_count: int | None
     language: str | None
-    entities: list[MetadataItem] | None = None
-    categories: list[MetadataItem] | None = None
-    visual_metadata: MetadataItem | None = None
-    suggested_questions: list[str] = Field(default_factory=list)
-    tags: list[str] = Field(default_factory=list)
-    last_used_at: datetime | None = None
+    entities: list[MetadataItem] | None
+    categories: list[MetadataItem] | None
+    visual_metadata: MetadataItem | None
+    suggested_questions: list[str]
+    tags: list[str]
+    last_used_at: datetime | None
     query_count: int = 0
     citation_count: int = 0
     activity_temperature: str = "hot"
@@ -300,9 +300,9 @@ class DocumentListItemResponse(BaseModel):
     summary: str | None
     word_count: int | None
     language: str | None
-    suggested_questions: list[str] = Field(default_factory=list)
-    tags: list[str] = Field(default_factory=list)
-    last_used_at: datetime | None = None
+    suggested_questions: list[str]
+    tags: list[str]
+    last_used_at: datetime | None
     query_count: int = 0
     citation_count: int = 0
     activity_temperature: str = "hot"
@@ -365,8 +365,8 @@ class DocumentStatusResponse(BaseModel):
     status: str
     progress: int
     message: str
-    failure_reason: str | None = None
-    timeline: list[DocumentProcessingStepResponse] = Field(default_factory=list)
+    failure_reason: str | None
+    timeline: list[DocumentProcessingStepResponse]
 
 
 class DocumentProcessingStepResponse(BaseModel):
@@ -374,7 +374,7 @@ class DocumentProcessingStepResponse(BaseModel):
     label: str
     state: str
     progress: int
-    message: str | None = None
+    message: str | None
 
 
 class CreateNoteRequest(BaseModel):

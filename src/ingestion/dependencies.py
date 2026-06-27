@@ -13,8 +13,9 @@ from src.documents.dependencies import (
 from src.documents.document_repository import DocumentRepository
 from src.documents.ingestion import DocumentIngester
 from src.documents.processing import DocumentProcessingService
-from src.documents.service import DocumentCollectionAccess, DocumentStatusService
+from src.documents.service import DocumentCollectionAccess
 from src.documents.status_cache import RedisDocumentStatusCache
+from src.documents.status_service import DocumentStatusService
 from src.kit.storage.factory import build_file_storage
 from src.kit.storage.file_storage import FileStorage
 from src.postgres import get_db_session

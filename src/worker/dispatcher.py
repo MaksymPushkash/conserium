@@ -7,6 +7,7 @@ from src.worker.task_names import (
     DOCUMENT_PROCESS_TASK,
     DOCUMENT_PROCESSING_OUTBOX_DRAIN_TASK,
     REPO_SYNC_OUTBOX_DRAIN_TASK,
+    REPO_SYNC_RUN_TASK,
 )
 
 
@@ -31,6 +32,14 @@ class CeleryTaskDispatcher:
     async def dispatch_repo_sync_outbox(self) -> None:
         celery_app.send_task(
             REPO_SYNC_OUTBOX_DRAIN_TASK,
+            queue="cleanup",
+            routing_key="cleanup",
+        )
+
+    async def dispatch_repo_sync(self, *, user_id: str, repo_sync_id: str, max_files: int) -> None:
+        celery_app.send_task(
+            REPO_SYNC_RUN_TASK,
+            args=[user_id, repo_sync_id, max_files],
             queue="cleanup",
             routing_key="cleanup",
         )

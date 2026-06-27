@@ -1,66 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime  # noqa: TC003
+from typing import Literal
 from uuid import UUID  # noqa: TC003
 
 from pydantic import BaseModel, Field
-
-
-@dataclass(frozen=True, slots=True)
-class GenerateFlashcardsPayload:
-    user_id: UUID
-    document_id: UUID | None = None
-    collection_id: UUID | None = None
-    topic: str | None = None
-    limit: int = 5
-
-
-@dataclass(frozen=True, slots=True)
-class ReviewFlashcard:
-    user_id: UUID
-    flashcard_id: UUID
-    grade: str
-
-
-@dataclass(frozen=True, slots=True)
-class GenerateQuizPayload:
-    user_id: UUID
-    document_id: UUID | None = None
-    collection_id: UUID | None = None
-    topic: str | None = None
-    limit: int = 5
-
-
-@dataclass(frozen=True, slots=True)
-class SubmitQuizPayload:
-    user_id: UUID
-    quiz_id: UUID
-    answers: list[dict[str, object]]
-
-
-@dataclass(frozen=True, slots=True)
-class GenerateLearningPathPayload:
-    user_id: UUID
-    document_id: UUID | None = None
-    collection_id: UUID | None = None
-    topic: str | None = None
-    limit: int = 6
-
-
-@dataclass(frozen=True, slots=True)
-class UpdateLearningPathStepPayload:
-    user_id: UUID
-    path_id: UUID
-    step_id: str
-    status: str
-
-
-@dataclass(frozen=True, slots=True)
-class RegenerateLearningPathPayload:
-    user_id: UUID
-    path_id: UUID
-    limit: int = 6
 
 
 class GenerateFlashcardsRequest(BaseModel):
@@ -112,6 +56,22 @@ class GenerateQuizRequest(BaseModel):
     limit: int = Field(default=5, ge=1, le=20)
 
 
+class QuizOptionResponse(BaseModel):
+    id: str
+    text: str
+
+
+class QuizQuestionResponse(BaseModel):
+    id: str
+    question: str
+    options: list[QuizOptionResponse]
+    correct_option_id: str
+    explanation: str
+    weak_area: str
+    source_document_id: UUID | None = None
+    source_title: str | None = None
+
+
 class QuizResponse(BaseModel):
     id: UUID
     user_id: UUID
@@ -120,21 +80,34 @@ class QuizResponse(BaseModel):
     topic: str | None
     source_document_id: UUID | None
     title: str
-    questions: list[dict[str, object]]
+    questions: list[QuizQuestionResponse]
     source_title: str | None
     created_at: datetime
     updated_at: datetime | None
 
 
+class SubmitQuizAnswerRequest(BaseModel):
+    question_id: str
+    option_id: str
+
+
 class SubmitQuizRequest(BaseModel):
-    answers: list[dict[str, object]] = Field(default_factory=list)
+    answers: list[SubmitQuizAnswerRequest] = Field(default_factory=list)
+
+
+class QuizAttemptAnswerResponse(BaseModel):
+    question_id: str
+    option_id: str
+    correct: bool
+    correct_option_id: str
+    weak_area: str | None = None
 
 
 class QuizAttemptResponse(BaseModel):
     id: UUID
     quiz_id: UUID
     user_id: UUID
-    answers: list[dict[str, object]]
+    answers: list[QuizAttemptAnswerResponse]
     score: int
     total: int
     weak_areas: list[str]
@@ -173,6 +146,15 @@ class GenerateLearningPathRequest(BaseModel):
     limit: int = Field(default=6, ge=1, le=12)
 
 
+class LearningPathStepResponse(BaseModel):
+    id: str
+    title: str
+    focus: str
+    summary: str
+    source_document_id: UUID | None = None
+    status: Literal["todo", "done"]
+
+
 class LearningPathResponse(BaseModel):
     id: UUID
     user_id: UUID
@@ -181,7 +163,7 @@ class LearningPathResponse(BaseModel):
     topic: str | None
     source_document_id: UUID | None
     title: str
-    steps: list[dict[str, object]]
+    steps: list[LearningPathStepResponse]
     created_at: datetime
     updated_at: datetime | None
 

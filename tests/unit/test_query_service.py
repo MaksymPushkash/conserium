@@ -22,7 +22,7 @@ from src.query.agents.retrieval_agent import RetrievalAgent
 from src.query.agents.router_agent import RouterAgent
 from src.query.agents.state import ConseriumQueryState
 from src.query.agents.synthesis_agent import SynthesisAgent
-from src.query.schemas import ConversationTurn, QueryPayload, RefragContextPackage
+from src.query.schemas import ConversationTurn, QueryInput, RefragContextPackage
 from src.query.service import QueryExecutor
 from src.query.services.query.conversation import QueryConversationService
 from src.query.services.query.orchestration import QueryOrchestrationService
@@ -316,7 +316,7 @@ async def test_query_service_embeds_query_and_returns_sources() -> None:
     handler = QueryExecutor(graph_runner, _query_orchestration(repository_session, conversation_store))
 
     result = await handler(
-        QueryPayload(user_id=user_id, conversation_id=conversation_id, query="  Clean Architecture  ", limit=5)
+        QueryInput(user_id=user_id, conversation_id=conversation_id, query="  Clean Architecture  ", limit=5)
     )
 
     assert embedding_provider.embedded_texts == ["Clean Architecture"]
@@ -357,7 +357,7 @@ async def test_query_service_scopes_retrieval_to_document_id() -> None:
     repository_session = _FakeRepositorySession(chunk_repo)
     handler = QueryExecutor(graph_runner, _query_orchestration(repository_session, _FakeConversationStore()))
 
-    await handler(QueryPayload(user_id=user_id, query="Explain this", document_ids=(document_id,), limit=5))
+    await handler(QueryInput(user_id=user_id, query="Explain this", document_ids=(document_id,), limit=5))
 
     record = cast("QueryEvaluationRecord", repository_session.search_query_repo.records[0])
     assert chunk_repo.received_document_ids == (document_id,)
@@ -377,7 +377,7 @@ async def test_query_service_rejects_blank_query() -> None:
     )
 
     with pytest.raises(QueryValidationException, match="query cannot be empty"):
-        await handler(QueryPayload(user_id=uuid.uuid4(), query="  "))
+        await handler(QueryInput(user_id=uuid.uuid4(), query="  "))
 
 
 async def test_query_interaction_persistence_uses_single_flush() -> None:
@@ -388,7 +388,7 @@ async def test_query_interaction_persistence_uses_single_flush() -> None:
     state = ConseriumQueryState(query="hello", user_id=user_id, conversation_id=conversation_id, limit=5, answer="answer")
 
     await service.record_interaction(
-        QueryPayload(user_id=user_id, query="hello", limit=5),
+        QueryInput(user_id=user_id, query="hello", limit=5),
         query="hello",
         state=state,
         latency_ms=10,
@@ -411,7 +411,7 @@ async def test_query_interaction_does_not_flush_partial_state_when_chat_write_fa
 
     with pytest.raises(RuntimeError, match="chat write failed"):
         await service.record_interaction(
-            QueryPayload(user_id=user_id, query="hello", limit=5),
+            QueryInput(user_id=user_id, query="hello", limit=5),
             query="hello",
             state=state,
             latency_ms=10,
@@ -429,7 +429,7 @@ async def test_query_orchestration_creates_chat_session_if_missing() -> None:
     service = _query_orchestration(repository_session, _FakeConversationStore())
 
     await service.prepare_context(
-        QueryPayload(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        QueryInput(user_id=user_id, query="Explain Clean Architecture", limit=5),
         query="Explain Clean Architecture",
         conversation_id=conversation_id,
     )
@@ -445,7 +445,7 @@ async def test_query_orchestration_does_not_recreate_existing_chat_session() -> 
     service = _query_orchestration(repository_session, _FakeConversationStore())
 
     await service.prepare_context(
-        QueryPayload(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        QueryInput(user_id=user_id, query="Explain Clean Architecture", limit=5),
         query="Explain Clean Architecture",
         conversation_id=conversation_id,
     )
@@ -465,7 +465,7 @@ async def test_query_orchestration_loads_redis_turns_before_persisted_turns() ->
     service = _query_orchestration(repository_session, conversation_store)
 
     turns = await service.prepare_context(
-        QueryPayload(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        QueryInput(user_id=user_id, query="Explain Clean Architecture", limit=5),
         query="Explain Clean Architecture",
         conversation_id=conversation_id,
     )
@@ -483,7 +483,7 @@ async def test_query_orchestration_falls_back_to_persisted_turns() -> None:
     service = _query_orchestration(repository_session, _FakeConversationStore())
 
     turns = await service.prepare_context(
-        QueryPayload(user_id=user_id, query="Explain Clean Architecture", limit=5),
+        QueryInput(user_id=user_id, query="Explain Clean Architecture", limit=5),
         query="Explain Clean Architecture",
         conversation_id=conversation_id,
     )
@@ -501,7 +501,7 @@ async def test_query_orchestration_collection_ownership_failure_stops_before_ses
 
     with pytest.raises(ResourceNotFoundException, match="collection not found"):
         await service.prepare_context(
-            QueryPayload(user_id=user_id, query="Explain Clean Architecture", collection_id=collection_id, limit=5),
+            QueryInput(user_id=user_id, query="Explain Clean Architecture", collection_id=collection_id, limit=5),
             query="Explain Clean Architecture",
             conversation_id=uuid.uuid4(),
         )

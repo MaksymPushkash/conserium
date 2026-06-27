@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 from uuid import UUID
 
 from src.documents.access import (
@@ -20,7 +20,8 @@ from src.documents.access import (
 from src.documents.access import (
     ensure_document_owner as ensure_document_owner,
 )
-from src.documents.activity import activity_temperature
+from src.documents.bulk import DocumentBulkService
+from src.documents.results import document_result
 from src.documents.schemas import (
     BulkAddDocumentTagsRequest,
     CreateDocumentRequest,
@@ -32,24 +33,17 @@ from src.documents.schemas import (
     DocumentListItemResponse,
     DocumentListResponse,
     DocumentListResult,
-    DocumentProcessingStepResponse,
     DocumentQuestionHistoryItemResponse,
     DocumentQuestionHistoryResponse,
     DocumentResponse,
     DocumentResult,
     DocumentSearchResponse,
-    DocumentSearchResult,
     DocumentSearchResultResponse,
     DocumentSearchResults,
-    DocumentStatusResponse,
     MoveDocumentRequest,
     RenameDocumentRequest,
 )
-from src.documents.status_cache import (
-    DocumentProcessingStep,
-    DocumentStatusSnapshot,
-    RedisDocumentStatusCache,
-)
+from src.documents.search import DocumentSearchService
 from src.kit.exceptions import (
     DocumentNotFoundException,
 )
@@ -64,7 +58,6 @@ if TYPE_CHECKING:
     from src.documents.chunk_repository import ChunkRepository as ChunkRepository
     from src.documents.document_repository import DocumentRepository
     from src.documents.processing import DocumentProcessingService
-    from src.documents.repository import ChunkSearchResult, DocumentActivitySummary
     from src.documents.status import DocumentStatus
     from src.documents.types import DocumentType
     from src.kit.ai.embedding_provider import EmbeddingProvider
@@ -85,6 +78,8 @@ class DocumentService:
         search_query_repo: SearchQueryRepository,
         file_storage: FileStorage,
         processing_service: DocumentProcessingService,
+        search_service: DocumentSearchService | None = None,
+        bulk_service: DocumentBulkService | None = None,
     ) -> None:
         self._session = session
         self._document_repo = document_repo
@@ -95,6 +90,46 @@ class DocumentService:
         self._search_query_repo = search_query_repo
         self._file_storage = file_storage
         self._processing_service = processing_service
+        self._search_service = search_service or DocumentSearchService(document_repo, chunk_repo, embedding_provider)
+        self._bulk_service = bulk_service or DocumentBulkService(
+            session,
+            document_repo,
+            collection_access,
+            chunk_repo,
+            processing_service,
+        )
+
+    @classmethod
+    def from_session(
+        cls,
+        session: AsyncSession,
+        *,
+        embedding_provider: EmbeddingProvider,
+        file_storage: FileStorage,
+        processing_service: DocumentProcessingService,
+    ) -> Self:
+        from src.collections.repository import CollectionRepository
+        from src.documents.activity_repository import DocumentActivityRepository
+        from src.documents.chunk_repository import ChunkRepository
+        from src.documents.document_repository import DocumentRepository
+        from src.query.repository import SearchQueryRepository
+        from src.workspaces.repository import SharedWorkspaceRepository
+
+        return cls(
+            session,
+            DocumentRepository.from_session(session),
+            DocumentCollectionAccess(
+                session=session,
+                collection_repo=CollectionRepository.from_session(session),
+                shared_workspace_repo=SharedWorkspaceRepository.from_session(session),
+            ),
+            DocumentActivityRepository.from_session(session),
+            embedding_provider,
+            ChunkRepository.from_session(session),
+            SearchQueryRepository.from_session(session),
+            file_storage,
+            processing_service,
+        )
 
     async def create(self, *, user_id: UUID, body: CreateDocumentRequest) -> DocumentResult:
         document_owner_id = await collection_document_owner_id(
@@ -198,59 +233,15 @@ class DocumentService:
         document_type: DocumentType | None = None,
         tag_name: str | None = None,
     ) -> DocumentSearchResults:
-        query = query.strip()
-        if not query:
-            return DocumentSearchResults(items=[], query=query, total=0, limit=limit)
-        normalized_tag = tag_name.strip().lower() if tag_name else None
-
-        embedding = await self._embedding_provider.embed_text(query)
-        chunk_results = await self._chunk_repo.hybrid_search(
-            query=query,
-            embedding=embedding,
+        return await self._search_service.search(
             user_id=user_id,
-            limit=max(limit * 4, limit),
+            query=query,
+            limit=limit,
             collection_id=collection_id,
-            tag_names=(normalized_tag,) if normalized_tag else None,
-            document_types=(document_type,) if document_type else None,
+            status=status,
+            document_type=document_type,
+            tag_name=tag_name,
         )
-        results = await self._document_results(chunk_results, user_id=user_id, status=status)
-
-        return DocumentSearchResults(items=[*results[:limit]], query=query, total=len(results), limit=limit)
-
-    async def _document_results(
-        self,
-        chunk_results: Sequence[ChunkSearchResult],
-        *,
-        user_id: UUID,
-        status: DocumentStatus | None,
-    ) -> Sequence[DocumentSearchResult]:
-        best_chunks = self._best_chunk_by_document(chunk_results)
-        results = []
-        for document_id, chunk_result in best_chunks.items():
-            document = await self._document_repo.get_by_id(document_id)
-            if document is None or document.user_id != user_id:
-                continue
-            if status is not None and document.status != status:
-                continue
-            results.append(
-                DocumentSearchResult(
-                    document=document_result(document),
-                    snippet=chunk_result.chunk.content,
-                    score=chunk_result.score,
-                    chunk_id=chunk_result.chunk.id,
-                    page_number=chunk_result.chunk.page_number,
-                )
-            )
-        return results
-
-    @staticmethod
-    def _best_chunk_by_document(chunk_results: Sequence[ChunkSearchResult]) -> dict[UUID, ChunkSearchResult]:
-        best_chunks: dict[UUID, ChunkSearchResult] = {}
-        for result in chunk_results:
-            document_id = result.chunk.document_id
-            if document_id not in best_chunks:
-                best_chunks[document_id] = result
-        return best_chunks
 
     async def get(self, *, user_id: UUID, document_id: UUID) -> DocumentResult:
         document = await self._document_repo.get_by_id(document_id)
@@ -368,96 +359,16 @@ class DocumentService:
         return document_result(document)
 
     async def bulk_delete(self, *, user_id: UUID, document_ids: Sequence[UUID]) -> None:
-        for document_id in set(document_ids):
-            document = await _get_owned_document(self._document_repo, document_id, user_id)
-            await self._document_repo.delete(document.id)
-        await self._session.flush()
+        await self._bulk_service.delete(user_id=user_id, document_ids=document_ids)
 
     async def bulk_move(self, *, user_id: UUID, document_ids: Sequence[UUID], collection_id: UUID | None) -> None:
-        await ensure_collection_owner(self._collection_access, collection_id, user_id)
-        for document_id in set(document_ids):
-            document = await _get_owned_document(self._document_repo, document_id, user_id)
-            document.assign_collection(collection_id)
-            await self._document_repo.update(document)
-        await self._session.flush()
+        await self._bulk_service.move(user_id=user_id, document_ids=document_ids, collection_id=collection_id)
 
     async def bulk_add_tags(self, *, user_id: UUID, body: BulkAddDocumentTagsRequest) -> None:
-        tags = sorted({tag.strip().lower() for tag in body.tags if tag.strip()})
-        if not tags:
-            return
-        for document_id in set(body.document_ids):
-            await _get_owned_document(self._document_repo, document_id, user_id)
-            await self._document_repo.add_manual_tags(
-                document_id=document_id,
-                user_id=user_id,
-                tag_names=tags,
-            )
-        await self._session.flush()
+        await self._bulk_service.add_tags(user_id=user_id, body=body)
 
     async def bulk_reprocess(self, *, user_id: UUID, document_ids: Sequence[UUID]) -> None:
-        for document_id in set(document_ids):
-            document = await _get_owned_document(self._document_repo, document_id, user_id)
-            document.mark_queued()
-            await self._document_repo.update(document)
-            await self._chunk_repo.delete_by_document_id(document.id)
-            await self._session.flush()
-            await self._processing_service.queue(document, message="Queued for reprocessing.")
-
-
-class DocumentStatusService:
-    def __init__(self, document_repo: DocumentRepository, status_cache: RedisDocumentStatusCache) -> None:
-        self._document_repo = document_repo
-        self._status_cache = status_cache
-
-    async def get(self, document_id: UUID, user_id: UUID) -> DocumentStatusSnapshot:
-        document = await self._document_repo.get_by_id(document_id)
-
-        if document is None or document.user_id != user_id:
-            raise DocumentNotFoundException("document not found")
-
-        cached = await self._status_cache.get_status(document.id)
-        if cached is not None:
-            return cached
-
-        status = document.status.value
-        progress = 100 if status == "READY" else 0
-        message = f"Document status is {status}."
-        return DocumentStatusSnapshot(
-            document_id=document.id,
-            status=status,
-            progress=progress,
-            message=message,
-            failure_reason=message if status == "FAILED" else None,
-            timeline=_fallback_timeline(status, progress, message),
-        )
-
-
-def _fallback_timeline(status: str, progress: int, message: str) -> list[DocumentProcessingStep]:
-    steps = [
-        ("uploaded", "Uploaded", 0),
-        ("extracted", "Extracted", 40),
-        ("embedded", "Embedded", 90),
-        ("enriched", "Enriched", 95),
-        ("ready", "Ready", 100),
-    ]
-    return [
-        DocumentProcessingStep(
-            key=key,
-            label=label,
-            state=_fallback_step_state(status, progress, threshold),
-            progress=threshold,
-            message=message if status == "FAILED" and progress < threshold else None,
-        )
-        for key, label, threshold in steps
-    ]
-
-
-def _fallback_step_state(status: str, progress: int, threshold: int) -> str:
-    if status == "FAILED" and progress < threshold:
-        return "failed"
-    if status == "READY" or progress >= threshold:
-        return "complete"
-    return "pending"
+        await self._bulk_service.reprocess(user_id=user_id, document_ids=document_ids)
 
 
 async def _get_owned_document(document_repo: DocumentRepository, document_id: UUID, user_id: UUID) -> DocumentModel:
@@ -569,58 +480,6 @@ def to_document_connections_response(dto: DocumentConnectionsResult) -> Document
     )
 
 
-def to_document_status_response(dto: DocumentStatusSnapshot) -> DocumentStatusResponse:
-    return DocumentStatusResponse(
-        document_id=dto.document_id,
-        status=dto.status,
-        progress=dto.progress,
-        message=dto.message,
-        failure_reason=dto.failure_reason,
-        timeline=[
-            DocumentProcessingStepResponse(
-                key=step.key,
-                label=step.label,
-                state=step.state,
-                progress=step.progress,
-                message=step.message,
-            )
-            for step in dto.timeline or []
-        ],
-    )
-
-
-def document_result(document: DocumentModel, activity: DocumentActivitySummary | None = None) -> DocumentResult:
-    last_used_at = activity.last_used_at if activity and activity.last_used_at else document.created_at
-    return DocumentResult(
-        id=document.id,
-        user_id=document.user_id,
-        collection_id=document.collection_id,
-        title=document.title,
-        type=document.type,
-        status=document.status,
-        source_url=document.source_url,
-        file_path=document.file_path,
-        file_size_bytes=document.file_size_bytes,
-        raw_content=document.raw_content,
-        summary=document.summary,
-        word_count=document.word_count,
-        language=document.language,
-        entities=document.entities,
-        categories=document.categories,
-        visual_metadata=document.visual_metadata,
-        suggested_questions=document.suggested_questions,
-        tags=document.tags,
-        last_used_at=last_used_at,
-        query_count=activity.query_count if activity else 0,
-        citation_count=activity.citation_count if activity else 0,
-        activity_temperature=activity_temperature(last_used_at),
-        is_duplicate=document.is_duplicate,
-        duplicate_of_id=document.duplicate_of_id,
-        created_at=document.created_at,
-        updated_at=document.updated_at,
-    )
-
-
 def _suggested_questions(
     suggested_questions: list[str] | None,
     visual_metadata: dict[str, object] | None,
@@ -642,14 +501,11 @@ def _suggested_questions(
 __all__ = [
     "DocumentCollectionAccess",
     "DocumentService",
-    "DocumentStatusService",
     "collection_document_owner_id",
-    "document_result",
     "ensure_collection_owner",
     "ensure_document_owner",
     "to_document_connections_response",
     "to_document_list_response",
     "to_document_response",
     "to_document_search_response",
-    "to_document_status_response",
 ]

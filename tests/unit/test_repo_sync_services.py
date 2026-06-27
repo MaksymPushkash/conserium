@@ -13,12 +13,10 @@ from src.repo_syncs.schemas import (
     MarkdownRepoFile,
     RepoSyncItem,
     RepoSyncResult,
-    RunRepoSyncPayload,
 )
 from src.repo_syncs.service import (
     RepoSyncOutboxDrainer,
     RepoSyncRunner,
-    RepoSyncService,
     filter_repo_files,
     normalize_max_files,
     normalize_repo_path_patterns,
@@ -157,7 +155,7 @@ async def test_run_repo_sync_marks_failed_when_database_sync_fails() -> None:
     )
 
     with pytest.raises(IntegrationRequestException):
-        await handler(RunRepoSyncPayload(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id))
+        await handler(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id, max_files=50)
 
     assert repository_session.repo_sync_repo.states == ["running", "failed"]
 
@@ -179,7 +177,7 @@ async def test_run_repo_sync_logs_when_failed_state_persistence_fails(caplog: py
         caplog.at_level(logging.ERROR, logger="src.repo_syncs.service"),
         pytest.raises(IntegrationRequestException),
     ):
-        await handler(RunRepoSyncPayload(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id))
+        await handler(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id, max_files=50)
 
     assert "repo_sync_failed_state_persistence_failed" in caplog.text
 
@@ -197,7 +195,7 @@ async def test_run_repo_sync_keeps_queueing_when_outbox_drain_enqueue_fails() ->
         task_dispatcher=_FailingTaskDispatcher(),  # type: ignore[arg-type]
     )
 
-    result = await handler(RunRepoSyncPayload(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id))
+    result = await handler(user_id=repo_sync.user_id, repo_sync_id=repo_sync.id, max_files=50)
 
     assert result.repo_sync.status == "queueing"
     assert repository_session.repo_sync_repo.states == ["running", "queueing"]
@@ -344,15 +342,32 @@ def _repo_sync_service(
     document_repo: object | None = None,
     document_activity_repo: object | None = None,
     collection_repo: object | None = None,
-) -> RepoSyncService:
+) -> "_RepoSyncRepositoryBundle":
     unused = _UnusedRepository()
-    return RepoSyncService(
-        session=session,  # type: ignore[arg-type]
-        collection_repo=collection_repo or unused,  # type: ignore[arg-type]
-        document_repo=document_repo or unused,  # type: ignore[arg-type]
-        document_activity_repo=document_activity_repo or unused,  # type: ignore[arg-type]
-        repo_sync_repo=repo_sync_repo,  # type: ignore[arg-type]
+    return _RepoSyncRepositoryBundle(
+        session=session,
+        collection_repo=collection_repo or unused,
+        document_repo=document_repo or unused,
+        document_activity_repo=document_activity_repo or unused,
+        repo_sync_repo=repo_sync_repo,
     )
+
+
+class _RepoSyncRepositoryBundle:
+    def __init__(
+        self,
+        *,
+        session: object,
+        collection_repo: object,
+        document_repo: object,
+        document_activity_repo: object,
+        repo_sync_repo: object,
+    ) -> None:
+        self.session = session
+        self.collection_repo = collection_repo
+        self.document_repo = document_repo
+        self.document_activity_repo = document_activity_repo
+        self.repo_sync_repo = repo_sync_repo
 
 
 class _UnusedRepository:

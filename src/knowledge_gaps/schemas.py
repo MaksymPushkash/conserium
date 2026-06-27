@@ -48,27 +48,27 @@ class KnowledgeGapAreaResponse(BaseModel):
     name: str
     covered: bool
     evidence_count: int
-    evidence_titles: list[str] = Field(default_factory=list)
+    evidence_titles: list[str]
     why_detected: str
-    missing_source_types: list[str] = Field(default_factory=list)
+    missing_source_types: list[str]
     severity: str
     rationale: str
-    suggested_actions: list[str] = Field(default_factory=list)
+    suggested_actions: list[str]
 
 
 class KnowledgeGapResponse(BaseModel):
     id: str
     topic: str
-    collection_id: str | None = None
+    collection_id: str | None
     covered_count: int
     missing_count: int
     coverage_ratio: float
     why_detected: str
-    missing_source_types: list[str] = Field(default_factory=list)
+    missing_source_types: list[str]
     severity: str
     rationale: str
-    suggested_actions: list[str] = Field(default_factory=list)
-    areas: list[KnowledgeGapAreaResponse] = Field(default_factory=list)
+    suggested_actions: list[str]
+    areas: list[KnowledgeGapAreaResponse]
 
 
 class KnowledgeGapListResponse(BaseModel):

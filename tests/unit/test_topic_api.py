@@ -151,7 +151,14 @@ def test_list_topics_route_returns_topic_groups(monkeypatch: pytest.MonkeyPatch)
     user = _make_user()
     service = _ReturningTopicListService(
         TopicListResponse(
-            items=[TopicResponse(name="python", document_count=3, last_document_at=datetime(2026, 5, 1, tzinfo=UTC))],
+            items=[
+                TopicResponse(
+                    name="python",
+                    document_count=3,
+                    last_document_at=datetime(2026, 5, 1, tzinfo=UTC),
+                    source_names=[],
+                )
+            ],
             total=1,
             limit=20,
             offset=0,
@@ -187,7 +194,12 @@ def test_get_topic_detail_route_returns_representative_documents(monkeypatch: py
     document_id = uuid.uuid4()
     service = _ReturningTopicDetailService(
         TopicDetailResponse(
-            topic=TopicResponse(name="python", document_count=1, last_document_at=datetime(2026, 5, 1, tzinfo=UTC)),
+            topic=TopicResponse(
+                name="python",
+                document_count=1,
+                last_document_at=datetime(2026, 5, 1, tzinfo=UTC),
+                source_names=[],
+            ),
             documents=[
                 TopicDocumentResponse(
                     id=str(document_id),
@@ -198,6 +210,7 @@ def test_get_topic_detail_route_returns_representative_documents(monkeypatch: py
                     created_at=datetime(2026, 5, 1, tzinfo=UTC),
                 )
             ],
+            events=[],
         )
     )
     _set_topics_service(monkeypatch, service)
@@ -238,7 +251,13 @@ def test_topic_management_routes_forward_authenticated_user_and_payloads(monkeyp
             source_names=["python", "fastapi"],
             pinned=True,
         ),
-        ignored_result=TopicResponse(name="Backend", document_count=2, last_document_at=None, ignored=True),
+        ignored_result=TopicResponse(
+            name="Backend",
+            document_count=2,
+            last_document_at=None,
+            source_names=[],
+            ignored=True,
+        ),
     )
     _set_topics_service(monkeypatch, service)
     jwt_service = MagicMock()

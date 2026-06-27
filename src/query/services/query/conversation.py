@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from src.collections.repository import CollectionRepository
     from src.kit.cache.redis_conversation_store import RedisConversationStore
     from src.postgres import AsyncSession
-    from src.query.schemas import QueryPayload, QuerySource
+    from src.query.schemas import QueryInput, QuerySource
 
 
 class QueryConversationService:
@@ -32,7 +32,7 @@ class QueryConversationService:
         self._chat_repo = chat_repo
         self._collection_repo = collection_repo
 
-    async def prepare_context(self, dto: QueryPayload, *, query: str, conversation_id: UUID) -> list[ConversationTurn]:
+    async def prepare_context(self, dto: QueryInput, *, query: str, conversation_id: UUID) -> list[ConversationTurn]:
         if dto.collection_id is not None:
             collection = await self._collection_repo.get_by_id(dto.collection_id)
             if collection is None or collection.user_id != dto.user_id:

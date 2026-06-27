@@ -10,7 +10,7 @@ from src.drafts.helpers import (
     draft_detail,
     draft_list_item,
     draft_query,
-    draft_query_payload,
+    draft_query_input,
     draft_template,
     draft_title,
     draft_version,
@@ -24,7 +24,7 @@ from src.drafts.helpers import (
 from src.drafts.repository import DraftRecord, DraftVersionRecord
 from src.drafts.schemas import (
     DraftDetail,
-    DraftGenerationPayload,
+    DraftGenerationInput,
     DraftListResult,
     DraftOutline,
     DraftResult,
@@ -59,7 +59,7 @@ class DraftGenerator:
         self._document_repo = document_repo
         self._llm_service = llm_service
 
-    async def __call__(self, dto: DraftGenerationPayload) -> DraftResult:
+    async def __call__(self, dto: DraftGenerationInput) -> DraftResult:
         prompt = dto.prompt.strip()
         if not prompt:
             raise QueryValidationException("draft prompt cannot be empty")
@@ -68,7 +68,7 @@ class DraftGenerator:
         outline = normalize_outline(dto.outline) or template.outline
 
         result = await self._query_executor(
-            draft_query_payload(
+            draft_query_input(
                 scope,
                 prompt,
                 template=template,
@@ -106,7 +106,7 @@ class DraftGenerator:
     async def _persist_result(
         self,
         *,
-        scope: DraftGenerationPayload,
+        scope: DraftGenerationInput,
         prompt: str,
         template: DraftTemplate,
         markdown: str,
@@ -177,7 +177,7 @@ class DraftGenerator:
             gaps=gaps,
         )
 
-    async def _fallback_sources(self, dto: DraftGenerationPayload) -> list[QuerySource]:
+    async def _fallback_sources(self, dto: DraftGenerationInput) -> list[QuerySource]:
         if dto.document_ids:
             documents = []
             for document_id in dto.document_ids:
@@ -236,7 +236,7 @@ def list_draft_templates() -> list[DraftTemplate]:
     return list(TEMPLATES.values())
 
 
-def generate_draft_outline(dto: DraftGenerationPayload) -> DraftOutline:
+def generate_draft_outline(dto: DraftGenerationInput) -> DraftOutline:
     prompt = dto.prompt.strip()
     if not prompt:
         raise QueryValidationException("draft prompt cannot be empty")

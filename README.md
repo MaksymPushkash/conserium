@@ -160,8 +160,10 @@ API available at `http://localhost:8000/docs` (Swagger).
 # On VPS
 cd /opt/conserium
 git pull
-docker compose up -d --build
-docker compose exec -T app uv run alembic upgrade head
+docker compose up -d postgres redis
+docker compose build
+docker compose run --rm app uv run alembic upgrade head
+docker compose up -d --remove-orphans
 ```
 
 ### GitHub Actions Deploy
@@ -184,8 +186,10 @@ The VPS user must be able to run:
 ```bash
 cd "$VPS_APP_DIR"
 git fetch origin main
-docker compose up -d --build --remove-orphans
-docker compose exec -T app uv run alembic upgrade head
+docker compose up -d postgres redis
+docker compose build
+docker compose run --rm app uv run alembic upgrade head
+docker compose up -d --remove-orphans
 ```
 
 ### Configuration

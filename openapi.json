@@ -915,12 +915,24 @@
             "title": "Id",
             "type": "string"
           },
+          "invite_status": {
+            "enum": [
+              "active",
+              "pending"
+            ],
+            "title": "Invite Status",
+            "type": "string"
+          },
           "invited_by_user_id": {
             "format": "uuid",
             "title": "Invited By User Id",
             "type": "string"
           },
           "role": {
+            "enum": [
+              "viewer",
+              "editor"
+            ],
             "title": "Role",
             "type": "string"
           },
@@ -955,6 +967,7 @@
           "user_id",
           "email",
           "role",
+          "invite_status",
           "invited_by_user_id",
           "created_at",
           "updated_at"
@@ -1287,8 +1300,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/DocumentStatus"
           },
           "summary": {
             "anyOf": [
@@ -1313,8 +1325,7 @@
             "type": "string"
           },
           "type": {
-            "title": "Type",
-            "type": "string"
+            "$ref": "#/components/schemas/DocumentType"
           },
           "updated_at": {
             "anyOf": [
@@ -1490,7 +1501,12 @@
         "required": [
           "title",
           "reason",
-          "severity"
+          "severity",
+          "id",
+          "topic",
+          "coverage_ratio",
+          "missing_source_types",
+          "suggested_actions"
         ],
         "title": "CollectionWorkspaceGapResponse",
         "type": "object"
@@ -1588,7 +1604,9 @@
           "documents",
           "topics",
           "gaps",
-          "recent_questions"
+          "recent_questions",
+          "recent_drafts",
+          "recent_comparisons"
         ],
         "title": "CollectionWorkspaceResponse",
         "type": "object"
@@ -1806,7 +1824,8 @@
           "markdown",
           "summary",
           "evidence_rows",
-          "sources"
+          "sources",
+          "created_at"
         ],
         "title": "CompareDocumentsResponse",
         "type": "object"
@@ -1921,7 +1940,13 @@
           "dimension",
           "left_evidence",
           "right_evidence",
-          "assessment"
+          "assessment",
+          "left_source_id",
+          "right_source_id",
+          "left_citation",
+          "right_citation",
+          "confidence",
+          "rationale"
         ],
         "title": "CompareEvidenceRowResponse",
         "type": "object"
@@ -2709,6 +2734,9 @@
           "summary",
           "word_count",
           "language",
+          "suggested_questions",
+          "tags",
+          "last_used_at",
           "is_duplicate",
           "duplicate_of_id",
           "created_at",
@@ -2782,7 +2810,8 @@
           "key",
           "label",
           "state",
-          "progress"
+          "progress",
+          "message"
         ],
         "title": "DocumentProcessingStepResponse",
         "type": "object"
@@ -3105,6 +3134,12 @@
           "summary",
           "word_count",
           "language",
+          "entities",
+          "categories",
+          "visual_metadata",
+          "suggested_questions",
+          "tags",
+          "last_used_at",
           "is_duplicate",
           "duplicate_of_id",
           "created_at",
@@ -3244,7 +3279,9 @@
           "document_id",
           "status",
           "progress",
-          "message"
+          "message",
+          "failure_reason",
+          "timeline"
         ],
         "title": "DocumentStatusResponse",
         "type": "object"
@@ -4793,9 +4830,12 @@
           "name",
           "covered",
           "evidence_count",
+          "evidence_titles",
           "why_detected",
+          "missing_source_types",
           "severity",
-          "rationale"
+          "rationale",
+          "suggested_actions"
         ],
         "title": "KnowledgeGapAreaResponse",
         "type": "object"
@@ -4924,12 +4964,16 @@
         "required": [
           "id",
           "topic",
+          "collection_id",
           "covered_count",
           "missing_count",
           "coverage_ratio",
           "why_detected",
+          "missing_source_types",
           "severity",
-          "rationale"
+          "rationale",
+          "suggested_actions",
+          "areas"
         ],
         "title": "KnowledgeGapResponse",
         "type": "object"
@@ -5119,7 +5163,8 @@
           "title",
           "description",
           "severity",
-          "count"
+          "count",
+          "nodes"
         ],
         "title": "KnowledgeGraphInsightResponse",
         "type": "object"
@@ -5192,6 +5237,10 @@
             "type": "boolean"
           },
           "kind": {
+            "enum": [
+              "topic",
+              "document"
+            ],
             "title": "Kind",
             "type": "string"
           },
@@ -5247,7 +5296,9 @@
         "required": [
           "id",
           "kind",
-          "label"
+          "label",
+          "detail",
+          "source_names"
         ],
         "title": "KnowledgeGraphNodeResponse",
         "type": "object"
@@ -5568,8 +5619,7 @@
           },
           "steps": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/LearningPathStepResponse"
             },
             "title": "Steps",
             "type": "array"
@@ -5620,6 +5670,55 @@
           "updated_at"
         ],
         "title": "LearningPathResponse",
+        "type": "object"
+      },
+      "LearningPathStepResponse": {
+        "properties": {
+          "focus": {
+            "title": "Focus",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source_document_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Document Id"
+          },
+          "status": {
+            "enum": [
+              "todo",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "focus",
+          "summary",
+          "status"
+        ],
+        "title": "LearningPathStepResponse",
         "type": "object"
       },
       "LoginRequest": {
@@ -6170,7 +6269,8 @@
           "query_latency",
           "retrieval",
           "documents",
-          "openai"
+          "openai",
+          "queues"
         ],
         "title": "ObservabilitySummaryResponse",
         "type": "object"
@@ -6320,6 +6420,9 @@
             "type": "array"
           }
         },
+        "required": [
+          "items"
+        ],
         "title": "PublicAskEventListResponse",
         "type": "object"
       },
@@ -6477,6 +6580,7 @@
           "summary",
           "word_count",
           "language",
+          "tags",
           "created_at",
           "updated_at"
         ],
@@ -6515,6 +6619,7 @@
           "query",
           "answer",
           "sources",
+          "suggested_follow_up_questions",
           "share"
         ],
         "title": "PublicCollectionQueryResponse",
@@ -6583,6 +6688,7 @@
           "name",
           "description",
           "color",
+          "documents",
           "created_at",
           "updated_at"
         ],
@@ -7012,7 +7118,9 @@
           "query",
           "answer",
           "sources",
-          "refrag_context"
+          "refrag_context",
+          "debug",
+          "suggested_follow_up_questions"
         ],
         "title": "QueryResponse",
         "type": "object"
@@ -7093,6 +7201,45 @@
         "title": "QuerySourceResponse",
         "type": "object"
       },
+      "QuizAttemptAnswerResponse": {
+        "properties": {
+          "correct": {
+            "title": "Correct",
+            "type": "boolean"
+          },
+          "correct_option_id": {
+            "title": "Correct Option Id",
+            "type": "string"
+          },
+          "option_id": {
+            "title": "Option Id",
+            "type": "string"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          },
+          "weak_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weak Area"
+          }
+        },
+        "required": [
+          "question_id",
+          "option_id",
+          "correct",
+          "correct_option_id"
+        ],
+        "title": "QuizAttemptAnswerResponse",
+        "type": "object"
+      },
       "QuizAttemptListResponse": {
         "properties": {
           "items": {
@@ -7123,8 +7270,7 @@
         "properties": {
           "answers": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/QuizAttemptAnswerResponse"
             },
             "title": "Answers",
             "type": "array"
@@ -7215,6 +7361,88 @@
         "title": "QuizListResponse",
         "type": "object"
       },
+      "QuizOptionResponse": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "QuizOptionResponse",
+        "type": "object"
+      },
+      "QuizQuestionResponse": {
+        "properties": {
+          "correct_option_id": {
+            "title": "Correct Option Id",
+            "type": "string"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/QuizOptionResponse"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "source_document_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Document Id"
+          },
+          "source_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title"
+          },
+          "weak_area": {
+            "title": "Weak Area",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "question",
+          "options",
+          "correct_option_id",
+          "explanation",
+          "weak_area"
+        ],
+        "title": "QuizQuestionResponse",
+        "type": "object"
+      },
       "QuizResponse": {
         "properties": {
           "collection_id": {
@@ -7241,8 +7469,7 @@
           },
           "questions": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/QuizQuestionResponse"
             },
             "title": "Questions",
             "type": "array"
@@ -8008,12 +8235,29 @@
         "title": "StatsTimelineResponse",
         "type": "object"
       },
+      "SubmitQuizAnswerRequest": {
+        "properties": {
+          "option_id": {
+            "title": "Option Id",
+            "type": "string"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question_id",
+          "option_id"
+        ],
+        "title": "SubmitQuizAnswerRequest",
+        "type": "object"
+      },
       "SubmitQuizRequest": {
         "properties": {
           "answers": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/SubmitQuizAnswerRequest"
             },
             "title": "Answers",
             "type": "array"
@@ -8415,7 +8659,8 @@
         },
         "required": [
           "topic",
-          "documents"
+          "documents",
+          "events"
         ],
         "title": "TopicDetailResponse",
         "type": "object"
@@ -8504,6 +8749,7 @@
           "action",
           "topic_name",
           "display_name",
+          "source_names",
           "created_at"
         ],
         "title": "TopicEventResponse",
@@ -8634,7 +8880,8 @@
         "required": [
           "name",
           "document_count",
-          "last_document_at"
+          "last_document_at",
+          "source_names"
         ],
         "title": "TopicResponse",
         "type": "object"
@@ -9075,6 +9322,10 @@
             "type": "string"
           },
           "invite_status": {
+            "enum": [
+              "active",
+              "pending"
+            ],
             "title": "Invite Status",
             "type": "string"
           },
@@ -9084,6 +9335,10 @@
             "type": "string"
           },
           "role": {
+            "enum": [
+              "viewer",
+              "editor"
+            ],
             "title": "Role",
             "type": "string"
           },
