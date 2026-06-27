@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime  # noqa: TC003
+from datetime import date, datetime
 from typing import final
-from uuid import UUID  # noqa: TC003
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from src.knowledge_gaps.schemas import KnowledgeGapArea, KnowledgeGapAreaResponse  # noqa: TC001
+from src.knowledge_gaps.schemas import KnowledgeGapArea, KnowledgeGapAreaResponse
 
 
 @final

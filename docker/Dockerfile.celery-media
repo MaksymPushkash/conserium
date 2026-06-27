@@ -1,4 +1,4 @@
-FROM python:3.12.10-slim
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -30,4 +30,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY src ./src
 
-CMD ["celery", "-A", "src.infrastructure.celery", "worker", "--loglevel=INFO", "--queues=media_processing", "--concurrency=2"]
+CMD ["celery", "-A", "src.worker", "worker", "--loglevel=INFO", "--queues=media_processing", "--concurrency=2"]

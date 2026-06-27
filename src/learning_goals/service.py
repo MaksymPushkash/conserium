@@ -20,7 +20,7 @@ from src.learning_goals.schemas import (
     SuggestedLearningResource,
     SuggestedLearningResourceResponse,
 )
-from src.postgres import AsyncSession  # noqa: TC001
+from src.postgres import AsyncSession
 from src.topics.repository import TopicRepository
 
 if TYPE_CHECKING:

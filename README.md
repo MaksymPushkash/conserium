@@ -135,7 +135,7 @@ Three Celery worker processes and one Celery Beat scheduler run in production:
 ### Requirements
 
 - Docker, Docker Compose
-- Python 3.12+ (for development)
+- Python 3.14 (for development)
 - uv (package manager)
 
 ### Start

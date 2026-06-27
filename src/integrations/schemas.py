@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime  # noqa: TC003
+from datetime import datetime
 from typing import Any, final
-from uuid import UUID  # noqa: TC003
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 

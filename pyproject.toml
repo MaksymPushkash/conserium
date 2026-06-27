@@ -3,7 +3,7 @@ name = "conserium"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12.10"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
@@ -58,11 +58,11 @@ dev = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "RUF", "C4", "SIM", "TCH"]
-ignore = ["E501", "B008"]
+ignore = ["E501", "B008", "TC001", "TC002", "TC003", "UP037"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -71,7 +71,7 @@ indent-style = "space"
 
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 ignore_missing_imports = true
 explicit_package_bases = true

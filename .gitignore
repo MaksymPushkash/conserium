@@ -22,7 +22,6 @@ out/
 venv/
 env/
 ENV/
-.python-version
 
 # Test and type-checker caches
 .pytest_cache/

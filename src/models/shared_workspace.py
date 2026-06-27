@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import uuid  # noqa: TC003
-from datetime import datetime  # noqa: TC003
+import uuid
+from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB

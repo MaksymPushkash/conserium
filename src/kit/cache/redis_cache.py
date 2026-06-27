@@ -5,13 +5,21 @@ class RedisCache:
     def __init__(self, redis: Redis) -> None:
         self._redis = redis
 
+    @staticmethod
+    def _decode(value: bytes | str | None) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            return value.decode()
+        return value
+
     async def get(self, key: str) -> str | None:
         value = await self._redis.get(key)
-        return value.decode() if value else None
+        return self._decode(value)
 
     async def get_del(self, key: str) -> str | None:
         value = await self._redis.getdel(key)
-        return value.decode() if value else None
+        return self._decode(value)
 
     async def set(self, key: str, value: str, ttl: int) -> None:
         await self._redis.setex(key, ttl, value)
