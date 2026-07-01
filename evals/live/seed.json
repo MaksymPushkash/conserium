@@ -10,9 +10,9 @@
           "content": "Clean Architecture in Conserium separates presentation adapters, application use cases, domain entities, and infrastructure providers. The key rule is that dependencies point inward. Presentation maps HTTP input into DTOs, application use cases orchestrate work, domain objects hold business invariants, and infrastructure implements ports. Tests should verify boundaries without importing framework details into the domain."
         },
         {
-          "key": "celery_composition",
-          "title": "Live Eval - Celery Composition Root",
-          "content": "Celery workers act as a second composition root. Worker task files should remain thin adapters. The actual construction of use cases, repositories, cache clients, status cache, task dispatchers, and AI providers belongs in infrastructure celery composition. This keeps task modules small and makes lifecycle cleanup explicit."
+          "key": "taskiq_composition",
+          "title": "Live Eval - Taskiq Composition Root",
+          "content": "Taskiq workers act as a second composition root. Worker task files should remain thin adapters. The actual construction of use cases, repositories, cache clients, status cache, task dispatchers, and AI providers belongs in feature worker helpers and task modules. This keeps task modules small and makes lifecycle cleanup explicit."
         }
       ],
       "noise_documents": [

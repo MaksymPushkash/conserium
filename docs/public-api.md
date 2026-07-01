@@ -181,11 +181,12 @@ Run it separately:
 ```bash
 CONSERIUM_API_BASE_URL=https://api.conserium.app/api/v1 \
 CONSERIUM_TELEGRAM_SECRET=... \
+TELEGRAM_WEBHOOK_SECRET=... \
 TELEGRAM_BOT_TOKEN=... \
 uvicorn scripts.telegram_webhook_bot:app --host 0.0.0.0 --port 8090
 ```
 
-Set the Telegram webhook to:
+Set the Telegram webhook to the adapter URL and pass the same `TELEGRAM_WEBHOOK_SECRET` as Telegram's secret token:
 
 ```text
 https://<bot-host>/telegram/webhook
@@ -250,7 +251,7 @@ Current metric families include:
 - embedding cache events
 - OpenAI provider events
 - reranker events
-- Celery queue depth
+- Taskiq queue depth
 
 ## Auth
 

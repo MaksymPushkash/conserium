@@ -14,7 +14,7 @@ from src.repo_syncs.schemas import (
 )
 from src.repo_syncs.service import RepoSyncService
 from src.routing import APIRouter
-from src.worker.dispatcher import CeleryTaskDispatcher
+from src.worker.dispatcher import TaskiqTaskDispatcher
 
 router = APIRouter(prefix="/repo-syncs", tags=["repo-syncs"])
 
@@ -45,7 +45,7 @@ async def run_repo_sync(
     current_user: CurrentUser,
     session: AsyncSession = Depends(get_db_session),
     service: RepoSyncService = Depends(get_repo_sync_service),
-    task_dispatcher: CeleryTaskDispatcher = Depends(get_task_dispatcher),
+    task_dispatcher: TaskiqTaskDispatcher = Depends(get_task_dispatcher),
 ) -> RepoSyncRunResponse:
     return await service.queue_run(
         session,

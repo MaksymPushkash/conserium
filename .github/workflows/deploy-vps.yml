@@ -174,8 +174,8 @@ jobs:
           echo "=== docker compose ps ==="
           docker compose --env-file .env.prod ps || true
 
-          echo "=== redis celery broker keys ==="
-          docker compose --env-file .env.prod exec -T redis sh -c 'redis-cli -n 2 --scan --pattern "*" | head -100' || true
+          echo "=== rabbitmq task queues ==="
+          docker compose --env-file .env.prod exec -T rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged || true
 
           echo "=== app logs ==="
           docker compose --env-file .env.prod logs --tail=160 app || true

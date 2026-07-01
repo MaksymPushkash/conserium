@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections import defaultdict
 from contextlib import contextmanager
@@ -7,9 +8,8 @@ from threading import Lock
 from time import perf_counter
 from typing import TYPE_CHECKING, cast
 
+import aio_pika
 import redis
-from amqp.exceptions import NotFound as AMQPNotFound
-from kombu.exceptions import KombuError
 from redis.exceptions import RedisError
 
 from src.settings import settings
@@ -276,28 +276,39 @@ def _render_snapshot(
 
 def _render_queue_depth_metrics() -> list[str]:
     lines = [
-        "# HELP conserium_queue_depth Number of messages currently waiting in each Celery queue.",
+        "# HELP conserium_queue_depth Number of messages currently waiting in each task queue.",
         "# TYPE conserium_queue_depth gauge",
     ]
     try:
-        from src.worker.app import celery_app
+        asyncio.get_running_loop()
+        return lines
+    except RuntimeError:
+        pass
 
-        with celery_app.connection_or_acquire() as connection:
-            channel = connection.channel()
-            try:
-                for queue_def in celery_app.conf.task_queues:
-                    bound_queue = queue_def(channel)
-                    try:
-                        declare_result = bound_queue.queue_declare(passive=False)
-                        message_count = int(declare_result.message_count)
-                    except AMQPNotFound:
-                        continue
-                    lines.append(f'conserium_queue_depth{{queue="{queue_def.name}"}} {message_count}')
-            finally:
-                channel.close()
-    except (KombuError, RedisError, OSError, AttributeError):
+    try:
+        for queue_name, message_count in asyncio.run(_collect_queue_depths()).items():
+            lines.append(f'conserium_queue_depth{{queue="{queue_name}"}} {message_count}')
+    except (RuntimeError, OSError, RedisError, TimeoutError, aio_pika.exceptions.AMQPException):
         return lines
     return lines
+
+
+async def _collect_queue_depths() -> dict[str, int]:
+    from src.worker.app import QUEUE_NAMES
+
+    connection = await aio_pika.connect_robust(settings.TASKIQ_BROKER_URL)
+    try:
+        channel = await connection.channel()
+        try:
+            depths: dict[str, int] = {}
+            for queue_name in QUEUE_NAMES:
+                queue = await channel.declare_queue(queue_name, passive=True)
+                depths[queue_name] = int(queue.declaration_result.message_count or 0)
+            return depths
+        finally:
+            await channel.close()
+    finally:
+        await connection.close()
 
 
 metrics_registry = MetricsRegistry()

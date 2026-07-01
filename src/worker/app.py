@@ -1,138 +1,158 @@
-from celery import Celery
-from celery.signals import worker_init, worker_process_init, worker_process_shutdown
-from kombu import Exchange, Queue
+from __future__ import annotations
+
+from aio_pika.abc import ExchangeType
+from taskiq import TaskiqEvents, TaskiqScheduler, TaskiqState
+from taskiq.middlewares import SmartRetryMiddleware
+from taskiq.schedule_sources import LabelScheduleSource
+from taskiq_aio_pika import AioPikaBroker, Exchange, Queue, QueueType
+from taskiq_redis import RedisAsyncResultBackend
 
 from src.settings import settings
 from src.startup_checks import validate_startup_settings
-from src.worker.dependencies import initialize_worker_runtime, shutdown_worker_runtime
-from src.worker.registry import TASK_MODULES
-from src.worker.task_names import (
-    DOCUMENT_EMBED_AND_FINALIZE_TASK,
-    DOCUMENT_ENRICH_TASK,
-    DOCUMENT_PROCESS_IMAGE_TASK,
-    DOCUMENT_PROCESS_TASK,
-    DOCUMENT_PROCESSING_OUTBOX_DRAIN_TASK,
-    NOTIFICATION_DAILY_DIGEST_TASK,
-    NOTIFICATION_LEARNING_GOAL_REMINDER_TASK,
-    NOTIFICATION_WEEKLY_REPORT_TASK,
-    REPO_SYNC_OUTBOX_DRAIN_TASK,
-    REPO_SYNC_RUN_DUE_TASK,
-    REPO_SYNC_RUN_TASK,
+from src.worker.dependencies import dispose_worker_engine
+from src.worker.error_handling import RetryableTaskError
+
+QUEUE_NAMES = (
+    "document_processing",
+    "embeddings",
+    "notifications",
+    "cleanup",
+    "media_processing",
+    "hf_processing",
 )
 
-_conserium_exchange = Exchange("conserium", type="direct", durable=True)
-
-
-_QUEUES = (
-    Queue("document_processing", _conserium_exchange, routing_key="document_processing", durable=True),
-    Queue("embeddings", _conserium_exchange, routing_key="embeddings", durable=True),
-    Queue("notifications", _conserium_exchange, routing_key="notifications", durable=True),
-    Queue("cleanup", _conserium_exchange, routing_key="cleanup", durable=True),
-    Queue("media_processing", _conserium_exchange, routing_key="media_processing", durable=True),
-    Queue("hf_processing", _conserium_exchange, routing_key="hf_processing", durable=True),
+TASK_QUEUES = tuple(
+    Queue(
+        name=queue_name,
+        type=QueueType.CLASSIC,
+        durable=True,
+        max_priority=10,
+        routing_key=queue_name,
+    )
+    for queue_name in QUEUE_NAMES
 )
 
-
-_beat_schedule = {
+TASK_SCHEDULES = {
     "run-due-repo-syncs": {
-        "task": REPO_SYNC_RUN_DUE_TASK,
-        "schedule": 900.0,
+        "task": "src.repo_syncs.tasks.run_due_repo_syncs_task",
+        "interval": 900.0,
+        "queue_name": "cleanup",
     },
     "drain-repo-sync-outbox": {
-        "task": REPO_SYNC_OUTBOX_DRAIN_TASK,
-        "schedule": 60.0,
+        "task": "src.repo_syncs.tasks.drain_repo_sync_outbox_task",
+        "interval": 60.0,
+        "queue_name": "cleanup",
     },
     "drain-document-processing-outbox": {
-        "task": DOCUMENT_PROCESSING_OUTBOX_DRAIN_TASK,
-        "schedule": 60.0,
+        "task": "src.documents.tasks.drain_document_processing_outbox_task",
+        "interval": 60.0,
+        "queue_name": "cleanup",
     },
 }
 
 if settings.PROACTIVE_NOTIFICATIONS_ENABLED:
-    _beat_schedule.update(
+    TASK_SCHEDULES.update(
         {
             "deliver-daily-digest-notifications": {
-                "task": NOTIFICATION_DAILY_DIGEST_TASK,
-                "schedule": 86400.0,
+                "task": "src.notifications.tasks.deliver_daily_digest_notifications_task",
+                "interval": 86400.0,
+                "queue_name": "notifications",
             },
             "deliver-weekly-report-notifications": {
-                "task": NOTIFICATION_WEEKLY_REPORT_TASK,
-                "schedule": 604800.0,
+                "task": "src.notifications.tasks.deliver_weekly_report_notifications_task",
+                "interval": 604800.0,
+                "queue_name": "notifications",
             },
             "deliver-learning-goal-reminder-notifications": {
-                "task": NOTIFICATION_LEARNING_GOAL_REMINDER_TASK,
-                "schedule": 21600.0,
+                "task": "src.notifications.tasks.deliver_learning_goal_reminder_notifications_task",
+                "interval": 21600.0,
+                "queue_name": "notifications",
             },
         }
     )
 
 
-celery_app = Celery(
-    "conserium",
-    broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND,
-    include=list(TASK_MODULES),
+taskiq_broker = AioPikaBroker(
+    settings.TASKIQ_BROKER_URL,
+    exchange=Exchange(
+        name="conserium",
+        type=ExchangeType.DIRECT,
+        durable=True,
+    ),
+    task_queues=list(TASK_QUEUES),
+    delay_queue=Queue(
+        name="conserium.delay",
+        type=QueueType.CLASSIC,
+        durable=True,
+        routing_key="conserium.delay",
+    ),
+    qos=1,
+).with_result_backend(
+    RedisAsyncResultBackend(
+        settings.TASKIQ_RESULT_BACKEND_URL,
+        result_ex_time=3600,
+    )
+).with_middlewares(
+    SmartRetryMiddleware(
+        default_retry_count=3,
+        default_delay=60,
+        use_delay_exponent=True,
+        max_delay_exponent=3600,
+        types_of_exceptions=(RetryableTaskError,),
+    )
 )
 
-celery_app.conf.update(
-    task_queues=_QUEUES,
-    task_default_queue="document_processing",
-    task_default_exchange="conserium",
-    task_default_routing_key="document_processing",
-    task_routes={
-        DOCUMENT_PROCESS_TASK: {"queue": "document_processing"},
-        DOCUMENT_EMBED_AND_FINALIZE_TASK: {"queue": "embeddings"},
-        DOCUMENT_PROCESS_IMAGE_TASK: {"queue": "media_processing"},
-        DOCUMENT_ENRICH_TASK: {"queue": "media_processing"},
-        REPO_SYNC_RUN_DUE_TASK: {"queue": "cleanup"},
-        REPO_SYNC_RUN_TASK: {"queue": "cleanup"},
-        REPO_SYNC_OUTBOX_DRAIN_TASK: {"queue": "cleanup"},
-        DOCUMENT_PROCESSING_OUTBOX_DRAIN_TASK: {"queue": "cleanup"},
-        NOTIFICATION_DAILY_DIGEST_TASK: {"queue": "notifications"},
-        NOTIFICATION_WEEKLY_REPORT_TASK: {"queue": "notifications"},
-        NOTIFICATION_LEARNING_GOAL_REMINDER_TASK: {"queue": "notifications"},
-    },
-    beat_schedule=_beat_schedule,
-
-
-    task_serializer="json",
-    result_serializer="json",
-    accept_content=["json"],
-    result_expires=3600,
-
-
-    task_acks_late=True,
-    task_reject_on_worker_lost=True,
-    worker_prefetch_multiplier=1,
-
-
-    timezone="UTC",
-    enable_utc=True,
-
-    
-    task_max_retries=3,
-    task_default_retry_delay=60,
-
-
-    worker_send_task_events=True,
-    task_send_sent_event=True,
+scheduler = TaskiqScheduler(
+    broker=taskiq_broker,
+    sources=[LabelScheduleSource(taskiq_broker)],
 )
 
 
-def declare_configured_queues() -> None:
-    with celery_app.connection_or_acquire() as connection:
-        channel = connection.channel()
-        try:
-            for queue_def in celery_app.conf.task_queues:
-                queue_def(channel).declare()
-        finally:
-            channel.close()
-
-
-def _validate_worker_startup(**_: object) -> None:
+@taskiq_broker.on_event(TaskiqEvents.WORKER_STARTUP)
+async def validate_worker_startup(state: TaskiqState) -> None:
+    _ = state
     validate_startup_settings()
 
 
-worker_init.connect(_validate_worker_startup)
-worker_process_init.connect(initialize_worker_runtime)
-worker_process_shutdown.connect(shutdown_worker_runtime)
+@taskiq_broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
+async def shutdown_worker_runtime(state: TaskiqState) -> None:
+    _ = state
+    await dispose_worker_engine()
+
+
+async def startup_taskiq_client() -> None:
+    await taskiq_broker.startup()
+
+
+async def shutdown_taskiq_client() -> None:
+    await taskiq_broker.shutdown()
+
+
+async def declare_configured_queues() -> None:
+    await startup_taskiq_client()
+
+
+def _queue_by_name(queue_name: str) -> Queue:
+    for queue in TASK_QUEUES:
+        if queue.name == queue_name:
+            return queue
+    raise RuntimeError(f"Unknown Taskiq queue: {queue_name}")
+
+
+def get_default_broker() -> AioPikaBroker:
+    return taskiq_broker.with_queues(
+        _queue_by_name("document_processing"),
+        _queue_by_name("notifications"),
+        _queue_by_name("cleanup"),
+    )
+
+
+def get_embeddings_broker() -> AioPikaBroker:
+    return taskiq_broker.with_queues(_queue_by_name("embeddings"))
+
+
+def get_media_broker() -> AioPikaBroker:
+    return taskiq_broker.with_queues(
+        _queue_by_name("media_processing"),
+        _queue_by_name("hf_processing"),
+    )

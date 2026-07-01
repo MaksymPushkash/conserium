@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     REDIS_DOC_STATUS_TTL: int = 3600
     REDIS_CONVERSATION_TTL: int = 604800
 
-    CELERY_BROKER_URL: str = ""
-    CELERY_RESULT_BACKEND: str = ""
+    TASKIQ_BROKER_URL: str = "amqp://guest:guest@localhost:5672/"
+    TASKIQ_RESULT_BACKEND_URL: str = "redis://localhost:6379/1"
 
     OPENAI_API_KEY: str = ""
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_SECRET: str = ""
     TELEGRAM_BOT_TOKEN: str = ""
     PROACTIVE_NOTIFICATIONS_ENABLED: bool = False
+
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRO_PRICE_ID: str = ""
+    STRIPE_TEAM_PRICE_ID: str = ""
+    BILLING_FREE_DOCUMENT_LIMIT: int = 50
 
     FRONTEND_URL: str
     OAUTH_INCLUDE_REFRESH_TOKEN_IN_FRAGMENT: bool = False

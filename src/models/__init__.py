@@ -1,6 +1,7 @@
 from src.models.answer_share import AnswerShareModel
 from src.models.api_key import ApiKeyModel
 from src.models.base import Base
+from src.models.billing import BillingCustomerModel, SubscriptionEventModel, SubscriptionModel
 from src.models.chat import ChatMessageModel, ChatSessionModel
 from src.models.chunk import ChunkModel
 from src.models.collection import CollectionModel
@@ -42,6 +43,7 @@ __all__ = [
     "AnswerShareModel",
     "ApiKeyModel",
     "Base",
+    "BillingCustomerModel",
     "ChatMessageModel",
     "ChatSessionModel",
     "ChunkModel",
@@ -75,6 +77,8 @@ __all__ = [
     "RepoSyncModel",
     "RepoSyncOutboxModel",
     "SearchQueryModel",
+    "SubscriptionEventModel",
+    "SubscriptionModel",
     "TagModel",
     "TelegramChatBindingModel",
     "TelegramPairingCodeModel",
@@ -86,4 +90,3 @@ __all__ = [
     "WorkspaceMemberModel",
     "WorkspaceModel",
 ]
-

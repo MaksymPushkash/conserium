@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from src.billing.service import billing
 from src.documents.extraction import ExtractedContent
 from src.documents.status import DocumentStatus
 from src.documents.types import DocumentType
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
     from src.kit.storage.file_storage import FileStorage
     from src.models.document import DocumentModel
     from src.postgres import AsyncSession
-    from src.worker.dispatcher import CeleryTaskDispatcher
+    from src.worker.dispatcher import TaskiqTaskDispatcher
 
 DOCUMENT_PROCESSING_TASK_NAME = "process_document"
 _MAX_OUTBOX_ATTEMPTS = 5
@@ -55,7 +56,7 @@ class DocumentProcessingService:
         document_repo: DocumentRepository,
         outbox_repo: DocumentProcessingOutboxRepository,
         status_cache: RedisDocumentStatusCache,
-        task_dispatcher: CeleryTaskDispatcher,
+        task_dispatcher: TaskiqTaskDispatcher,
         background_tasks: BackgroundTasks | None = None,
     ) -> None:
         self._session = session
@@ -147,6 +148,7 @@ class DocumentProcessingService:
             await self._mark_outbox_dispatched(outbox)
             return
 
+        document_user_id = document.user_id
         await self._status_cache.set_status(
             outbox.document_id,
             status=DocumentStatus.QUEUED.value,
@@ -160,13 +162,29 @@ class DocumentProcessingService:
             await self._document_repo.update(document)
         await self._session.commit()
 
-        await self._task_dispatcher.dispatch_process_document(
-            str(outbox.document_id),
-            task_id=document_processing_outbox_task_id(outbox.id),
-        )
+        priority = await self._processing_priority(document_user_id)
+        if priority is None:
+            await self._task_dispatcher.dispatch_process_document(
+                str(outbox.document_id),
+                task_id=document_processing_outbox_task_id(outbox.id),
+            )
+        else:
+            await self._task_dispatcher.dispatch_process_document(
+                str(outbox.document_id),
+                task_id=document_processing_outbox_task_id(outbox.id),
+                priority=priority,
+            )
 
     async def _load_document(self, document_id: UUID) -> DocumentModel | None:
         return await self._document_repo.get_by_id(document_id)
+
+    async def _processing_priority(self, user_id: UUID) -> int | None:
+        try:
+            if await billing.has_priority_processing(self._session, user_id=user_id):
+                return 9
+        except Exception:
+            logger.warning("document_processing_priority_lookup_failed", exc_info=True)
+        return None
 
     async def _mark_outbox_dispatched(self, outbox: DocumentProcessingOutboxRecord) -> None:
         await self._outbox_repo.mark_dispatched(outbox.id, datetime.now(UTC))
@@ -236,7 +254,7 @@ class DocumentIngestionProcessor:
         session: AsyncSession,
         document_repo: DocumentRepository,
         status_cache: RedisDocumentStatusCache,
-        task_dispatcher: CeleryTaskDispatcher,
+        task_dispatcher: TaskiqTaskDispatcher,
         text_chunker: SimpleTextChunker,
         file_storage: FileStorage,
         url_extractor: ContentExtractor,
@@ -520,7 +538,7 @@ class ImageDocumentProcessor:
         session: AsyncSession,
         document_repo: DocumentRepository,
         status_cache: RedisDocumentStatusCache,
-        task_dispatcher: CeleryTaskDispatcher,
+        task_dispatcher: TaskiqTaskDispatcher,
         text_chunker: SimpleTextChunker,
         file_storage: FileStorage,
         image_extractor: ContentExtractor,

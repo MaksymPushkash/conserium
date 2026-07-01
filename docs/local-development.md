@@ -1,13 +1,13 @@
 # Conserium Local Development
 
 This runbook covers the feature-first modular backend: FastAPI, PostgreSQL with
-pgvector, Redis, Celery workers, ingestion, query, metrics, and eval regression. See
+pgvector, Redis, Taskiq workers, ingestion, query, metrics, and eval regression. See
 [Architecture](architecture.md) for module ownership and dependency rules.
 
 ## Prerequisites
 
 - Docker Desktop or Docker Engine with Compose
-- Python 3.12.10
+- Python 3.14
 - `uv`
 - Tesseract OCR if running image ingestion outside Docker
 - Optional: OpenAI API key for complete embeddings/query behavior
@@ -29,8 +29,8 @@ DB_PASSWORD=conserium
 DATABASE_URL=postgresql+asyncpg://conserium:conserium@localhost:5432/conserium
 
 REDIS_URL=redis://localhost:6379/0
-CELERY_BROKER_URL=redis://localhost:6379/2
-CELERY_RESULT_BACKEND=redis://localhost:6379/1
+TASKIQ_BROKER_URL=amqp://guest:guest@localhost:5672/
+TASKIQ_RESULT_BACKEND_URL=redis://localhost:6379/1
 
 OPENAI_API_KEY=
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
@@ -54,6 +54,12 @@ GOOGLE_CLIENT_SECRET=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRO_PRICE_ID=
+STRIPE_TEAM_PRICE_ID=
+BILLING_FREE_DOCUMENT_LIMIT=50
+
 EVAL_SCORER=heuristic
 RERANKER_ENABLED=true
 RERANKER_TOP_K=10
@@ -64,6 +70,7 @@ Important behavior:
 - `DEBUG=false` requires `OPENAI_API_KEY`.
 - Complete ingestion/query quality requires `OPENAI_API_KEY` because embeddings and synthesis depend on it.
 - `OPENAI_EMBEDDING_DIMENSIONS` must stay `1536`; the database/vector schema is built around that value.
+- Stripe billing is optional locally. Checkout, Billing Portal, and webhooks require `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, and `STRIPE_TEAM_PRICE_ID`.
 - For Ukrainian image OCR, submit image documents with language `uk` or `ukr`. Docker images install `tesseract-ocr-ukr`; local non-Docker runs need the Ukrainian Tesseract language pack installed on the host.
 
 ## File Storage
@@ -99,7 +106,7 @@ Do not store presigned URLs in `documents.file_path`; generate short-lived presi
 Start infrastructure first:
 
 ```bash
-docker compose up -d postgres redis
+docker compose up -d postgres redis rabbitmq
 ```
 
 Install dependencies locally:
@@ -128,13 +135,15 @@ Services:
 - pgAdmin: `http://localhost:5050`
 - Redis: `localhost:6379`
 - RedisInsight: `http://localhost:5540`
+- RabbitMQ: `localhost:5672`
+- RabbitMQ Management: `http://localhost:15672`
 
 Worker topology:
 
 - `worker-default`: `document_processing`, `notifications`, `cleanup`
 - `worker-embeddings`: `embeddings`
 - `worker-media`: `media_processing`, `hf_processing`
-- `scheduler`: Celery Beat schedules for repo sync, outbox drains, and optional notifications
+- `scheduler`: Taskiq scheduler schedules for repo sync, outbox drains, and optional notifications
 
 Useful commands:
 
@@ -155,7 +164,7 @@ Use this when you want faster backend iteration without rebuilding containers.
 Start only infrastructure:
 
 ```bash
-docker compose up -d postgres redis
+docker compose up -d postgres redis rabbitmq
 ```
 
 Install dependencies:
@@ -179,22 +188,30 @@ uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 Start workers in separate terminals:
 
 ```bash
-uv run celery -A src.worker worker --loglevel=INFO --queues=document_processing,notifications,cleanup --concurrency=4
+uv run taskiq worker --workers 4 --ack-type when_executed --max-prefetch 1 --log-level INFO src.worker.app:get_default_broker src.documents.tasks src.notifications.tasks src.repo_syncs.tasks
 ```
 
 ```bash
-uv run celery -A src.worker worker --loglevel=INFO --queues=embeddings --concurrency=4
+uv run taskiq worker --workers 4 --ack-type when_executed --max-prefetch 1 --log-level INFO src.worker.app:get_embeddings_broker src.documents.tasks
 ```
 
 ```bash
-uv run celery -A src.worker worker --loglevel=INFO --queues=media_processing,hf_processing --concurrency=2
+uv run taskiq worker --workers 2 --ack-type when_executed --max-prefetch 1 --log-level INFO src.worker.app:get_media_broker src.documents.tasks
 ```
 
-Start Celery Beat in another terminal:
+Start Taskiq scheduler in another terminal:
 
 ```bash
-uv run celery -A src.worker beat --loglevel=INFO
+uv run taskiq scheduler --skip-first-run --log-level INFO src.worker.app:scheduler src.documents.tasks src.notifications.tasks src.repo_syncs.tasks
 ```
+
+Forward Stripe webhooks locally when testing billing:
+
+```bash
+stripe listen --forward-to localhost:8000/api/v1/billing/webhook
+```
+
+Use the `whsec_...` value printed by Stripe CLI as `STRIPE_WEBHOOK_SECRET`.
 
 For local media/audio/image work, install the heavier dependencies in the same environment:
 

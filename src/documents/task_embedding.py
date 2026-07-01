@@ -5,39 +5,39 @@ from typing import Any
 import structlog
 
 from src.documents.worker import process_document_embeddings
-from src.worker.dependencies import run_worker_async
 from src.worker.document_failure import handle_document_failure
-from src.worker.error_handling import classify_error
+from src.worker.error_handling import RetryableTaskError, classify_error
 
 logger = structlog.get_logger(__name__)
+MAX_RETRIES = 3
 
 
-def run_embed_and_finalize_document_task(
-    self: Any,
+async def run_embed_and_finalize_document_task(
+    *,
+    task_id: str,
+    retry_count: int,
     document_id: str,
     raw_text: str,
     chunks_data: list[dict[str, Any]],
     expected_content_hash: str | None,
     enrichment_task: Any,
 ) -> dict[str, str]:
-    log = logger.bind(document_id=document_id, task_id=self.request.id)
+    log = logger.bind(document_id=document_id, task_id=task_id)
     log.info("Embedding task started", chunks=len(chunks_data))
 
     try:
-        result = run_worker_async(
-            process_document_embeddings(
-                document_id=document_id,
-                raw_text=raw_text,
-                chunks_data=chunks_data,
-                expected_content_hash=expected_content_hash,
-            )
+        result = await process_document_embeddings(
+            document_id=document_id,
+            raw_text=raw_text,
+            chunks_data=chunks_data,
+            expected_content_hash=expected_content_hash,
         )
         log.info("Embedding task completed", status=result["status"])
 
         if result["status"] == "READY" and raw_text:
             try:
                 log.info("Dispatching enrichment task", document_id=document_id)
-                enrichment_task.apply_async(args=[document_id], priority=5)
+                await enrichment_task.kicker().with_labels(priority=5).kiq(document_id)
             except Exception as exc:
                 log.warning("Failed to dispatch enrichment task, but document is READY", error=str(exc))
 
@@ -50,15 +50,14 @@ def run_embed_and_finalize_document_task(
             error_type=type(exc).__name__,
             error_reason=reason,
             is_retryable=is_retryable,
-            retry_count=self.request.retries,
-            max_retries=self.max_retries,
+            retry_count=retry_count,
+            max_retries=MAX_RETRIES,
             error=str(exc),
         )
 
-        if is_retryable and self.request.retries < self.max_retries:
-            countdown = min(2**self.request.retries * 60, 3600)
-            log.info("retrying_task", countdown=countdown)
-            raise self.retry(exc=exc, countdown=countdown) from exc
+        if is_retryable and retry_count < MAX_RETRIES - 1:
+            log.info("retrying_task")
+            raise RetryableTaskError(str(exc)) from exc
 
         log.error("embedding_task_permanent_failure", reason=reason)
         handle_document_failure(document_id, str(exc), log)

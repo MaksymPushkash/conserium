@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from src.billing.service import billing
 from src.documents.status import DocumentStatus
 from src.repo_syncs.helpers import repo_sync_outbox_task_id, sanitize_outbox_error
 
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     from src.postgres import AsyncSession
     from src.repo_syncs.repository import RepoSyncRepository
     from src.repo_syncs.schemas import RepoSyncOutboxRecord
-    from src.worker.dispatcher import CeleryTaskDispatcher
+    from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ class RepoSyncOutboxDrainer:
         document_repo: DocumentRepository,
         repo_sync_repo: RepoSyncRepository,
         status_cache: RedisDocumentStatusCache,
-        task_dispatcher: CeleryTaskDispatcher,
+        task_dispatcher: TaskiqTaskDispatcher,
     ) -> None:
         self._session = session
         self._document_repo = document_repo
@@ -102,10 +103,18 @@ class RepoSyncOutboxDrainer:
             progress=0,
             message="Queued from GitHub sync.",
         )
-        await self._task_dispatcher.dispatch_process_document(
-            str(outbox.document_id),
-            task_id=repo_sync_outbox_task_id(outbox.id),
-        )
+        priority = await self._processing_priority(document.user_id)
+        if priority is None:
+            await self._task_dispatcher.dispatch_process_document(
+                str(outbox.document_id),
+                task_id=repo_sync_outbox_task_id(outbox.id),
+            )
+        else:
+            await self._task_dispatcher.dispatch_process_document(
+                str(outbox.document_id),
+                task_id=repo_sync_outbox_task_id(outbox.id),
+                priority=priority,
+            )
 
         document = await self._document_repo.get_by_id(outbox.document_id)
         if document is not None:
@@ -124,6 +133,14 @@ class RepoSyncOutboxDrainer:
 
     async def _load_document(self, document_id: UUID) -> DocumentModel | None:
         return await self._document_repo.get_by_id(document_id)
+
+    async def _processing_priority(self, user_id: UUID) -> int | None:
+        try:
+            if await billing.has_priority_processing(self._session, user_id=user_id):
+                return 9
+        except Exception:
+            logger.warning("repo_sync_processing_priority_lookup_failed", exc_info=True)
+        return None
 
     async def _mark_outbox_dispatched(self, outbox: RepoSyncOutboxRecord) -> None:
         await self._repo_sync_repo.mark_outbox_dispatched(outbox.id, datetime.now(UTC))

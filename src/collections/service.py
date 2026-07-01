@@ -1,6 +1,7 @@
 import uuid
 from uuid import UUID
 
+from src.billing.service import billing
 from src.collections.access import (
     WRITE_ROLES as WRITE_ROLES,
 )
@@ -51,7 +52,7 @@ from src.collections.workspace import (
 from src.documents.activity_repository import DocumentActivityRepository
 from src.documents.document_repository import DocumentRepository
 from src.documents.status import DocumentStatus
-from src.kit.exceptions import ResourceNotFoundException
+from src.kit.exceptions import ResourceNotFoundException, ValidationException
 from src.knowledge_gaps.service import collection_topic_gaps
 from src.models.collection import CollectionModel
 from src.postgres import AsyncSession
@@ -163,16 +164,19 @@ class CollectionService:
         role = normalize_member_role(role)
         email = email.strip().lower()
         if "@" not in email:
-            from src.kit.exceptions import ValidationException
-
             raise ValidationException("valid member email required")
-        await ensure_collection_owner(session, collection_id=collection_id, user_id=actor_user_id)
+        collection = await CollectionRepository.from_session(session).get_by_id(collection_id)
+        if collection is None or collection.user_id != actor_user_id:
+            raise ResourceNotFoundException("collection not found")
         user = await UserRepository.from_session(session).get_by_email(email)
         if user is not None and user.id == actor_user_id:
-            from src.kit.exceptions import ValidationException
-
             raise ValidationException("owner is already a collection member")
         repository = SharedWorkspaceRepository.from_session(session)
+        members = await repository.list_members(collection_id=collection_id)
+        existing_member = next((member for member in members if member.email == email), None)
+        member_limit = await billing.member_limit_for_user(session, user_id=collection.user_id)
+        if existing_member is None and member_limit is not None and len(members) >= member_limit:
+            raise ValidationException("Collection member limit reached. Upgrade to Team for unlimited seats.")
         member = await repository.upsert_member(
             collection_id=collection_id,
             email=email,

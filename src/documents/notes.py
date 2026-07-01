@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from src.billing.service import billing
 from src.documents.repository import NoteVersionRecord
 from src.documents.schemas import (
     CreateNoteRequest,
@@ -185,6 +186,7 @@ class NoteService:
             body.collection_id,
             user_id,
         )
+        await billing.ensure_can_create_document(self._session, user_id=document_owner_id)
         document = DocumentModel.create(
             id=uuid.uuid4(),
             user_id=document_owner_id,

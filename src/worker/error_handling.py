@@ -9,8 +9,12 @@ from src.kit.exceptions import DomainException
 logger = structlog.get_logger(__name__)
 
 
+class RetryableTaskError(Exception):
+    pass
+
+
 class RetryableError(Exception):
-    """Errors that should trigger celery retry."""
+    """Errors that should trigger task retry."""
 
     pass
 
@@ -51,7 +55,7 @@ def classify_error(exc: Exception) -> tuple[bool, str]:
     return False, "unknown_error"
 
 
-def handle_celery_error(
+def handle_worker_error(
     exc: Exception,
     task_name: str,
     task_id: str,
@@ -59,12 +63,12 @@ def handle_celery_error(
     max_retries: int,
     document_id: str | None = None,
 ) -> dict[str, Any]:
-    """Handle Celery task error and return result dict.
+    """Handle worker task error and return result dict.
 
     Args:
         exc: The exception that occurred
-        task_name: Name of the Celery task
-        task_id: Celery task ID
+        task_name: Name of the worker task
+        task_id: Worker task ID
         current_retries: Current retry count
         max_retries: Maximum retry count
         document_id: Document ID if applicable
@@ -87,14 +91,14 @@ def handle_celery_error(
     if document_id:
         log_context["document_id"] = document_id
 
-    logger.error("celery_task_error", **log_context)
+    logger.error("worker_task_error", **log_context)
 
     if is_retryable and current_retries < max_retries:
         countdown = min(2**current_retries * 60, 3600)
         logger.info("retrying_task", countdown=countdown, **log_context)
         return {"retry": True, "countdown": countdown}
 
-    logger.error("celery_task_permanent_failure", reason=reason, **log_context)
+    logger.error("worker_task_permanent_failure", reason=reason, **log_context)
     return {
         "status": "FAILED",
         "error": str(exc),

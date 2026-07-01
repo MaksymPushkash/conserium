@@ -1,22 +1,29 @@
-from src.worker.app import celery_app, declare_configured_queues
+from src.worker.app import (
+    QUEUE_NAMES,
+    TASK_QUEUES,
+    declare_configured_queues,
+    scheduler,
+    shutdown_taskiq_client,
+    startup_taskiq_client,
+    taskiq_broker,
+)
 from src.worker.dependencies import (
     dispose_worker_engine,
     get_worker_redis,
     get_worker_session_factory,
-    initialize_worker_runtime,
-    run_worker_async,
-    shutdown_worker_runtime,
 )
 from src.worker.registry import TASK_MODULES
 
 __all__ = [
+    "QUEUE_NAMES",
     "TASK_MODULES",
-    "celery_app",
+    "TASK_QUEUES",
     "declare_configured_queues",
     "dispose_worker_engine",
     "get_worker_redis",
     "get_worker_session_factory",
-    "initialize_worker_runtime",
-    "run_worker_async",
-    "shutdown_worker_runtime",
+    "scheduler",
+    "shutdown_taskiq_client",
+    "startup_taskiq_client",
+    "taskiq_broker",
 ]

@@ -22,4 +22,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY src ./src
 
-CMD ["celery", "-A", "src.worker", "worker", "--loglevel=INFO", "--queues=document_processing,notifications,cleanup", "--concurrency=4"]
+CMD ["taskiq", "worker", "--workers", "4", "--ack-type", "when_executed", "--max-prefetch", "1", "--log-level", "INFO", "src.worker.app:get_default_broker", "src.documents.tasks", "src.notifications.tasks", "src.repo_syncs.tasks"]

@@ -8,10 +8,11 @@ Conserium is a feature-first modular monolith.
 flowchart LR
     WEB["Next.js frontend on Vercel"] --> API["FastAPI API on VPS"]
     API --> POSTGRES["PostgreSQL + pgvector"]
-    API --> REDIS["Redis cache and Celery broker"]
+    API --> REDIS["Redis cache and Taskiq result backend"]
+    API --> RABBITMQ["RabbitMQ Taskiq broker"]
     API --> STORAGE["S3 or local storage"]
-    REDIS --> WORKERS["Celery workers on VPS"]
-    BEAT["Celery Beat"] --> REDIS
+    RABBITMQ --> WORKERS["Taskiq workers on VPS"]
+    BEAT["Taskiq scheduler"] --> RABBITMQ
     WORKERS --> POSTGRES
     WORKERS --> STORAGE
 ```
@@ -31,7 +32,7 @@ src/
 ├── settings.py            # Environment-backed configuration
 ├── models/                # Shared SQLAlchemy models
 ├── kit/                   # Cross-cutting code only
-├── worker/                # Celery app, queues, registry, and shared worker helpers
+├── worker/                # Taskiq broker, queues, registry, and shared worker helpers
 └── {feature}/             # Feature-owned behavior
 ```
 
@@ -49,7 +50,7 @@ A feature owns the files it needs:
 - `service.py`: business rules and orchestration.
 - `repository.py`: SQLAlchemy statements and persistence operations.
 - `auth.py`: feature authorization dependencies.
-- `tasks.py`: feature-owned Celery task entry points.
+- `tasks.py`: feature-owned Taskiq task entry points.
 - `sorting.py`: sort definitions when the feature supports sorting.
 
 These filenames are conventions, not a requirement to create empty files. Add a file only
@@ -175,9 +176,9 @@ than an action-specific dependency per route.
 
 ## Background Jobs
 
-Celery remains the worker system.
+Taskiq is the worker system.
 
-- `src/worker/app.py` configures Celery, Redis broker URLs, queues, routing, and Beat.
+- `src/worker/app.py` configures Taskiq, RabbitMQ broker URLs, Redis result backend, queues, routing, and scheduler.
 - `src/worker/registry.py` lists feature task modules.
 - `src/worker/task_names.py` defines stable producer-facing task names.
 - Feature `tasks.py` files own task entry points and delegate to feature processing code.
@@ -189,10 +190,10 @@ Production processes:
 | `worker-default` | `document_processing`, `notifications`, `cleanup` |
 | `worker-embeddings` | `embeddings` |
 | `worker-media` | `media_processing`, `hf_processing` |
-| `scheduler` | Celery Beat schedules |
+| `scheduler` | Taskiq scheduler schedules |
 
-Redis database `2` is the Celery broker, Redis database `1` is the result backend, and
-Redis database `0` is application cache/state.
+RabbitMQ is the Taskiq broker, Redis database `1` is the result backend, and Redis
+database `0` is application cache/state.
 
 The HTTP application owns one cached Redis client in `src/kit/cache/redis.py`. Feature
 cache adapters receive that shared client. Worker processes own separate Redis clients and
@@ -240,8 +241,8 @@ Backend production runs on a VPS through Docker Compose:
 - FastAPI application behind Nginx;
 - PostgreSQL with pgvector;
 - Redis;
-- three Celery workers;
-- Celery Beat;
+- three Taskiq workers;
+- Taskiq scheduler;
 - Prometheus and Grafana.
 
 The Next.js frontend deploys independently to Vercel and calls the public API origin.
@@ -266,7 +267,7 @@ The separate CI checks enforce the OpenAPI contract without requiring a monorepo
 
 ## Architecture Decisions
 
-Celery and two repositories are deliberate choices. They should not change unless product needs
+Taskiq with RabbitMQ and two repositories are deliberate choices. They should not change unless product needs
 change. The architecture risk is contract drift, not repository location.
 
 ## Current State

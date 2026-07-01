@@ -30,4 +30,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY src ./src
 
-CMD ["celery", "-A", "src.worker", "worker", "--loglevel=INFO", "--queues=media_processing", "--concurrency=2"]
+CMD ["taskiq", "worker", "--workers", "2", "--ack-type", "when_executed", "--max-prefetch", "1", "--log-level", "INFO", "src.worker.app:get_media_broker", "src.documents.tasks"]

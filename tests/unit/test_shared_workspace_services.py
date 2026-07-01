@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from src.documents.status_cache import RedisDocumentStatusCache
     from src.models.chunk import ChunkModel
     from src.models.document import DocumentModel
-    from src.worker.dispatcher import CeleryTaskDispatcher
+    from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 class _FakeUserRepository:
@@ -165,6 +165,11 @@ class _FakeSharedWorkspaceRepository:
         if self.member and self.member.workspace_id == workspace_id and self.member.id == member_id:
             return self.member
         return None
+
+    async def list_workspace_members(self, *, workspace_id: uuid.UUID) -> list[WorkspaceMemberRecord]:
+        if self.member and self.member.workspace_id == workspace_id:
+            return [self.member]
+        return []
 
     async def update_workspace_owner(self, *, workspace_id: uuid.UUID, user_id: uuid.UUID) -> WorkspaceRecord | None:
         if self.workspace.id != workspace_id:
@@ -592,7 +597,7 @@ async def test_shared_file_ingestion_uses_workspace_owner_and_records_audit_even
         repository_session,  # type: ignore[arg-type]
         _as_document_repository(repository_session),
         cast("RedisDocumentStatusCache", status_cache),
-        cast("CeleryTaskDispatcher", dispatcher),
+        cast("TaskiqTaskDispatcher", dispatcher),
         cast("DocumentCollectionAccess", _FakeDocumentCollectionAccess(repository_session)),
         repository_session.document_activity_repo,
         DocumentProcessingService(
@@ -600,7 +605,7 @@ async def test_shared_file_ingestion_uses_workspace_owner_and_records_audit_even
             repository_session.document_repo,  # type: ignore[arg-type]
             repository_session.document_processing_outbox_repo,  # type: ignore[arg-type]
             cast("RedisDocumentStatusCache", status_cache),
-            cast("CeleryTaskDispatcher", dispatcher),
+            cast("TaskiqTaskDispatcher", dispatcher),
         ),
     )(
         user_id=editor_id,

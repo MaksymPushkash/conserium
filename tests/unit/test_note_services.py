@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from src.documents.access import DocumentCollectionAccess
     from src.documents.document_repository import DocumentRepository
     from src.documents.status_cache import RedisDocumentStatusCache
-    from src.worker.dispatcher import CeleryTaskDispatcher
+    from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 @pytest.mark.asyncio
@@ -254,7 +254,7 @@ def _processing_service(
         session.document_repo,  # type: ignore[arg-type]
         session.document_processing_outbox_repo,  # type: ignore[arg-type]
         cast("RedisDocumentStatusCache", status_cache),
-        cast("CeleryTaskDispatcher", dispatcher),
+        cast("TaskiqTaskDispatcher", dispatcher),
     )
 
 

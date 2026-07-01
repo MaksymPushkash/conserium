@@ -18,7 +18,7 @@ Conserium is a feature-first modular monolith.
 - Keep SQLAlchemy statements and persistence operations in repository modules.
 - Keep shared SQLAlchemy models in `src/models`.
 - Keep cross-cutting helpers and base classes in `src/kit`.
-- Keep Celery configuration in `src/worker` and task entry points in feature `tasks.py` files.
+- Keep Taskiq configuration in `src/worker` and task entry points in feature `tasks.py` files.
 - Use FastAPI dependencies. Do not introduce a dependency injection container.
 - Do not recreate `application`, `presentation`, `domain`, `infrastructure`, `use_cases`, `dtos`, or feature-local `ports` layers.
 - Do not create empty convention files. Add `auth.py`, `sorting.py`, or `tasks.py` only when the feature owns that behavior.
@@ -35,7 +35,7 @@ Feature packages use only the files they need:
 - `service.py`: business decisions and orchestration.
 - `repository.py`: SQLAlchemy query and persistence logic.
 - `auth.py`: feature-local authorization dependencies when needed.
-- `tasks.py`: feature-owned Celery task entry points when needed.
+- `tasks.py`: feature-owned Taskiq task entry points when needed.
 - `sorting.py`: feature-local sort declarations when needed.
 
 Do not add placeholder files to satisfy a layout convention.

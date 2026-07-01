@@ -14,7 +14,7 @@ from src.observability.rate_limit import setup_rate_limiting
 from src.postgres import dispose_engine
 from src.settings import settings
 from src.startup_checks import validate_startup_settings
-from src.worker import declare_configured_queues
+from src.worker import declare_configured_queues, shutdown_taskiq_client
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +24,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     configure_logging(debug=settings.DEBUG)
     validate_startup_settings()
     try:
-        declare_configured_queues()
+        await declare_configured_queues()
     except Exception:
-        logger.warning("celery_queue_declaration_failed", exc_info=True)
+        logger.warning("taskiq_queue_declaration_failed", exc_info=True)
     yield
+    await shutdown_taskiq_client()
     await dispose_dependencies()
     await dispose_engine()
 

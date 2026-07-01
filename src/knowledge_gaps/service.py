@@ -188,7 +188,7 @@ _BACKEND_RUBRIC = (
     RubricArea("API design", ("api", "endpoint", "rest", "graphql", "contract", "schema")),
     RubricArea("Persistence", ("database", "transaction", "repository", "migration", "sql")),
     RubricArea("Auth and permissions", ("auth", "permission", "rbac", "oauth", "jwt", "session")),
-    RubricArea("Async jobs", ("queue", "worker", "background", "celery", "job")),
+    RubricArea("Async jobs", ("queue", "worker", "background", "task", "job")),
     RubricArea("Testing", ("test", "integration test", "fixture", "mock", "contract test")),
     RubricArea("Operations", ("deploy", "logging", "metrics", "monitoring", "rollback")),
 )

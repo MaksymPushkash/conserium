@@ -24,7 +24,7 @@ from src.kit.cache.redis_cache import RedisCache
 from src.kit.storage.factory import build_file_storage
 from src.postgres import AsyncSession, get_db_session
 from src.query.repository import SearchQueryRepository
-from src.worker.dispatcher import CeleryTaskDispatcher
+from src.worker.dispatcher import TaskiqTaskDispatcher
 from src.workspaces.repository import SharedWorkspaceRepository
 
 if TYPE_CHECKING:
@@ -46,8 +46,8 @@ def get_document_status_cache(redis: Redis = Depends(get_redis)) -> RedisDocumen
     return RedisDocumentStatusCache(redis)
 
 
-def get_task_dispatcher() -> CeleryTaskDispatcher:
-    return CeleryTaskDispatcher()
+def get_task_dispatcher() -> TaskiqTaskDispatcher:
+    return TaskiqTaskDispatcher()
 
 
 def get_embedding_provider(cache: RedisCache = Depends(get_cache)) -> EmbeddingProvider:
@@ -72,7 +72,7 @@ def get_document_processing_service(
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
     status_cache: RedisDocumentStatusCache = Depends(get_document_status_cache),
-    task_dispatcher: CeleryTaskDispatcher = Depends(get_task_dispatcher),
+    task_dispatcher: TaskiqTaskDispatcher = Depends(get_task_dispatcher),
 ) -> DocumentProcessingService:
     return DocumentProcessingService(
         session,

@@ -34,8 +34,8 @@
     "collection_id": "20000000-0000-0000-0000-000000000001"
   },
   {
-    "id": "celery-composition-root",
-    "query": "Where should Celery worker dependencies be composed?",
+    "id": "taskiq-composition-root",
+    "query": "Where should Taskiq worker dependencies be composed?",
     "expected_source_documents": [
       "00000000-0000-0000-0000-000000000005"
     ],
@@ -43,18 +43,18 @@
       "10000000-0000-0000-0000-000000000005"
     ],
     "expected_answer_terms": [
-      "celery",
+      "taskiq",
       "composition",
       "worker",
       "tasks"
     ],
-    "answer": "Celery worker dependencies should be composed in a dedicated composition module, leaving tasks as thin adapters. [1]",
+    "answer": "Taskiq worker dependencies should be composed in a feature worker helpers, leaving tasks as thin adapters. [1]",
     "source_chunks": [
       {
         "document_id": "00000000-0000-0000-0000-000000000005",
         "chunk_id": "10000000-0000-0000-0000-000000000005",
         "document_title": "Backend Architecture Review",
-        "content": "Celery is a second composition root; worker use cases should be assembled in composition while tasks stay thin adapters.",
+        "content": "Taskiq is a second composition root; worker use cases should be assembled in feature worker helpers while tasks stay thin adapters.",
         "collection_id": "20000000-0000-0000-0000-000000000001"
       }
     ],

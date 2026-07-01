@@ -2,7 +2,7 @@
 
 The backend and frontend remain separate repositories and deploy independently:
 
-- FastAPI and Celery run on the VPS.
+- FastAPI and Taskiq run on the VPS.
 - Next.js runs on Vercel.
 - `openapi.json` is the compatibility contract between releases.
 

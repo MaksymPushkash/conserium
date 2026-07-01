@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from src.documents.access import DocumentCollectionAccess
     from src.documents.status_cache import RedisDocumentStatusCache
     from src.query.repository import SearchQueryRepository
-    from src.worker.dispatcher import CeleryTaskDispatcher
+    from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 class _FakeDocumentRepository:
@@ -394,7 +394,7 @@ def _processing_service(
         repository_session.document_repo,  # type: ignore[arg-type]
         repository_session.document_processing_outbox_repo,  # type: ignore[arg-type]
         cast("RedisDocumentStatusCache", status_cache),
-        cast("CeleryTaskDispatcher", task_dispatcher),
+        cast("TaskiqTaskDispatcher", task_dispatcher),
     )
 
 
@@ -711,7 +711,7 @@ async def test_ingest_document_service_queues_outbox_without_dispatching_in_requ
         repository_session,  # type: ignore[arg-type]
         _as_document_repository(repository_session),
         cast("RedisDocumentStatusCache", status_cache),
-        cast("CeleryTaskDispatcher", dispatcher),
+        cast("TaskiqTaskDispatcher", dispatcher),
         repository_session,
         repository_session.document_activity_repo,
         _processing_service(repository_session, status_cache, dispatcher),
@@ -742,7 +742,7 @@ async def test_ingest_document_service_persists_outbox_when_status_cache_fails()
         repository_session,  # type: ignore[arg-type]
         _as_document_repository(repository_session),
         cast("RedisDocumentStatusCache", status_cache),
-        cast("CeleryTaskDispatcher", dispatcher),
+        cast("TaskiqTaskDispatcher", dispatcher),
         repository_session,
         repository_session.document_activity_repo,
         _processing_service(repository_session, status_cache, dispatcher),
@@ -774,7 +774,7 @@ async def test_ingest_document_service_fails_transaction_when_outbox_create_fail
         repository_session,  # type: ignore[arg-type]
         _as_document_repository(repository_session),
         cast("RedisDocumentStatusCache", status_cache),
-        cast("CeleryTaskDispatcher", dispatcher),
+        cast("TaskiqTaskDispatcher", dispatcher),
         repository_session,
         repository_session.document_activity_repo,
         _processing_service(repository_session, status_cache, dispatcher),

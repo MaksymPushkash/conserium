@@ -14,7 +14,7 @@ from src.documents.status_cache import RedisDocumentStatusCache
 from src.documents.types import DocumentType
 from src.kit.storage.file_storage import FileStorage, StoredFile
 from src.models.document import DocumentModel
-from src.worker.dispatcher import CeleryTaskDispatcher
+from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 class _FakeDocumentRepository(DocumentRepository):
@@ -126,7 +126,7 @@ class _FakeStatusCache(RedisDocumentStatusCache):
         raise NotImplementedError
 
 
-class _FakeTaskDispatcher(CeleryTaskDispatcher):
+class _FakeTaskDispatcher(TaskiqTaskDispatcher):
     def __init__(self) -> None:
         self.embed_calls: list[dict[str, Any]] = []
 

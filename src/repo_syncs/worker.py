@@ -13,7 +13,7 @@ from src.repo_syncs.repository import RepoSyncRepository
 from src.repo_syncs.runner import RepoSyncRunner
 from src.settings import settings
 from src.worker.dependencies import get_worker_redis, get_worker_session_factory
-from src.worker.dispatcher import CeleryTaskDispatcher
+from src.worker.dispatcher import TaskiqTaskDispatcher
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -36,7 +36,7 @@ async def run_due_repo_syncs() -> dict[str, int]:
                 document_activity_repo=DocumentActivityRepository.from_session(session),
                 repo_sync_repo=RepoSyncRepository.from_session(session),
                 github_client=GitHubRepositoryClient(),
-                task_dispatcher=CeleryTaskDispatcher(),
+                task_dispatcher=TaskiqTaskDispatcher(),
             )
             completed = 0
             failed = 0
@@ -61,7 +61,7 @@ async def run_repo_sync(*, user_id: UUID, repo_sync_id: UUID, max_files: int) ->
             document_activity_repo=DocumentActivityRepository.from_session(session),
             repo_sync_repo=RepoSyncRepository.from_session(session),
             github_client=GitHubRepositoryClient(),
-            task_dispatcher=CeleryTaskDispatcher(),
+            task_dispatcher=TaskiqTaskDispatcher(),
         )(user_id=user_id, repo_sync_id=repo_sync_id, max_files=max_files)
         return {
             "repo_sync_id": str(result.repo_sync.id),
@@ -83,7 +83,7 @@ async def drain_repo_sync_outbox(*, limit: int = 100) -> dict[str, int]:
                 document_repo=DocumentRepository.from_session(session),
                 repo_sync_repo=RepoSyncRepository.from_session(session),
                 status_cache=RedisDocumentStatusCache(redis),
-                task_dispatcher=CeleryTaskDispatcher(),
+                task_dispatcher=TaskiqTaskDispatcher(),
             )
             result = await handler(limit=limit)
             return {

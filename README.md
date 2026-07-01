@@ -14,7 +14,7 @@ Conserium is a personal knowledge base for indexing and searching your content. 
 ```
 User → Uploads content (text, PDF, URL, YouTube video URL, image)
        ↓
-     Asynchronous pipeline (Celery workers)
+     Asynchronous pipeline (Taskiq workers)
        → Extract text (pdfplumber, trafilatura, tesseract)
        → Split into chunks
        → Generate embeddings (OpenAI)
@@ -36,7 +36,7 @@ User → Uploads content (text, PDF, URL, YouTube video URL, image)
 | Layer | Technology |
 |-------|-----------|
 | **API** | FastAPI, Pydantic, async |
-| **Background Jobs** | Celery, Redis |
+| **Background Jobs** | Taskiq, RabbitMQ, Redis result backend |
 | **Database** | PostgreSQL 16 + pgvector |
 | **Cache** | Redis |
 | **Embeddings** | OpenAI (text-embedding-3-small) |
@@ -56,7 +56,7 @@ Conserium is a feature-first modular monolith.
 Each package under `src/` owns its HTTP endpoints, schemas, business services,
 repositories, authorization dependencies, and background tasks when it needs them.
 Shared framework code lives in `src/kit`, SQLAlchemy models live in `src/models`, API
-composition lives in `src/api.py`, and Celery configuration lives in `src/worker`.
+composition lives in `src/api.py`, and Taskiq configuration lives in `src/worker`.
 
 ```text
 src/
@@ -64,14 +64,14 @@ src/
 ├── postgres.py            # Async session dependencies and transaction boundary
 ├── models/                # Shared SQLAlchemy models
 ├── kit/                   # Cross-cutting helpers and external adapter protocols
-├── worker/                # Celery app, queues, registry, and task names
+├── worker/                # Taskiq broker, queues, registry, and task names
 └── {feature}/
     ├── endpoints.py       # Thin FastAPI handlers
     ├── schemas.py         # API and feature data contracts
     ├── service.py         # Business orchestration
     ├── repository.py      # SQLAlchemy query ownership
     ├── auth.py            # Feature authorization dependencies when needed
-    └── tasks.py           # Feature-owned Celery tasks when needed
+    └── tasks.py           # Feature-owned Taskiq tasks when needed
 ```
 
 Files such as `auth.py`, `sorting.py`, and `tasks.py` are optional. Do not create empty
@@ -86,7 +86,7 @@ transaction ownership, frontend API contracts, and deployment boundaries.
 
 ### Workers
 
-Three Celery worker processes and one Celery Beat scheduler run in production:
+Three Taskiq worker processes and one Taskiq scheduler run in production:
 
 - **worker-default** — `document_processing`, `notifications`, and `cleanup` queues
 - **worker-embeddings** — `embeddings` queue for OpenAI embedding work
@@ -98,7 +98,7 @@ Three Celery worker processes and one Celery Beat scheduler run in production:
 ## Ingestion Pipeline
 
 1. `POST /ingest` → 202 Accepted with `document_id`
-2. Celery task processes:
+2. Taskiq task processes:
    - Extract text (format-aware: PDF, URL, image)
    - Split into chunks (semantic-aware)
    - Batch embed via OpenAI
@@ -273,11 +273,12 @@ client from the backend schema and fails on drift.
 - GitHub markdown repo sync with include/exclude filters, per-file status, truncated-tree protection, partial raw-file warnings, and durable outbox dispatch
 - Notion OAuth, page search/import, Notion export, and integration settings
 - Public API keys with scopes, hashed storage, last-used tracking, revocation, public ingest, status, collection list, and query endpoints
+- Stripe Checkout and Billing Portal with Free, Pro, and Team entitlements, webhook idempotency, document limits, API-key gating, and usage state
 - Webhook ingestion with idempotency, provider metadata, collection/tag routing, and intake status/retry records
 - Telegram pairing backend, chat bindings, revocation, and Telegram adapter MVP
 - Browser extension scaffold with API-key validation, collection picker, origin validation, selected-text/current-tab save, save history, and release/install docs
 - Markdown, PDF, and Notion export
-- Settings for account, privacy, AI preferences, API keys, Notion, Telegram pairing, and browser/bookmarklet capture
+- Settings for account, billing, privacy, AI preferences, API keys, Notion, Telegram pairing, and browser/bookmarklet capture
 - Command palette with recent actions and global drag-and-drop ingestion
 - JWT auth, OAuth integrations, rate limiting, Prometheus, Grafana, Langfuse, Docker deployment, and S3-compatible file storage
 
@@ -312,7 +313,7 @@ client from the backend schema and fails on drift.
 - [ ] Anytype direct connector if the API surface is stable enough; keep Markdown/JSON import as fallback
 - [ ] Conflict detector v2 with background claim extraction
 - [ ] Explain mode and answer style presets: beginner, experienced, tutor, architect
-- [ ] Role-based access control, audit logs, billing, and organization administration
+- [ ] Role-based access control and organization administration
 - [ ] Public API documentation examples for Zapier, Make, n8n, IFTTT, scripts, Telegram, and browser extension usage
 
 ---

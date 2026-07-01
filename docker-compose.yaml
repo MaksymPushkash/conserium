@@ -9,8 +9,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      TASKIQ_BROKER_URL: amqp://guest:guest@rabbitmq:5672/
+      TASKIQ_RESULT_BACKEND_URL: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
     ports:
       - "127.0.0.1:8000:8000"
@@ -21,95 +21,105 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
   worker-default:
     build:
       context: .
-      dockerfile: docker/Dockerfile.celery
+      dockerfile: docker/Dockerfile.worker
     container_name: conserium_worker_default
     env_file:
       - .env.prod
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      TASKIQ_BROKER_URL: amqp://guest:guest@rabbitmq:5672/
+      TASKIQ_RESULT_BACKEND_URL: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["celery", "-A", "src.worker", "worker", "--loglevel=INFO", "--queues=document_processing,notifications,cleanup", "--concurrency=4"]
+    command: ["taskiq", "worker", "--workers", "4", "--ack-type", "when_executed", "--max-prefetch", "1", "--log-level", "INFO", "src.worker.app:get_default_broker", "src.documents.tasks", "src.notifications.tasks", "src.repo_syncs.tasks"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
   scheduler:
     build:
       context: .
-      dockerfile: docker/Dockerfile.celery
+      dockerfile: docker/Dockerfile.worker
     container_name: conserium_scheduler
     env_file:
       - .env.prod
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      TASKIQ_BROKER_URL: amqp://guest:guest@rabbitmq:5672/
+      TASKIQ_RESULT_BACKEND_URL: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["celery", "-A", "src.worker", "beat", "--loglevel=INFO"]
+    command: ["taskiq", "scheduler", "--skip-first-run", "--log-level", "INFO", "src.worker.app:scheduler", "src.documents.tasks", "src.notifications.tasks", "src.repo_syncs.tasks"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
   worker-embeddings:
     build:
       context: .
-      dockerfile: docker/Dockerfile.celery
+      dockerfile: docker/Dockerfile.worker
     container_name: conserium_worker_embeddings
     env_file:
       - .env.prod
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      TASKIQ_BROKER_URL: amqp://guest:guest@rabbitmq:5672/
+      TASKIQ_RESULT_BACKEND_URL: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
-    command: ["celery", "-A", "src.worker", "worker", "--loglevel=INFO", "--queues=embeddings", "--concurrency=4"]
+    command: ["taskiq", "worker", "--workers", "4", "--ack-type", "when_executed", "--max-prefetch", "1", "--log-level", "INFO", "src.worker.app:get_embeddings_broker", "src.documents.tasks"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
   worker-media:
     build:
       context: .
-      dockerfile: docker/Dockerfile.celery-media
+      dockerfile: docker/Dockerfile.worker-media
     container_name: conserium_worker_media
     env_file:
       - .env.prod
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
       REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      TASKIQ_BROKER_URL: amqp://guest:guest@rabbitmq:5672/
+      TASKIQ_RESULT_BACKEND_URL: redis://redis:6379/1
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - app_storage:/app/storage
-    command: ["celery", "-A", "src.worker", "worker", "--loglevel=INFO", "--queues=media_processing,hf_processing", "--concurrency=2"]
+    command: ["taskiq", "worker", "--workers", "2", "--ack-type", "when_executed", "--max-prefetch", "1", "--log-level", "INFO", "src.worker.app:get_media_broker", "src.documents.tasks"]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
@@ -154,6 +164,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: conserium_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   redisinsight:
@@ -218,6 +244,7 @@ volumes:
   postgres_data:
   pgadmin_data:
   redis_data:
+  rabbitmq_data:
   redisinsight_data:
   prometheus_data:
   grafana_data:

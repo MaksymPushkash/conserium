@@ -1,4 +1,4 @@
-"""Tests for Celery error handling and classification."""
+"""Tests for worker error handling and classification."""
 
 from openai import APIConnectionError, APITimeoutError, RateLimitError
 from requests.exceptions import ConnectionError, Timeout  # type: ignore[import-untyped,unused-ignore]
@@ -12,7 +12,7 @@ def _make_exception(exc_type: type[Exception]) -> Exception:
 
 
 class TestErrorClassification:
-    """Test error classification for Celery retry logic."""
+    """Test error classification for worker retry logic."""
 
     def test_rate_limit_error_is_retryable(self) -> None:
         """RateLimitError should be retryable."""

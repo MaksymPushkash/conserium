@@ -4,6 +4,7 @@ import uuid
 from typing import TYPE_CHECKING, Self
 from uuid import UUID
 
+from src.billing.service import billing
 from src.documents.access import (
     DocumentCollectionAccess as DocumentCollectionAccess,
 )
@@ -136,6 +137,7 @@ class DocumentService:
             body.collection_id,
             user_id,
         )
+        await billing.ensure_can_create_document(self._session, user_id=document_owner_id)
 
         document = DocumentModel.create(
             id=uuid.uuid4(),

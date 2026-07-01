@@ -4,6 +4,7 @@ from pathlib import Path
 MIGRATED_ENDPOINT_MODULES = (
     "api_keys",
     "auth",
+    "billing",
     "chats",
     "collections",
     "compare",
@@ -56,6 +57,21 @@ def test_worker_registry_exposes_feature_task_modules() -> None:
     assert "src.notifications.tasks" in TASK_MODULES
     assert "src.repo_syncs.tasks" in TASK_MODULES
     assert not Path("src/worker/composition.py").exists()
+
+
+def test_removed_worker_runtime_is_not_reintroduced() -> None:
+    removed_runtime = "cel" + "ery"
+    forbidden_fragments = (
+        "import " + removed_runtime,
+        "from " + removed_runtime,
+        removed_runtime + "_app",
+        removed_runtime.upper() + "_",
+    )
+    for root in (Path("src"), Path("tests")):
+        for path in root.rglob("*.py"):
+            source = path.read_text()
+            for fragment in forbidden_fragments:
+                assert fragment not in source, str(path)
 
 
 def test_global_document_repository_session_is_not_reintroduced() -> None:

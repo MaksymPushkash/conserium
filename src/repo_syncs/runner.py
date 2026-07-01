@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from src.billing.service import billing
 from src.documents.types import DocumentType
 from src.kit.exceptions import ResourceNotFoundException
 from src.models.document import DocumentModel
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from src.postgres import AsyncSession
     from src.repo_syncs.github_repository_client import GitHubRepositoryClient
     from src.repo_syncs.repository import RepoSyncRepository
-    from src.worker.dispatcher import CeleryTaskDispatcher
+    from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ class RepoSyncRunner:
         document_activity_repo: DocumentActivityRepository,
         repo_sync_repo: RepoSyncRepository,
         github_client: GitHubRepositoryClient,
-        task_dispatcher: CeleryTaskDispatcher,
+        task_dispatcher: TaskiqTaskDispatcher,
     ) -> None:
         self._session = session
         self._document_repo = document_repo
@@ -203,6 +204,7 @@ class RepoSyncRunner:
             return _SyncFileResult(state="skipped", document=None)
 
         if item is None:
+            await billing.ensure_can_create_document(self._session, user_id=repo_sync.user_id)
             document = self._create_document(repo_sync, file)
             await self._document_repo.create(document)
             await self._document_activity_repo.record_event(

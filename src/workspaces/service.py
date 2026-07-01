@@ -1,6 +1,7 @@
 from typing import Any, Literal, cast
 from uuid import UUID
 
+from src.billing.service import billing
 from src.kit.exceptions import ResourceNotFoundException, ValidationException
 from src.postgres import AsyncSession
 from src.users.repository import UserRepository
@@ -130,6 +131,11 @@ class WorkspaceService:
         if "@" not in email:
             raise ValidationException("valid member email required")
         await ensure_workspace_owner(repository, workspace_id=workspace_id, user_id=actor_user_id)
+        members = await repository.list_workspace_members(workspace_id=workspace_id)
+        existing_member = next((member for member in members if member.email == email), None)
+        member_limit = await billing.workspace_member_limit(session, workspace_id=workspace_id)
+        if existing_member is None and member_limit is not None and len(members) >= member_limit:
+            raise ValidationException("Workspace member limit reached. Upgrade to Team for unlimited seats.")
         user = await user_repository.get_by_email(email)
         if user is not None and user.id == actor_user_id:
             raise ValidationException("owner is already a workspace member")

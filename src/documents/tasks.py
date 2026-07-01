@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from taskiq import Context, TaskiqDepends
+
 from src.documents.task_embedding import run_embed_and_finalize_document_task
 from src.documents.task_enrichment import run_enrich_document_task
 from src.documents.task_ingestion import run_process_document_task
 from src.documents.task_media import run_process_image_document_task
 from src.documents.task_outbox import run_drain_document_processing_outbox_task
-from src.worker.app import celery_app
+from src.worker.app import taskiq_broker
 from src.worker.task_names import (
     DOCUMENT_EMBED_AND_FINALIZE_TASK,
     DOCUMENT_ENRICH_TASK,
@@ -17,49 +19,61 @@ from src.worker.task_names import (
 )
 
 
-@celery_app.task(  # type: ignore[untyped-decorator]
-    name=DOCUMENT_PROCESS_TASK,
-    queue="document_processing",
-    bind=True,
+def _task_id(context: Context) -> str:
+    return context.message.task_id
+
+
+def _retry_count(context: Context) -> int:
+    return int(context.message.labels.get("_retries", 0))
+
+
+@taskiq_broker.task(
+    task_name=DOCUMENT_PROCESS_TASK,
+    queue_name="document_processing",
+    retry_on_error=True,
     max_retries=3,
-    default_retry_delay=60,
-    acks_late=True,
+    delay=60,
 )
-def process_document(self: Any, document_id: str) -> dict[str, Any]:
-    return run_process_document_task(self, document_id)
+async def process_document(
+    document_id: str,
+    context: Context = TaskiqDepends(),
+) -> dict[str, object]:
+    return await run_process_document_task(
+        task_id=_task_id(context),
+        retry_count=_retry_count(context),
+        document_id=document_id,
+    )
 
 
-@celery_app.task(  # type: ignore[untyped-decorator]
-    name=DOCUMENT_ENRICH_TASK,
-    queue="media_processing",
-    bind=True,
-    soft_time_limit=180,
-    time_limit=240,
+@taskiq_broker.task(
+    task_name=DOCUMENT_ENRICH_TASK,
+    queue_name="media_processing",
+    priority=5,
+    timeout=240,
 )
-def enrich_document_task(self: Any, document_id: str) -> dict[str, object]:
-    return run_enrich_document_task(document_id)
+async def enrich_document_task(document_id: str) -> dict[str, object]:
+    return await run_enrich_document_task(document_id)
 
 
-@celery_app.task(  # type: ignore[untyped-decorator]
-    name=DOCUMENT_EMBED_AND_FINALIZE_TASK,
-    queue="embeddings",
-    bind=True,
+@taskiq_broker.task(
+    task_name=DOCUMENT_EMBED_AND_FINALIZE_TASK,
+    queue_name="embeddings",
+    retry_on_error=True,
     max_retries=3,
-    default_retry_delay=60,
-    rate_limit="50/m",
-    acks_late=True,
-    soft_time_limit=120,
-    time_limit=150,
+    delay=60,
+    priority=5,
+    timeout=150,
 )
-def embed_and_finalize_document(
-    self: Any,
+async def embed_and_finalize_document(
     document_id: str,
     raw_text: str,
     chunks_data: list[dict[str, Any]],
     expected_content_hash: str | None = None,
+    context: Context = TaskiqDepends(),
 ) -> dict[str, str]:
-    return run_embed_and_finalize_document_task(
-        self,
+    return await run_embed_and_finalize_document_task(
+        task_id=_task_id(context),
+        retry_count=_retry_count(context),
         document_id=document_id,
         raw_text=raw_text,
         chunks_data=chunks_data,
@@ -68,29 +82,39 @@ def embed_and_finalize_document(
     )
 
 
-@celery_app.task(  # type: ignore[untyped-decorator]
-    name=DOCUMENT_PROCESS_IMAGE_TASK,
-    queue="media_processing",
-    bind=True,
+@taskiq_broker.task(
+    task_name=DOCUMENT_PROCESS_IMAGE_TASK,
+    queue_name="media_processing",
+    retry_on_error=True,
     max_retries=3,
-    default_retry_delay=60,
-    acks_late=True,
-    soft_time_limit=180,
-    time_limit=240,
+    delay=60,
+    timeout=240,
 )
-def process_image_document(self: Any, document_id: str) -> dict[str, str]:
-    return run_process_image_document_task(self, document_id)
+async def process_image_document(
+    document_id: str,
+    context: Context = TaskiqDepends(),
+) -> dict[str, str]:
+    return await run_process_image_document_task(
+        task_id=_task_id(context),
+        retry_count=_retry_count(context),
+        document_id=document_id,
+    )
 
 
-@celery_app.task(  # type: ignore[untyped-decorator]
-    name=DOCUMENT_PROCESSING_OUTBOX_DRAIN_TASK,
-    queue="cleanup",
-    bind=True,
-    soft_time_limit=300,
-    time_limit=360,
+@taskiq_broker.task(
+    task_name=DOCUMENT_PROCESSING_OUTBOX_DRAIN_TASK,
+    queue_name="cleanup",
+    timeout=360,
+    schedule=[
+        {
+            "schedule_id": "drain-document-processing-outbox",
+            "interval": 60.0,
+            "labels": {"queue_name": "cleanup"},
+        }
+    ],
 )
-def drain_document_processing_outbox_task(self: Any, limit: int = 100) -> dict[str, int]:
-    return run_drain_document_processing_outbox_task(limit=limit)
+async def drain_document_processing_outbox_task(limit: int = 100) -> dict[str, int]:
+    return await run_drain_document_processing_outbox_task(limit=limit)
 
 
 __all__ = [

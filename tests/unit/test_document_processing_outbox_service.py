@@ -18,7 +18,7 @@ from src.models.document import DocumentModel
 
 if TYPE_CHECKING:
     from src.documents.status_cache import RedisDocumentStatusCache
-    from src.worker.dispatcher import CeleryTaskDispatcher
+    from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 @pytest.mark.asyncio
@@ -115,6 +115,26 @@ async def test_document_processing_request_flushes_outbox_before_background_drai
     assert dispatcher.outbox_drains == 1
 
 
+@pytest.mark.asyncio
+async def test_document_processing_outbox_dispatches_paid_documents_with_priority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def paid_priority(*args: object, **kwargs: object) -> bool:
+        return True
+
+    monkeypatch.setattr("src.documents.processing.billing.has_priority_processing", paid_priority)
+    document = _document(status=DocumentStatus.PENDING)
+    outbox = _outbox(document_id=document.id)
+    repository_session = _FakeSession(document=document, outbox=outbox)
+    dispatcher = _RecordingDispatcher()
+
+    result = await _processing_service(repository_session, dispatcher).drain()
+
+    assert result.dispatched == 1
+    assert dispatcher.calls == [(str(document.id), document_processing_outbox_task_id(outbox.id))]
+    assert dispatcher.priorities == [9]
+
+
 class _FakeSession:
     def __init__(
         self,
@@ -194,10 +214,18 @@ class _OutboxRepo:
 class _RecordingDispatcher:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str | None]] = []
+        self.priorities: list[int | None] = []
         self.outbox_drains = 0
 
-    async def dispatch_process_document(self, document_id: str, *, task_id: str | None = None) -> None:
+    async def dispatch_process_document(
+        self,
+        document_id: str,
+        *,
+        task_id: str | None = None,
+        priority: int | None = None,
+    ) -> None:
         self.calls.append((document_id, task_id))
+        self.priorities.append(priority)
 
     async def dispatch_document_processing_outbox(self) -> None:
         self.outbox_drains += 1
@@ -218,7 +246,7 @@ def _processing_service(
         session.document_repo,  # type: ignore[arg-type]
         session.document_processing_outbox_repo,  # type: ignore[arg-type]
         cast("RedisDocumentStatusCache", _StatusCache()),
-        cast("CeleryTaskDispatcher", dispatcher),
+        cast("TaskiqTaskDispatcher", dispatcher),
         background_tasks,
     )
 

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+from src.billing.service import billing
 from src.documents.access import record_shared_document_event
 from src.documents.repository import ExternalIntakeItemRecord
 from src.documents.results import document_result
@@ -40,7 +41,7 @@ if TYPE_CHECKING:
     from src.documents.status_cache import RedisDocumentStatusCache
     from src.documents.text_chunker import SimpleTextChunker
     from src.postgres import AsyncSession
-    from src.worker.dispatcher import CeleryTaskDispatcher
+    from src.worker.dispatcher import TaskiqTaskDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ class TextDocumentIngester:
             collection_id,
             user_id,
         )
+        await billing.ensure_can_create_document(self._session, user_id=document_owner_id)
 
         document = DocumentModel.create(
             id=uuid.uuid4(),
@@ -134,7 +136,7 @@ class DocumentIngester:
         session: AsyncSession,
         document_repo: DocumentRepository,
         status_cache: RedisDocumentStatusCache,
-        task_dispatcher: CeleryTaskDispatcher,
+        task_dispatcher: TaskiqTaskDispatcher,
         collection_access: DocumentCollectionAccess,
         activity_repo: DocumentActivityRepository,
         processing_service: DocumentProcessingService,
@@ -173,6 +175,7 @@ class DocumentIngester:
             collection_id,
             user_id,
         )
+        await billing.ensure_can_create_document(self._session, user_id=document_owner_id)
 
         document = DocumentModel.create(
             id=uuid.uuid4(),

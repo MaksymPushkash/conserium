@@ -42,7 +42,7 @@ from src.repo_syncs.schemas import (
 
 if TYPE_CHECKING:
     from src.postgres import AsyncSession
-    from src.worker.dispatcher import CeleryTaskDispatcher
+    from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 class RepoSyncService:
@@ -95,7 +95,7 @@ class RepoSyncService:
         user_id: UUID,
         repo_sync_id: UUID,
         max_files: int,
-        task_dispatcher: CeleryTaskDispatcher,
+        task_dispatcher: TaskiqTaskDispatcher,
     ) -> RepoSyncRunResponse:
         repo_sync_repo = RepoSyncRepository.from_session(session)
         repo_sync = await repo_sync_repo.get_by_id(repo_sync_id)

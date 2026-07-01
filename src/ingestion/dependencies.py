@@ -19,14 +19,14 @@ from src.documents.status_service import DocumentStatusService
 from src.kit.storage.factory import build_file_storage
 from src.kit.storage.file_storage import FileStorage
 from src.postgres import get_db_session
-from src.worker.dispatcher import CeleryTaskDispatcher
+from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 def get_document_ingester(
     session: AsyncSession = Depends(get_db_session),
     document_repo: DocumentRepository = Depends(get_document_repository),
     status_cache: RedisDocumentStatusCache = Depends(get_document_status_cache),
-    task_dispatcher: CeleryTaskDispatcher = Depends(get_task_dispatcher),
+    task_dispatcher: TaskiqTaskDispatcher = Depends(get_task_dispatcher),
     collection_access: DocumentCollectionAccess = Depends(get_document_collection_access),
     activity_repo: DocumentActivityRepository = Depends(get_document_activity_repository),
     processing_service: DocumentProcessingService = Depends(get_document_processing_service),

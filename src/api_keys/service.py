@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from src.api_keys.repository import ApiKeyRecord, ApiKeyRepository
 from src.api_keys.schemas import ApiKeyListResponse, ApiKeyResponse, CreatedApiKeyResponse
+from src.billing.service import billing
 from src.kit.exceptions import ValidationException
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ class ApiKeyService:
         name: str,
         scopes: list[str],
     ) -> CreatedApiKeyResponse:
+        await billing.ensure_can_create_api_key(session, user_id=user_id)
         token = generate_api_key_token()
         record = ApiKeyRecord(
             id=uuid4(),

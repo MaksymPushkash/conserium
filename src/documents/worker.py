@@ -30,7 +30,7 @@ from src.kit.ai.providers.openai_embedding_provider import OpenAIEmbeddingProvid
 from src.kit.cache.redis_cache import RedisCache
 from src.kit.storage.factory import build_file_storage
 from src.worker.dependencies import get_worker_redis, get_worker_session_factory
-from src.worker.dispatcher import CeleryTaskDispatcher
+from src.worker.dispatcher import TaskiqTaskDispatcher
 
 
 async def acknowledge_document_processing_task_start(*, task_id: str | None, document_id: str) -> bool:
@@ -44,7 +44,7 @@ async def acknowledge_document_processing_task_start(*, task_id: str | None, doc
                 DocumentRepository.from_session(session),
                 DocumentProcessingOutboxRepository.from_session(session),
                 RedisDocumentStatusCache(redis),
-                CeleryTaskDispatcher(),
+                TaskiqTaskDispatcher(),
             )
             return await service.acknowledge(task_id=task_id, document_id=document_uuid)
         finally:
@@ -68,7 +68,7 @@ async def process_document_ingestion(document_id: str) -> dict[str, str]:
                 session=session,
                 document_repo=DocumentRepository.from_session(session),
                 status_cache=RedisDocumentStatusCache(redis),
-                task_dispatcher=CeleryTaskDispatcher(),
+                task_dispatcher=TaskiqTaskDispatcher(),
                 text_chunker=SimpleTextChunker(),
                 file_storage=build_file_storage(),
                 url_extractor=UrlExtractor(),
@@ -159,7 +159,7 @@ async def process_image_document(document_id: str) -> dict[str, str]:
                 session=session,
                 document_repo=DocumentRepository.from_session(session),
                 status_cache=RedisDocumentStatusCache(redis),
-                task_dispatcher=CeleryTaskDispatcher(),
+                task_dispatcher=TaskiqTaskDispatcher(),
                 text_chunker=SimpleTextChunker(),
                 file_storage=build_file_storage(),
                 image_extractor=ImageExtractor(),
@@ -180,7 +180,7 @@ async def drain_document_processing_outbox(*, limit: int = 100) -> dict[str, int
                 DocumentRepository.from_session(session),
                 DocumentProcessingOutboxRepository.from_session(session),
                 RedisDocumentStatusCache(redis),
-                CeleryTaskDispatcher(),
+                TaskiqTaskDispatcher(),
             )
             result = await service.drain(limit=limit)
             return {

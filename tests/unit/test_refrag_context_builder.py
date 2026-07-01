@@ -104,7 +104,7 @@ def test_chunk_relevance_filter_drops_unrelated_noise_chunks() -> None:
 def test_chunk_relevance_filter_can_return_empty_context_for_out_of_scope_query() -> None:
     sources = [
         _source(1, score=0.9, content="Clean Architecture keeps dependencies inward across application layers."),
-        _source(2, score=0.8, content="Celery workers are a second composition root for task adapters."),
+        _source(2, score=0.8, content="Taskiq workers are a second composition root for task adapters."),
     ]
 
     filtered = ChunkRelevanceFilter().filter_sources("What payroll tax rate is documented?", sources)

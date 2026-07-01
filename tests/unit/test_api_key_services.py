@@ -14,6 +14,11 @@ async def test_api_key_lifecycle_authenticates_and_revokes_token(monkeypatch: py
     user_id = uuid4()
     persistence = _ApiKeyPersistence()
     monkeypatch.setattr(ApiKeyRepository, "from_session", classmethod(lambda cls, session: persistence.api_key_repo))
+
+    async def allow_api_keys(session: object, *, user_id: UUID) -> None:
+        return None
+
+    monkeypatch.setattr("src.api_keys.service.billing.ensure_can_create_api_key", allow_api_keys)
     service = ApiKeyService()
 
     created = await service.create(

@@ -676,6 +676,7 @@ class _DrainDocumentRepo:
 class _DispatchDocument:
     def __init__(self, document_id: UUID, *, status: DocumentStatus = DocumentStatus.PENDING) -> None:
         self.id = document_id
+        self.user_id = uuid4()
         self.status = status
         self.queued = False
 

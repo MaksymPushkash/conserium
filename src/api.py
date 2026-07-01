@@ -1,5 +1,6 @@
 from src.api_keys.endpoints import router as api_key_router
 from src.auth.endpoints import router as auth_router
+from src.billing.endpoints import router as billing_router
 from src.chats.endpoints import router as chat_router
 from src.collections.endpoints import router as collection_router
 from src.compare.endpoints import router as compare_router
@@ -28,6 +29,7 @@ from src.workspaces.endpoints import router as workspace_router
 router = APIRouter(prefix="/api/v1")
 
 router.include_router(auth_router)
+router.include_router(billing_router)
 router.include_router(api_key_router)
 router.include_router(public_share_router)
 router.include_router(user_router)
